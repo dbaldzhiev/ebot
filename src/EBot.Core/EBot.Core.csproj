@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
+  </ItemGroup>
+
+  <!-- Direct reference to the Sanderling read-memory-64-bit library for in-process memory reading -->
+  <ItemGroup>
+    <Reference Include="read-memory-64-bit">
+      <HintPath>..\..\read-memory-64\read-memory-64-bit.dll</HintPath>
+    </Reference>
+    <Reference Include="Pine.Core">
+      <HintPath>..\..\read-memory-64\Pine.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Copy the read-memory-64 DLLs to the output directory -->
+  <ItemGroup>
+    <None Include="..\..\read-memory-64\*.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\read-memory-64\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\read-memory-64\runtimes\**\*" CopyToOutputDirectory="PreserveNewest" Link="runtimes\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

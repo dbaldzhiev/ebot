@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EBot — EVE Command &amp; Control</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+  <style>
+    /* ── Reset & base ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #080c10;
+      --bg2:         #0d1117;
+      --bg3:         #131920;
+      --border:      #1e3a52;
+      --accent:      #4fc3f7;
+      --accent2:     #00bcd4;
+      --text:        #c9d8e8;
+      --text-dim:    #5a7a99;
+      --green:       #4caf7d;
+      --yellow:      #f9a825;
+      --red:         #ef5350;
+      --orange:      #ff7043;
+      --glow:        0 0 8px rgba(79,195,247,.35);
+      --glow-green:  0 0 8px rgba(76,175,125,.4);
+    }
+
+    html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Header ────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .logo {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--accent);
+      text-shadow: var(--glow);
+    }
+    .logo span { color: var(--text-dim); font-weight: 300; }
+
+    #conn-dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--red); flex-shrink: 0;
+      transition: background .3s;
+    }
+    #conn-dot.ok { background: var(--green); box-shadow: var(--glow-green); }
+
+    .state-pill {
+      padding: 3px 10px; border-radius: 12px; font-size: .75rem;
+      font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+      background: #1a2a3a; color: var(--text-dim); border: 1px solid var(--border);
+    }
+    .state-pill.running { background: #0d2a1a; color: var(--green); border-color: var(--green); }
+    .state-pill.paused  { background: #2a2000; color: var(--yellow); border-color: var(--yellow); }
+    .state-pill.monitor { background: #002040; color: var(--accent); border-color: var(--accent); }
+
+    .ai-badge {
+      padding: 2px 9px; border-radius: 10px; font-size: .7rem;
+      font-weight: 700; letter-spacing: .5px; white-space: nowrap;
+      border: 1px solid; cursor: default;
+    }
+    .ai-badge.anthropic { background: #1a0a2e; color: #ce93d8; border-color: #7c4dff; }
+    .ai-badge.ollama    { background: #002820; color: #80cbc4; border-color: #26a69a; }
+
+    #model-select { display: none; max-width: 160px; font-size: .78rem; padding: 3px 8px; }
+    #model-select.visible { display: inline-block; }
+
+    /* toggles */
+    .toggle-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .toggle-label  { font-size: .78rem; color: var(--text-dim); white-space: nowrap; }
+
+    .toggle { position: relative; display: inline-block; width: 46px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; border-radius: 24px;
+      background: #1a2a3a; border: 1px solid var(--border);
+      cursor: pointer; transition: background .25s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 18px; height: 18px; border-radius: 50%;
+      left: 2px; top: 2px;
+      background: var(--text-dim);
+      transition: transform .25s, background .25s;
+    }
+    .toggle input:checked + .toggle-slider { background: #0d2a3a; border-color: var(--accent2); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(22px); background: var(--accent); }
+    .toggle.survival input:checked + .toggle-slider { background: #2a1500; border-color: var(--orange); }
+    .toggle.survival input:checked + .toggle-slider::before { background: var(--orange); }
+
+    /* controls */
+    .controls { display: flex; align-items: center; gap: 8px; }
+    select {
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 5px 10px; font-size: .82rem;
+      outline: none; cursor: pointer;
+    }
+    select:focus { border-color: var(--accent); }
+
+    .btn {
+      padding: 5px 14px; border-radius: 6px; border: 1px solid;
+      font-size: .78rem; font-weight: 600; cursor: pointer;
+      transition: all .15s; white-space: nowrap; background: transparent;
+    }
+    .btn-primary { color: var(--accent); border-color: var(--accent); background: #0a2a3a; }
+    .btn-primary:hover { background: #143a4a; box-shadow: var(--glow); }
+    .btn-danger  { color: var(--red);   border-color: var(--red);   background: #2a0a0a; }
+    .btn-danger:hover  { background: #3a1010; }
+    .btn-warn    { color: var(--yellow); border-color: var(--yellow); background: #2a1f00; }
+    .btn-warn:hover    { background: #3a2a00; }
+    .btn-muted   { color: var(--text-dim); border-color: var(--border); background: var(--bg3); }
+    .btn-muted:hover   { border-color: var(--text-dim); color: var(--text); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    /* ── Main layout ────────────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 280px 1fr 340px;
+      overflow: hidden;
+    }
+
+    .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+    .panel:last-child { border-right: none; }
+
+    .panel-title {
+      padding: 8px 14px;
+      font-size: .72rem; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--accent);
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Ship status ────────────────────────────────────────────────────── */
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 5px 0; border-bottom: 1px solid #111d28; font-size: .82rem;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-key { color: var(--text-dim); }
+
+    .bar-wrap { display: flex; align-items: center; gap: 6px; width: 130px; }
+    .bar-track { flex: 1; height: 7px; border-radius: 3px; background: #1a2a3a; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease, background .5s; }
+    .bar-fill.shield { background: var(--accent); }
+    .bar-fill.armor  { background: var(--yellow); }
+    .bar-fill.struct { background: var(--orange); }
+    .bar-fill.cap    { background: var(--accent2); }
+    .bar-fill.low    { background: var(--red) !important; }
+    .bar-pct { font-size: .72rem; color: var(--text-dim); width: 28px; text-align: right; }
+
+    /* ── Centre panel ────────────────────────────────────────────────────── */
+    .center-panel {
+      display: grid;
+      grid-template-rows: 55% 45%;
+      overflow: hidden;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    th { text-align: left; padding: 5px 8px; color: var(--text-dim); font-size: .7rem; letter-spacing: .8px; border-bottom: 1px solid var(--border); }
+    td { padding: 5px 8px; border-bottom: 1px solid #101820; }
+    tr:last-child td { border-bottom: none; }
+    tr.attacking td { color: var(--red); }
+    tr.attacking td:first-child::before { content: '⚠ '; }
+
+    /* ── Log ─────────────────────────────────────────────────────────────── */
+    .log-entry {
+      display: grid; grid-template-columns: 56px 34px 1fr; gap: 4px;
+      padding: 2px 0; font-size: .75rem; line-height: 1.5;
+      border-bottom: 1px solid #0d151e;
+    }
+    .log-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+    .log-level { font-weight: 700; }
+    .log-level.Info  { color: var(--green); }
+    .log-level.Warn  { color: var(--yellow); }
+    .log-level.Error, .log-level.Crit { color: var(--red); }
+    .log-level.Dbug, .log-level.Trce { color: var(--text-dim); }
+
+    /* ── Chat ────────────────────────────────────────────────────────────── */
+    .chat-panel { display: flex; flex-direction: column; overflow: hidden; }
+
+    .chat-messages {
+      flex: 1; overflow-y: auto;
+      padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    .chat-bubble {
+      max-width: 92%; padding: 8px 11px;
+      border-radius: 10px; font-size: .82rem; line-height: 1.5;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .chat-bubble.user {
+      align-self: flex-end; background: #0d2a3a; color: var(--accent);
+      border: 1px solid var(--accent2); border-bottom-right-radius: 2px;
+    }
+    .chat-bubble.ai {
+      align-self: flex-start; background: var(--bg3); color: var(--text);
+      border: 1px solid var(--border); border-bottom-left-radius: 2px;
+    }
+    .chat-bubble.tool-call {
+      align-self: flex-start; font-size: .75rem;
+      background: #0a1a0a; color: #4caf50; border: 1px solid #1a3a1a;
+      border-radius: 6px; font-family: monospace;
+    }
+    .chat-bubble.tool-result {
+      align-self: flex-start; font-size: .73rem;
+      background: #0a0a1a; color: var(--text-dim); border: 1px solid var(--border);
+      border-radius: 6px; font-family: monospace;
+      max-height: 100px; overflow-y: auto;
+    }
+    .chat-bubble.error {
+      align-self: flex-start; background: #2a0808; color: var(--red); border: 1px solid var(--red);
+    }
+    .chat-bubble.thinking {
+      align-self: flex-start; font-size: .75rem; color: var(--text-dim);
+      font-style: italic; background: transparent; border: none; padding: 2px 4px;
+    }
+
+    .chat-input-row {
+      display: flex; gap: 6px; padding: 10px 12px;
+      border-top: 1px solid var(--border); background: var(--bg2);
+    }
+    .chat-input {
+      flex: 1; background: var(--bg3); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 12px; font-size: .83rem; outline: none;
+      resize: none; height: 40px; max-height: 120px; font-family: inherit;
+    }
+    .chat-input:focus { border-color: var(--accent); }
+    .chat-send {
+      padding: 0 14px; border-radius: 8px; background: var(--accent);
+      color: var(--bg); border: none; font-weight: 700; cursor: pointer;
+      font-size: .9rem; transition: opacity .15s;
+    }
+    .chat-send:hover { opacity: .85; }
+    .chat-send:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Misc ─────────────────────────────────────────────────────────────── */
+    .empty { color: var(--text-dim); font-style: italic; font-size: .8rem; padding: 8px 0; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: .68rem; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+    .tag.space  { background: #0a2a1a; color: var(--green); }
+    .tag.docked { background: #0a1a2a; color: var(--accent); }
+    .tag.warp   { background: #1a1a00; color: var(--yellow); }
+    .tag.menu   { background: #1a1000; color: var(--orange); }
+
+    /* ── DPI settings ──────────────────────────────────────────────────────── */
+    #dpi-info { font-size: .72rem; color: var(--text-dim); white-space: nowrap; }
+    #dpi-scale-input { width: 52px; font-size: .78rem; padding: 3px 6px; text-align: center;
+      background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+    #dpi-scale-input:focus { border-color: var(--accent); outline: none; }
+
+    /* ── System info section ─────────────────────────────────────────────── */
+    .section-divider { font-size: .66rem; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--accent2); padding: 8px 0 3px; opacity: .7; }
+    .context-entry { font-size: .75rem; color: var(--yellow); padding: 1px 0; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════ HEADER ═══════════════════════════════════════════════════════ -->
+<header>
+  <span class="logo">EBot<span> // C&amp;C</span></span>
+  <div id="conn-dot" title="Disconnected"></div>
+  <span id="state-pill" class="state-pill">Idle</span>
+  <span id="ai-badge" class="ai-badge" title="AI backend"></span>
+  <select id="model-select" title="Select Ollama model"></select>
+
+  <div class="controls">
+    <select id="bot-select"></select>
+    <button class="btn btn-primary" id="btn-start">&#9654; Start Bot</button>
+    <button class="btn btn-warn"    id="btn-pause"  disabled>&#9646;&#9646; Pause</button>
+    <button class="btn btn-muted"   id="btn-resume" disabled>&#9654; Resume</button>
+    <button class="btn btn-danger"  id="btn-stop"   disabled>&#9632; Stop</button>
+  </div>
+
+  <div class="toggle-group">
+    <span class="toggle-label">Survival</span>
+    <label class="toggle survival">
+      <input type="checkbox" id="toggle-survival" checked>
+      <span class="toggle-slider"></span>
+    </label>
+    <span id="dpi-info" title="System DPI / coordinate scale"></span>
+    <input type="number" id="dpi-scale-input" min="0.1" max="4" step="0.01" title="Coordinate scale factor (1.0 = auto, use &lt;1 if clicks land too far right/down)" placeholder="1.0">
+    <button class="btn btn-muted" id="btn-dpi-apply" style="font-size:.72rem;padding:3px 8px;" title="Apply coordinate scale">Scale</button>
+    <button class="btn btn-muted" id="btn-diagnose" style="font-size:.72rem;padding:3px 8px;margin-left:6px;" title="Diagnose reader — check what DirectMemoryReader sees">Diag</button>
+  </div>
+</header>
+
+<!-- ═══ Diagnostic overlay ══════════════════════════════════════════════ -->
+<div id="diag-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;overflow:auto;padding:24px;">
+  <div style="max-width:860px;margin:auto;background:#0d1117;border:1px solid #1e3a52;border-radius:8px;padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <span style="color:#4fc3f7;font-weight:700;letter-spacing:1px;">READER DIAGNOSTICS</span>
+      <button onclick="document.getElementById('diag-overlay').style.display='none'" style="background:none;border:none;color:#5a7a99;font-size:1.2rem;cursor:pointer;">✕</button>
+    </div>
+    <pre id="diag-report" style="white-space:pre-wrap;font-size:.78rem;color:#c9d8e8;line-height:1.5;"></pre>
+    <details style="margin-top:14px;">
+      <summary style="cursor:pointer;color:#5a7a99;font-size:.72rem;">JSON preview (first 800 chars)</summary>
+      <pre id="diag-json" style="white-space:pre-wrap;font-size:.7rem;color:#4fc3f7;margin-top:8px;max-height:300px;overflow:auto;"></pre>
+    </details>
+  </div>
+</div>
+
+<!-- ═══════ MAIN ═════════════════════════════════════════════════════════ -->
+<main>
+
+  <!-- Left: Ship Status -->
+  <div class="panel">
+    <div class="panel-title">Ship Status</div>
+    <div class="panel-body" id="ship-status">
+      <div class="empty">No data — waiting for EVE client…</div>
+    </div>
+  </div>
+
+  <!-- Centre: Overview + Log -->
+  <div class="center-panel">
+    <div class="panel" style="border-right:none; border-bottom:1px solid var(--border);">
+      <div class="panel-title">
+        Overview <span id="overview-count" style="color:var(--text-dim);font-weight:400;font-size:.7rem"></span>
+      </div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Type</th><th style="text-align:right">Distance</th></tr>
+          </thead>
+          <tbody id="overview-body">
+            <tr><td colspan="3" class="empty" style="padding:10px">No data</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel" style="border-right:none;">
+      <div class="panel-title">Log</div>
+      <div class="panel-body" id="log-body" style="padding:4px 12px;"></div>
+    </div>
+  </div>
+
+  <!-- Right: AI Chat -->
+  <div class="chat-panel">
+    <div class="panel-title" style="border-bottom:1px solid var(--border);">AI Command</div>
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-bubble ai">Hello, Capsuleer. I'm your Command &amp; Control AI.<br>Ask me to start a bot, check your status, or anything else.</div>
+    </div>
+    <div class="chat-input-row">
+      <textarea class="chat-input" id="chat-input"
+        placeholder="Type a command… (Enter to send)" rows="1"></textarea>
+      <button class="chat-send" id="chat-send">&#10148;</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  EBot C&C — frontend
+// ═══════════════════════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+
+let botState = 'Idle', chatBusy = false;
+
+// ── SignalR ────────────────────────────────────────────────────────────────
+const conn = new signalR.HubConnectionBuilder()
+  .withUrl('/botHub')
+  .withAutomaticReconnect()
+  .build();
+
+conn.onreconnecting(() => $('conn-dot').classList.remove('ok'));
+conn.onreconnected(() => { $('conn-dot').classList.add('ok'); loadInitialState(); });
+
+conn.on('StateChanged',   state => { botState = state; refreshUI(); });
+conn.on('SurvivalChanged', en  => { $('toggle-survival').checked = en; });
+conn.on('TickUpdate', gs => renderGameState(gs));
+conn.on('LogEntry',   e  => addLogEntry(e));
+
+conn.on('ChatToolCall',   d => addBubble('🔧 ' + d.name + '(…)', 'tool-call'));
+conn.on('ChatToolResult', d => addBubble('↳ ' + (d.result || '').slice(0, 240), 'tool-result'));
+conn.on('ChatMessage', d => { removeThinker(); addBubble(d.text, 'ai'); setChatBusy(false); });
+conn.on('ChatError',   d => { removeThinker(); addBubble('Error: ' + d.error, 'error'); setChatBusy(false); });
+
+async function startConnection() {
+  try {
+    await conn.start();
+    $('conn-dot').classList.add('ok');
+    await loadInitialState();
+  } catch(e) { setTimeout(startConnection, 3000); }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function loadInitialState() {
+  try {
+    const s = await fetch('/api/status').then(r => r.json());
+    botState = s.state;
+    $('toggle-survival').checked = s.survivalEnabled;
+    if (s.gameState) renderGameState(s.gameState);
+    refreshUI();
+  } catch(e) {}
+
+  try {
+    const bots = await fetch('/api/bots').then(r => r.json());
+    const sel = $('bot-select');
+    sel.innerHTML = bots.map(b => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join('');
+  } catch(e) {}
+
+  loadDpiInfo();
+
+  try {
+    const ai = await fetch('/api/ai-info').then(r => r.json());
+    const badge = $('ai-badge');
+    if (ai.backend === 'ollama') {
+      badge.className = 'ai-badge ollama';
+      badge.textContent = `Ollama`;
+      badge.title = `Ollama at ${ai.url}`;
+      // Load model list
+      loadOllamaModels(ai.model);
+    } else {
+      badge.className = 'ai-badge anthropic';
+      badge.textContent = `Claude · ${ai.model}`;
+      badge.title = 'Anthropic Claude API';
+      $('model-select').classList.remove('visible');
+    }
+  } catch(e) {}
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderGameState(gs) {
+  if (!gs) return;
+
+  const locTag = gs.isWarping
+    ? '<span class="tag warp">Warping</span>'
+    : gs.isDocked  ? '<span class="tag docked">Docked</span>'
+    : gs.isInSpace ? '<span class="tag space">Space</span>'
+    :                '<span class="tag">Unknown</span>';
+
+  // Security status colour
+  function secColor(s) {
+    if (!s) return 'var(--text-dim)';
+    const n = parseFloat(s);
+    if (n >= 0.5) return 'var(--green)';
+    if (n >= 0.1) return 'var(--yellow)';
+    return 'var(--red)';
+  }
+
+  const sysName   = gs.systemName      ? esc(gs.systemName) : '—';
+  const secStatus = gs.securityStatus  ? gs.securityStatus  : '';
+  const secHtml   = secStatus
+    ? `<span style="color:${secColor(secStatus)};margin-left:6px;font-size:.75rem">${esc(secStatus)}</span>`
+    : '';
+  const jumps     = gs.routeJumpsRemaining ?? 0;
+  const menuTag   = gs.hasContextMenu
+    ? `<span class="tag menu">Context Menu</span>`
+    : '';
+  const menuHtml  = gs.hasContextMenu && (gs.contextMenuEntries || []).length
+    ? `<div class="section-divider">Context Menu</div>` +
+      gs.contextMenuEntries.map(e => `<div class="context-entry">▸ ${esc(e)}</div>`).join('')
+    : '';
+
+  const speedHtml = gs.speedText
+    ? `<div class="stat-row"><span class="stat-key">Speed</span><span>${esc(gs.speedText)}</span></div>`
+    : '';
+
+  $('ship-status').innerHTML = `
+    <div class="section-divider">Navigation</div>
+    <div class="stat-row"><span class="stat-key">System</span><span>${sysName}${secHtml}</span></div>
+    <div class="stat-row"><span class="stat-key">Status</span>${locTag}${menuTag ? '&nbsp;' + menuTag : ''}</div>
+    ${jumps > 0 ? `<div class="stat-row"><span class="stat-key">Route</span><span>${jumps} jump${jumps !== 1 ? 's' : ''} remaining</span></div>` : ''}
+    ${menuHtml}
+
+    <div class="section-divider">Ship</div>
+    <div class="stat-row"><span class="stat-key">Tick</span><span>${gs.tickCount}</span></div>
+    <div class="stat-row"><span class="stat-key">Runtime</span><span>${gs.runtime}</span></div>
+    <div class="stat-row"><span class="stat-key">Targets</span><span>${gs.targetCount}</span></div>
+    ${speedHtml}
+    ${gs.shieldPercent    != null ? bar('Shield',    gs.shieldPercent,    'shield') : ''}
+    ${gs.armorPercent     != null ? bar('Armor',     gs.armorPercent,     'armor')  : ''}
+    ${gs.structurePercent != null ? bar('Structure', gs.structurePercent, 'struct') : ''}
+    ${gs.capacitorPercent != null ? bar('Capacitor', gs.capacitorPercent, 'cap')    : ''}
+  `;
+
+  const entries = gs.overview || [];
+  $('overview-count').textContent = entries.length ? `(${entries.length})` : '';
+  $('overview-body').innerHTML = entries.length
+    ? entries.map(e => `
+        <tr class="${e.isAttackingMe ? 'attacking' : ''}">
+          <td>${esc(e.name || '—')}</td>
+          <td style="color:var(--text-dim)">${esc(e.objectType || '')}</td>
+          <td style="text-align:right;color:var(--text-dim)">${esc(e.distance || '')}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="3" class="empty" style="padding:10px">Empty</td></tr>';
+}
+
+function bar(label, pct, cls) {
+  const w = Math.max(0, Math.min(100, pct));
+  return `<div class="stat-row">
+    <span class="stat-key">${label}</span>
+    <div class="bar-wrap">
+      <div class="bar-track"><div class="bar-fill ${cls}${w < 25 ? ' low' : ''}" style="width:${w}%"></div></div>
+      <span class="bar-pct">${pct}%</span>
+    </div></div>`;
+}
+
+function addLogEntry(e) {
+  const t = new Date(e.time).toLocaleTimeString('en-GB', { hour12: false });
+  const lvl = (e.level || '').slice(0, 4);
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `<span class="log-time">${t}</span><span class="log-level ${e.level}">${lvl}</span><span>${esc(e.message)}</span>`;
+  const body = $('log-body');
+  body.prepend(el);
+  while (body.children.length > 200) body.removeChild(body.lastChild);
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── UI state machine ────────────────────────────────────────────────────────
+function refreshUI() {
+  const running = botState === 'Running', paused = botState === 'Paused', idle = botState === 'Idle';
+  const pill = $('state-pill');
+  pill.textContent = botState;
+  pill.className = 'state-pill' + (running ? ' running' : paused ? ' paused' : '');
+  $('btn-start').disabled  = !idle;
+  $('btn-stop').disabled   = idle;
+  $('btn-pause').disabled  = !running;
+  $('btn-resume').disabled = !paused;
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+$('btn-start').addEventListener('click', () => api('POST', '/api/start', { botName: $('bot-select').value }));
+$('btn-stop').addEventListener('click', () => api('POST', '/api/stop'));
+$('btn-pause').addEventListener('click',  () => api('POST', '/api/pause'));
+$('btn-resume').addEventListener('click', () => api('POST', '/api/resume'));
+
+$('toggle-survival').addEventListener('change', e =>
+  api('POST', '/api/survival', { enabled: e.target.checked }));
+
+async function api(method, url, body) {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.message || 'Request failed: ' + res.status);
+    }
+  } catch(e) { console.error(e); }
+}
+
+// ── Chat ───────────────────────────────────────────────────────────────────
+function addBubble(text, role) {
+  const el = document.createElement('div');
+  el.className = 'chat-bubble ' + role;
+  el.textContent = text;
+  const box = $('chat-messages');
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+function removeThinker() {
+  const t = document.querySelector('.chat-bubble.thinking');
+  if (t) t.remove();
+}
+
+function setChatBusy(b) {
+  chatBusy = b;
+  $('chat-send').disabled  = b;
+  $('chat-input').disabled = b;
+}
+
+async function sendChat() {
+  const inp = $('chat-input');
+  const msg = inp.value.trim();
+  if (!msg || chatBusy || conn.state !== 'Connected') return;
+  inp.value = ''; inp.style.height = '';
+  addBubble(msg, 'user');
+  addBubble('Thinking\u2026', 'thinking');
+  setChatBusy(true);
+  try { await conn.invoke('SendChatMessage', msg); }
+  catch(e) { removeThinker(); addBubble('Connection error: ' + e.message, 'error'); setChatBusy(false); }
+}
+
+$('chat-send').addEventListener('click', sendChat);
+$('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+$('chat-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ── DPI ────────────────────────────────────────────────────────────────────
+async function loadDpiInfo() {
+  try {
+    const d = await fetch('/api/dpi').then(r => r.json());
+    $('dpi-info').textContent = `DPI ${d.system_dpi} (${d.scale_percent}%)`;
+    $('dpi-info').title = `System DPI: ${d.system_dpi} | Current scale: ${d.coordinate_scale}`;
+    $('dpi-scale-input').value = d.coordinate_scale;
+  } catch(e) {}
+}
+
+$('btn-dpi-apply').addEventListener('click', async () => {
+  const scale = parseFloat($('dpi-scale-input').value);
+  if (isNaN(scale) || scale < 0.1 || scale > 4) {
+    alert('Scale must be between 0.1 and 4.0'); return;
+  }
+  try {
+    await fetch('/api/dpi/scale', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scale }),
+    });
+    await loadDpiInfo();
+  } catch(e) { console.error(e); }
+});
+
+// ── Reader diagnostics ──────────────────────────────────────────────────────
+$('btn-diagnose').addEventListener('click', async () => {
+  $('diag-report').textContent = 'Running diagnostic…';
+  $('diag-json').textContent   = '';
+  $('diag-overlay').style.display = 'block';
+  try {
+    const d = await fetch('/api/debug/reader').then(r => r.json());
+    $('diag-report').textContent = d.report || '(no report)';
+    $('diag-json').textContent   = d.json_preview || '(no JSON)';
+  } catch(e) {
+    $('diag-report').textContent = 'Fetch error: ' + e.message;
+  }
+});
+
+// ── Ollama model selector ───────────────────────────────────────────────────
+async function loadOllamaModels(currentModel) {
+  const sel = $('model-select');
+  try {
+    const res = await fetch('/api/ollama/models').then(r => r.json());
+    const models = res.models || [];
+    const active = res.current || currentModel;
+    if (models.length === 0) {
+      sel.classList.remove('visible');
+      return;
+    }
+    sel.innerHTML = models.map(m =>
+      `<option value="${esc(m)}"${m === active ? ' selected' : ''}>${esc(m)}</option>`
+    ).join('');
+    sel.classList.add('visible');
+  } catch(e) {
+    sel.classList.remove('visible');
+  }
+}
+
+$('model-select').addEventListener('change', async function() {
+  const model = this.value;
+  if (!model) return;
+  try {
+    await fetch('/api/ollama/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+    });
+    // Update badge to reflect active model
+    const badge = $('ai-badge');
+    badge.title = `Ollama · ${model}`;
+  } catch(e) { console.error('Failed to set model', e); }
+});
+
+startConnection();
+</script>
+</body>
+</html>

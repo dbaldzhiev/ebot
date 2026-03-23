@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EBot.Core/EBot.Core.csproj" />
+    <Project Path="src/EBot.ExampleBots/EBot.ExampleBots.csproj" />
+    <Project Path="src/EBot.Runner/EBot.Runner.csproj" />
+    <Project Path="src/EBot.WebHost/EBot.WebHost.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EBot.Tests/EBot.Tests.csproj" />
+  </Folder>
+</Solution>
