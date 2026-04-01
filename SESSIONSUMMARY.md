@@ -60,6 +60,60 @@ being returned as the security status value.
 
 ---
 
+## ESI API — Set Destination Alternative
+
+The [EveOnlineMCP](https://github.com/WaterPistolAI/EveOnlineMCP) project uses only the
+**ESI REST API** (no memory reading, no UI automation). The ESI has an endpoint:
+
+```
+POST https://esi.evetech.net/ui/autopilot/waypoint/
+  ?destination_id=<solar_system_id>
+  &clear_other_waypoints=true
+  &add_to_beginning=false
+Authorization: Bearer <access_token>
+Scope required: esi-ui.write_waypoint.v1
+```
+
+This directly sets the in-game autopilot destination **without any UI interaction** — more
+reliable than the current `Shift+S` search approach. To get a solar system ID from a name:
+```
+POST https://esi.evetech.net/universe/ids/
+Body: ["Jita"]
+→ { "systems": [{ "id": 30000142, "name": "Jita" }] }
+```
+
+**Current blocker**: ESI requires OAuth2 with `esi-ui.write_waypoint.v1` scope — a full
+browser auth flow per character. Not yet implemented. The `AutopilotBot` currently uses
+UI automation (Shift+S search) which is fragile. Adding ESI auth would remove the destination-
+setting failure mode entirely. The coordinate offset fix (below) addresses the click accuracy
+issue but ESI is the long-term solution for destination setting.
+
+## Features Added This Session
+
+### Window client-area offset (windowed mode fix)
+`ActionExecutor.ExecuteAllAsync` now calls `ClientToScreen(windowHandle, (0,0))` each tick
+to get the EVE window's client-area screen origin. This offset is stored in
+`InputSimulator.WindowClientOffsetX/Y` and added to every click coordinate, fixing click
+positions when EVE is running in windowed mode (title bar / border skew).
+
+### Global Pause/Break kill switch
+`GlobalHotKeyService` (new `BackgroundService`) registers `VK_PAUSE` as a system hotkey via
+`RegisterHotKey`. When pressed (even if EVE has focus), `BotOrchestrator.EmergencyStopAsync()`
+is called:
+1. Bot swapped out to `IdleBot` immediately
+2. `InputSimulator.ReleaseAllInput()` sends LEFTUP, RIGHTUP, SHIFT/CTRL/ALT KEYUP
+3. All web UI clients receive `EmergencyStop` SignalR event (red flash)
+
+Web UI also has a **NUKE** button (`POST /api/emergency-stop`) as a backup for when the
+keyboard hotkey isn't accessible.
+
+### Verbose action log panel
+`ActionExecutor.ActionPerformed` event fires before each action with a human-readable
+description: `"Click (432, 267)"`, `"RightClick (650, 300)"`, `"KeyPress: S + Shift"`, etc.
+`BotOrchestrator` subscribes and broadcasts via SignalR `ActionLog` event.
+The web UI shows a dedicated **Actions** panel (left side of bottom centre panel) separate
+from the framework log. The framework log (right side) continues to show operational messages.
+
 ## Not Currently a Focus
 
 - **Tests** (`tests/EBot.Tests`): exist as a placeholder; not up to date and not

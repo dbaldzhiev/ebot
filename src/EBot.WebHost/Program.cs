@@ -74,6 +74,9 @@ builder.Services.AddSingleton(sp =>
         port));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TerminalDashboard>());
 
+// Global Pause/Break hotkey — emergency stop even when EVE has keyboard focus
+builder.Services.AddHostedService<GlobalHotKeyService>();
+
 // ─── App ───────────────────────────────────────────────────────────────────
 
 var app = builder.Build();
@@ -129,6 +132,13 @@ api.MapPost("/start", async ([FromBody] StartRequest req, BotOrchestrator o) =>
 api.MapPost("/stop", async (BotOrchestrator o) =>
 {
     await o.StopAsync();
+    return Results.Ok(new { success = true });
+});
+
+// POST /api/emergency-stop  — hard-stop: bot off + input released (same as Pause/Break key)
+api.MapPost("/emergency-stop", async (BotOrchestrator o) =>
+{
+    await o.EmergencyStopAsync();
     return Results.Ok(new { success = true });
 });
 

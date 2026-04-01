@@ -52,6 +52,18 @@ public sealed class InputSimulator
     /// </summary>
     public static float CoordinateScale { get; set; } = 1.0f;
 
+    /// <summary>
+    /// Screen X coordinate of the EVE window's client-area top-left corner.
+    /// EVE UI coordinates are client-relative (0,0 = top-left of the EVE viewport).
+    /// When EVE is windowed this offset translates them to physical screen coordinates.
+    /// Updated each tick by ActionExecutor via ClientToScreen.
+    /// Defaults to 0 (correct for fullscreen or when no window handle is available).
+    /// </summary>
+    public static int WindowClientOffsetX { get; set; }
+
+    /// <summary>Screen Y coordinate of the EVE window's client-area top-left corner.</summary>
+    public static int WindowClientOffsetY { get; set; }
+
     // ─── Public API ────────────────────────────────────────────────────
 
     public async Task MoveTo(int x, int y, CancellationToken ct = default)
@@ -151,13 +163,18 @@ public sealed class InputSimulator
 
     private (int X, int Y) ApplyJitter(int x, int y)
     {
-        // Apply manual coordinate scale (fallback for DPI mismatch)
+        // 1. Scale EVE client-area coordinates (DPI correction)
         if (CoordinateScale != 1.0f)
         {
             x = (int)MathF.Round(x * CoordinateScale);
             y = (int)MathF.Round(y * CoordinateScale);
         }
 
+        // 2. Translate client-area → screen coordinates (windowed mode border offset)
+        x += WindowClientOffsetX;
+        y += WindowClientOffsetY;
+
+        // 3. Humanization jitter
         if (CoordinateJitter <= 0) return (x, y);
         return (
             x + _rng.Next(-CoordinateJitter, CoordinateJitter + 1),
@@ -186,6 +203,37 @@ public sealed class InputSimulator
         inputs[0].ki.wVk = vkCode;
         inputs[0].ki.dwFlags = isKeyUp ? NativeMethods.KEYEVENTF_KEYUP : 0;
         NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+    }
+
+    /// <summary>
+    /// Immediately releases all held mouse buttons and common modifier keys (Shift, Ctrl, Alt).
+    /// Call after an emergency stop to prevent stuck input.
+    /// </summary>
+    public static void ReleaseAllInput()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        Span<NativeMethods.INPUT> inputs = stackalloc NativeMethods.INPUT[5];
+
+        // Release mouse buttons
+        inputs[0].type = NativeMethods.INPUT_MOUSE;
+        inputs[0].ki.dwFlags = NativeMethods.MOUSEEVENTF_LEFTUP;
+        inputs[1].type = NativeMethods.INPUT_MOUSE;
+        inputs[1].ki.dwFlags = NativeMethods.MOUSEEVENTF_RIGHTUP;
+
+        // Release modifier keys
+        inputs[2].type = NativeMethods.INPUT_KEYBOARD;
+        inputs[2].ki.wVk = 0x10; // VK_SHIFT
+        inputs[2].ki.dwFlags = NativeMethods.KEYEVENTF_KEYUP;
+        inputs[3].type = NativeMethods.INPUT_KEYBOARD;
+        inputs[3].ki.wVk = 0x11; // VK_CONTROL
+        inputs[3].ki.dwFlags = NativeMethods.KEYEVENTF_KEYUP;
+        inputs[4].type = NativeMethods.INPUT_KEYBOARD;
+        inputs[4].ki.wVk = 0x12; // VK_MENU (Alt)
+        inputs[4].ki.dwFlags = NativeMethods.KEYEVENTF_KEYUP;
+
+        NativeMethods.SendInput(5, [inputs[0], inputs[1], inputs[2], inputs[3], inputs[4]],
+            Marshal.SizeOf<NativeMethods.INPUT>());
     }
 }
 
@@ -248,6 +296,22 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
 
+    /// <summary>
+    /// Returns the client-area dimensions (top-left is always 0,0; Right/Bottom give size).
+    /// Use ClientToScreen to convert client (0,0) to screen coordinates.
+    /// </summary>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetClientRect(nint hWnd, out RECT lpRect);
+
+    /// <summary>
+    /// Converts a point from client-area coordinates to screen coordinates.
+    /// Pass (0,0) to get the screen position of the top-left of the client area.
+    /// </summary>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ClientToScreen(nint hWnd, ref POINT lpPoint);
+
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool IsWindow(nint hWnd);
@@ -275,5 +339,11 @@ internal static partial class NativeMethods
         public int Left, Top, Right, Bottom;
         public readonly int Width => Right - Left;
         public readonly int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X, Y;
     }
 }

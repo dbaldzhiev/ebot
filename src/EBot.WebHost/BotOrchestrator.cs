@@ -203,6 +203,29 @@ public sealed class BotOrchestrator : IDisposable
         await _hub.Clients.All.SendAsync("StateChanged", State.ToString());
     }
 
+    /// <summary>
+    /// Emergency hard-stop: swap in IdleBot immediately, release all held input,
+    /// and notify all connected clients. Triggered by the Pause/Break global hotkey
+    /// or the web UI Nuke button.
+    /// </summary>
+    public async Task EmergencyStopAsync()
+    {
+        _logSink.Add("Warn", "EMERGENCY", "Emergency stop triggered (Pause/Break)");
+
+        // Swap bot out to IdleBot regardless of current state
+        _activeBot = null;
+        _isMonitorMode = true;
+        _runner?.SwapBot(new IdleBot(), isMonitorMode: true);
+
+        // Release any stuck mouse buttons / modifier keys immediately
+        InputSimulator.ReleaseAllInput();
+
+        _logSink.Add("Info", "EMERGENCY", "Input released — system returned to idle");
+
+        await _hub.Clients.All.SendAsync("StateChanged", BotRunnerState.Idle.ToString());
+        await _hub.Clients.All.SendAsync("EmergencyStop");
+    }
+
     public void SetSurvivalMode(bool enabled)
     {
         SurvivalEnabled = enabled;
@@ -255,6 +278,13 @@ public sealed class BotOrchestrator : IDisposable
 
         runner.OnError += ex =>
             _logSink.Add("Error", "BotRunner", ex.Message);
+
+        executor.ActionPerformed += desc =>
+            _ = _hub.Clients.All.SendAsync("ActionLog", new
+            {
+                time = DateTimeOffset.UtcNow,
+                description = desc,
+            });
 
         return runner;
     }

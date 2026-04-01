@@ -180,6 +180,14 @@
       overflow: hidden;
     }
 
+    /* Bottom half of the centre: Actions + Log side by side */
+    .bottom-panels {
+      display: grid;
+      grid-template-columns: 38% 62%;
+      overflow: hidden;
+      border-top: 1px solid var(--border);
+    }
+
     table { width: 100%; border-collapse: collapse; font-size: .8rem; }
     th { text-align: left; padding: 5px 8px; color: var(--text-dim); font-size: .7rem; letter-spacing: .8px; border-bottom: 1px solid var(--border); }
     td { padding: 5px 8px; border-bottom: 1px solid #101820; }
@@ -199,6 +207,24 @@
     .log-level.Warn  { color: var(--yellow); }
     .log-level.Error, .log-level.Crit { color: var(--red); }
     .log-level.Dbug, .log-level.Trce { color: var(--text-dim); }
+
+    /* ── Action log ───────────────────────────────────────────────────────── */
+    .action-entry {
+      display: grid; grid-template-columns: 50px 1fr; gap: 4px;
+      padding: 2px 0; font-size: .73rem; line-height: 1.4;
+      border-bottom: 1px solid #0a1218;
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+    }
+    .action-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+    .action-desc { color: var(--accent); }
+
+    /* Emergency stop flash */
+    @keyframes nuke-flash {
+      0%   { outline: 3px solid var(--red); }
+      50%  { outline: 3px solid #ff7043; }
+      100% { outline: none; }
+    }
+    .nuke-active { animation: nuke-flash 1s ease-out 3; }
 
     /* ── Chat ────────────────────────────────────────────────────────────── */
     .chat-panel { display: flex; flex-direction: column; overflow: hidden; }
@@ -296,6 +322,9 @@
     <button class="btn btn-warn"    id="btn-pause"  disabled>&#9646;&#9646; Pause</button>
     <button class="btn btn-muted"   id="btn-resume" disabled>&#9654; Resume</button>
     <button class="btn btn-danger"  id="btn-stop"   disabled>&#9632; Stop</button>
+    <button class="btn btn-danger"  id="btn-nuke"
+      title="Emergency stop — kills bot and releases all input. Also: Pause/Break key"
+      style="letter-spacing:.8px;border-width:2px;">&#9762; NUKE</button>
   </div>
 
   <div class="toggle-group">
@@ -337,7 +366,7 @@
     </div>
   </div>
 
-  <!-- Centre: Overview + Log -->
+  <!-- Centre: Overview + (Actions | Log) -->
   <div class="center-panel">
     <div class="panel" style="border-right:none; border-bottom:1px solid var(--border);">
       <div class="panel-title">
@@ -354,9 +383,17 @@
         </table>
       </div>
     </div>
-    <div class="panel" style="border-right:none;">
-      <div class="panel-title">Log</div>
-      <div class="panel-body" id="log-body" style="padding:4px 12px;"></div>
+    <div class="bottom-panels">
+      <!-- Action log — bot actions only, no framework noise -->
+      <div class="panel" style="border-right:1px solid var(--border);">
+        <div class="panel-title" style="color:var(--accent2);">Actions</div>
+        <div class="panel-body" id="action-body" style="padding:4px 8px;"></div>
+      </div>
+      <!-- Framework log -->
+      <div class="panel" style="border-right:none;">
+        <div class="panel-title">Log</div>
+        <div class="panel-body" id="log-body" style="padding:4px 12px;"></div>
+      </div>
     </div>
   </div>
 
@@ -401,6 +438,13 @@ conn.on('ChatToolCall',   d => addBubble('🔧 ' + d.name + '(…)', 'tool-call'
 conn.on('ChatToolResult', d => addBubble('↳ ' + (d.result || '').slice(0, 240), 'tool-result'));
 conn.on('ChatMessage', d => { removeThinker(); addBubble(d.text, 'ai'); setChatBusy(false); });
 conn.on('ChatError',   d => { removeThinker(); addBubble('Error: ' + d.error, 'error'); setChatBusy(false); });
+
+conn.on('ActionLog', e => addActionEntry(e));
+conn.on('EmergencyStop', () => {
+  document.body.classList.add('nuke-active');
+  setTimeout(() => document.body.classList.remove('nuke-active'), 3000);
+  addLogEntry({ time: new Date().toISOString(), level: 'Warn', message: '⛔ EMERGENCY STOP — bot nuked, input released' });
+});
 
 async function startConnection() {
   try {
@@ -534,6 +578,16 @@ function addLogEntry(e) {
   while (body.children.length > 200) body.removeChild(body.lastChild);
 }
 
+function addActionEntry(e) {
+  const t = new Date(e.time).toLocaleTimeString('en-GB', { hour12: false, second: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const el = document.createElement('div');
+  el.className = 'action-entry';
+  el.innerHTML = `<span class="action-time">${t}</span><span class="action-desc">${esc(e.description)}</span>`;
+  const body = $('action-body');
+  body.prepend(el);
+  while (body.children.length > 150) body.removeChild(body.lastChild);
+}
+
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -555,6 +609,7 @@ $('btn-start').addEventListener('click', () => api('POST', '/api/start', { botNa
 $('btn-stop').addEventListener('click', () => api('POST', '/api/stop'));
 $('btn-pause').addEventListener('click',  () => api('POST', '/api/pause'));
 $('btn-resume').addEventListener('click', () => api('POST', '/api/resume'));
+$('btn-nuke').addEventListener('click', () => api('POST', '/api/emergency-stop'));
 
 $('toggle-survival').addEventListener('change', e =>
   api('POST', '/api/survival', { enabled: e.target.checked }));
