@@ -294,7 +294,10 @@ List<string> LoadQuickTravel()
             return JsonSerializer.Deserialize<List<string>>(File.ReadAllText(quickTravelPath)) ?? [];
     }
     catch { }
-    return [];
+    // Seed defaults on first run
+    var defaults = new List<string> { "Jita 4-4" };
+    SaveQuickTravel(defaults);
+    return defaults;
 }
 
 void SaveQuickTravel(List<string> stations)
@@ -305,6 +308,69 @@ void SaveQuickTravel(List<string> stations)
 
 // GET /api/quick-travel  — list saved stations
 api.MapGet("/quick-travel", () => Results.Ok(LoadQuickTravel()));
+
+// ─── Station aliases ───────────────────────────────────────────────────────
+
+var aliasPath = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
+
+// Default aliases shipped with the bot
+var defaultAliases = new List<StationAlias>
+{
+    new("Jita 4-4", "Jita", "Jita IV - Moon 4 - Caldari Navy Assembly Plant"),
+};
+
+Dictionary<string, StationAlias> LoadAliases()
+{
+    try
+    {
+        if (File.Exists(aliasPath))
+        {
+            var list = JsonSerializer.Deserialize<List<StationAlias>>(
+                File.ReadAllText(aliasPath),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+            return list.ToDictionary(a => a.Alias, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+    catch { }
+    // First run: seed defaults
+    SaveAliases(defaultAliases);
+    return defaultAliases.ToDictionary(a => a.Alias, StringComparer.OrdinalIgnoreCase);
+}
+
+void SaveAliases(IEnumerable<StationAlias> aliases)
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(aliasPath)!);
+    File.WriteAllText(aliasPath, JsonSerializer.Serialize(aliases.ToList(),
+        new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+}
+
+// GET /api/station-aliases  — returns {alias: {alias, system, bookmark}, …}
+api.MapGet("/station-aliases", () =>
+{
+    var d = LoadAliases();
+    // Return as a plain object keyed by alias for easy JS lookup
+    return Results.Ok(d.ToDictionary(kv => kv.Key, kv => new { kv.Value.System, kv.Value.Bookmark }));
+});
+
+// POST /api/station-aliases  { "alias": "Jita 4-4", "system": "Jita", "bookmark": "Jita IV - Moon 4 - Caldari Navy Assembly Plant" }
+api.MapPost("/station-aliases", ([FromBody] StationAliasRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Alias) || string.IsNullOrWhiteSpace(req.System))
+        return Results.BadRequest(new { error = "alias and system are required" });
+    var d = LoadAliases();
+    d[req.Alias] = new StationAlias(req.Alias, req.System, req.Bookmark);
+    SaveAliases(d.Values);
+    return Results.Ok(d.ToDictionary(kv => kv.Key, kv => new { kv.Value.System, kv.Value.Bookmark }));
+});
+
+// DELETE /api/station-aliases/{alias}
+api.MapDelete("/station-aliases/{alias}", (string alias) =>
+{
+    var d = LoadAliases();
+    d.Remove(alias);
+    SaveAliases(d.Values);
+    return Results.Ok(d.ToDictionary(kv => kv.Key, kv => new { kv.Value.System, kv.Value.Bookmark }));
+});
 
 // POST /api/quick-travel  { "station": "Jita" }
 api.MapPost("/quick-travel", ([FromBody] QuickTravelRequest req) =>

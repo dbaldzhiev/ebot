@@ -87,6 +87,17 @@ public sealed record DpiScaleRequest(float Scale);
 
 public sealed record QuickTravelRequest(string Station);
 
+/// <summary>
+/// Maps a user-facing alias (e.g. "Jita 4-4") to:
+///   System   — the solar system name for the autopilot route (e.g. "Jita")
+///   Bookmark — the exact in-game bookmark name to use for the final warp+dock
+///              (e.g. "Jita IV - Moon 4 - Caldari Navy Assembly Plant")
+/// When Bookmark is null the bot docks via the overview instead.
+/// </summary>
+public sealed record StationAlias(string Alias, string System, string? Bookmark);
+
+public sealed record StationAliasRequest(string Alias, string System, string? Bookmark);
+
 // ─── Builder helpers ────────────────────────────────────────────────────────
 
 public static class DtoMapper

@@ -76,10 +76,10 @@ public sealed class ChatService(
             ("count", "integer", "Number of log lines (default 20, max 50)", false)),
 
         MakeTool("travel_to",
-            "Open People & Places in-game, search for the given system, set it as the destination, " +
-            "then start the Autopilot Bot to travel there using warp-to-0 technique. " +
-            "Example: 'travel to Jita' → call travel_to(destination='Jita').",
-            ("destination", "string", "Target solar system name, e.g. 'Jita' or 'Amarr'", true)),
+            "Start traveling to a destination. Supports station aliases (e.g. 'Jita 4-4') " +
+            "which automatically use bookmark-based docking. For systems without an alias, " +
+            "uses autopilot warp-to-0. Example: travel_to(destination='Jita 4-4').",
+            ("destination", "string", "Station alias (e.g. 'Jita 4-4') or solar system name (e.g. 'Jita')", true)),
 
         MakeTool("undock",
             "Click the Undock button in the station services window. Only works when docked."),
@@ -94,11 +94,21 @@ public sealed class ChatService(
             "Get ship HP, capacitor, speed, and active module count."),
 
         MakeTool("add_quick_travel",
-            "Add a solar system to the quick travel button list.",
-            ("station", "string", "Solar system name to save, e.g. 'Jita'", true)),
+            "Add a solar system or station alias to the quick travel button list.",
+            ("station", "string", "Station alias or system name to save, e.g. 'Jita 4-4'", true)),
 
         MakeTool("get_quick_travel",
             "List all configured quick travel destinations."),
+
+        MakeTool("get_station_aliases",
+            "List all configured station aliases (e.g. 'Jita 4-4' → system + bookmark)."),
+
+        MakeTool("add_station_alias",
+            "Add or update a station alias. An alias maps a friendly name to an EVE system name " +
+            "and an optional bookmark name for precise docking.",
+            ("alias",    "string", "Friendly name, e.g. 'Jita 4-4'", true),
+            ("system",   "string", "Solar system name, e.g. 'Jita'",  true),
+            ("bookmark", "string", "Exact in-game bookmark name for warp+dock. Omit to use overview docking.", false)),
     ];
 
     // ─── Public entry point ────────────────────────────────────────────────
@@ -345,7 +355,7 @@ public sealed class ChatService(
                 if (string.IsNullOrWhiteSpace(destination))
                     return "Error: destination is required.";
                 await orchestrator.TravelToAsync(destination);
-                return $"Autopilot Bot started. Navigating to '{destination}'.";
+                return $"Travel started to '{destination}'.";
             }
 
             case "undock":
@@ -407,6 +417,31 @@ public sealed class ChatService(
                 List<string> list = [];
                 try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path)) ?? []; } catch { }
                 return list.Count == 0 ? "No quick travel destinations saved." : Serialize(list);
+            }
+
+            case "get_station_aliases":
+            {
+                var path = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
+                List<StationAlias> list = [];
+                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<StationAlias>>(File.ReadAllText(path), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []; } catch { }
+                return list.Count == 0 ? "No station aliases configured." : Serialize(list.Select(a => new { alias = a.Alias, system = a.System, bookmark = a.Bookmark }));
+            }
+
+            case "add_station_alias":
+            {
+                var alias    = Str(input, "alias");
+                var system   = Str(input, "system");
+                var bookmark = Str(input, "bookmark");
+                if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(system))
+                    return "Error: alias and system are required.";
+                var path = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
+                List<StationAlias> list = [];
+                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<StationAlias>>(File.ReadAllText(path), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []; } catch { }
+                list.RemoveAll(a => a.Alias.Equals(alias, StringComparison.OrdinalIgnoreCase));
+                list.Add(new StationAlias(alias, system, bookmark));
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(list));
+                return $"Alias '{alias}' → {system}{(bookmark != null ? $" (bookmark: {bookmark})" : "")} saved.";
             }
 
             default:

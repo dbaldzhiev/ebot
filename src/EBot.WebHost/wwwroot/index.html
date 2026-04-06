@@ -244,10 +244,27 @@
 <!-- ═══════ MAIN ═══════════════════════════════════════════════════════════ -->
 <main>
 
-  <!-- ── Left: Ship Status + Controls ── -->
+  <!-- ── Left: Controls (static) + Stats (tick-updated) ── -->
   <div class="panel">
     <div class="panel-title">Status &amp; Controls</div>
-    <div class="panel-body" id="left-panel">
+    <!-- Static controls — never wiped by tick updates -->
+    <div style="flex-shrink:0;padding:8px 12px;border-bottom:1px solid var(--border);" id="left-controls">
+      <div class="sec">Quick Actions</div>
+      <div class="action-grid">
+        <button class="btn btn-green" id="btn-undock" onclick="apiClick('/api/undock')" disabled>&#9650; Undock</button>
+        <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')">&#9660; Dock Nearest</button>
+      </div>
+
+      <div class="sec">Quick Travel</div>
+      <div class="travel-grid" id="travel-grid"><span class="empty">Loading…</span></div>
+      <div class="travel-add-row">
+        <input type="text" id="travel-input" placeholder="System or alias…" maxlength="60"
+               onkeydown="if(event.key==='Enter')addTravel()">
+        <button class="btn btn-muted" onclick="addTravel()" style="font-size:.72rem;padding:3px 8px;">+ Add</button>
+      </div>
+    </div>
+    <!-- Dynamic stats — updated every tick -->
+    <div class="panel-body" id="left-stats">
       <div class="empty">Waiting for EVE client…</div>
     </div>
   </div>
@@ -301,6 +318,7 @@ const $ = id => document.getElementById(id);
 
 let botState = 'Idle', chatBusy = false;
 let quickTravel = [];
+let stationAliases = {};  // alias → {system, bookmark}
 
 // ── SignalR ────────────────────────────────────────────────────────────────
 const conn = new signalR.HubConnectionBuilder()
@@ -348,6 +366,7 @@ async function loadInitialState() {
   loadDpiInfo();
   loadAiInfo();
   loadQuickTravel();
+  loadStationAliases();
 }
 
 // ── Game state rendering ───────────────────────────────────────────────────
@@ -420,32 +439,19 @@ function renderGameState(gs) {
     }
   }
 
-  // ── Quick travel buttons ─────────────────────────────────────────────────
-  const travelBtns = quickTravel.map(s =>
-    `<span class="travel-btn" onclick="goTravel('${esc(s)}')">${esc(s)}<span class="del" onclick="event.stopPropagation();removeTravel('${esc(s)}')">✕</span></span>`
-  ).join('');
+  // ── Update action button states (undock only when docked, dock only in space) ──
+  const undockBtn = $('btn-undock');
+  const dockBtn   = $('btn-dock');
+  if (undockBtn) undockBtn.disabled = !gs.isDocked;
+  if (dockBtn)   dockBtn.disabled   = gs.isDocked;
 
-  $('left-panel').innerHTML = `
+  // ── Dynamic stats panel ────────────────────────────────────────────────────
+  $('left-stats').innerHTML = `
     <div class="sec">Navigation</div>
     <div class="stat-row"><span class="stat-key">System</span><span>${sys}${sec}</span></div>
     <div class="stat-row"><span class="stat-key">Status</span>${locTag}</div>
     ${jumps > 0 ? `<div class="stat-row"><span class="stat-key">Route</span><span>${jumps} jump${jumps !== 1 ? 's' : ''}</span></div>` : ''}
     ${menuHtml}
-
-    <div class="sec">Quick Actions</div>
-    <div class="action-grid">
-      <button class="btn btn-green" id="btn-undock" onclick="apiClick('/api/undock')" ${!gs.isDocked ? 'disabled' : ''}>&#9650; Undock</button>
-      <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')"   ${gs.isDocked ? 'disabled' : ''}>&#9660; Dock</button>
-    </div>
-
-    <div class="sec">Quick Travel</div>
-    <div class="travel-grid" id="travel-grid">
-      ${travelBtns || '<span class="empty">No stations saved</span>'}
-    </div>
-    <div class="travel-add-row">
-      <input type="text" id="travel-input" placeholder="System name…" maxlength="50" onkeydown="if(event.key==='Enter')addTravel()">
-      <button class="btn btn-muted" onclick="addTravel()" style="font-size:.72rem;padding:3px 8px;">+ Add</button>
-    </div>
 
     <div class="sec">Ship</div>
     <div class="stat-row"><span class="stat-key">Tick</span><span>${gs.tickCount}</span></div>
@@ -490,6 +496,13 @@ function bar(label, pct, cls) {
 async function loadQuickTravel() {
   try { quickTravel = await fetch('/api/quick-travel').then(r => r.json()); }
   catch(e) { quickTravel = []; }
+  refreshTravelGrid();
+}
+
+async function loadStationAliases() {
+  try { stationAliases = await fetch('/api/station-aliases').then(r => r.json()); }
+  catch(e) { stationAliases = {}; }
+  refreshTravelGrid();
 }
 
 async function addTravel() {
@@ -523,9 +536,13 @@ async function goTravel(name) {
 function refreshTravelGrid() {
   const g = $('travel-grid');
   if (!g) return;
-  const travelBtns = quickTravel.map(s =>
-    `<span class="travel-btn" onclick="goTravel('${esc(s)}')">${esc(s)}<span class="del" onclick="event.stopPropagation();removeTravel('${esc(s)}')">✕</span></span>`
-  ).join('');
+  // Show alias label if one exists
+  const travelBtns = quickTravel.map(s => {
+    const alias = stationAliases[s];
+    const tip = alias ? `${alias.system} → bookmark: ${alias.bookmark}` : '';
+    const badge = alias ? ` <span style="font-size:.6rem;color:var(--accent2);opacity:.8;">📍</span>` : '';
+    return `<span class="travel-btn" onclick="goTravel('${esc(s)}')" title="${esc(tip)}">${esc(s)}${badge}<span class="del" onclick="event.stopPropagation();removeTravel('${esc(s)}')">✕</span></span>`;
+  }).join('');
   g.innerHTML = travelBtns || '<span class="empty">No stations saved</span>';
 }
 

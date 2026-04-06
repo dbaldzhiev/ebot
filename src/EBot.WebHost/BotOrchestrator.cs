@@ -179,7 +179,9 @@ public sealed class BotOrchestrator : IDisposable
     }
 
     /// <summary>
-    /// Swaps in an AutopilotBot with the given destination pre-loaded.
+    /// Swaps in a travel bot for the given destination.
+    /// If the destination matches a station alias with a bookmark, uses BookmarkDockBot.
+    /// Otherwise uses AutopilotBot with the system name (or alias-resolved system).
     /// Monitoring continues uninterrupted.
     /// </summary>
     public async Task TravelToAsync(string destination, string? exePath = null)
@@ -190,14 +192,55 @@ public sealed class BotOrchestrator : IDisposable
         if (_runner == null)
             await EnsureMonitorAsync(exePath);
 
-        var bot = new AutopilotBot { Destination = destination };
+        // Resolve alias → {system, bookmark}
+        StationAlias? alias = null;
+        try
+        {
+            var aliasPath = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
+            if (File.Exists(aliasPath))
+            {
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<StationAlias>>(
+                    File.ReadAllText(aliasPath),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+                alias = list.FirstOrDefault(a =>
+                    a.Alias.Equals(destination, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        catch { /* alias resolution is best-effort */ }
+
+        IBot bot;
+        string logDest;
+        if (alias != null && !string.IsNullOrWhiteSpace(alias.Bookmark))
+        {
+            // Known station with bookmark — warp to bookmark then dock
+            bot = new BookmarkDockBot
+            {
+                Destination  = destination,
+                SystemName   = alias.System,
+                BookmarkName = alias.Bookmark
+            };
+            logDest = $"{destination} (→ {alias.System} via bookmark '{alias.Bookmark}')";
+        }
+        else
+        {
+            // No bookmark — travel to system then dock at nearest station via overview
+            var system = alias?.System ?? destination;
+            bot = new BookmarkDockBot
+            {
+                Destination  = destination,
+                SystemName   = system,
+                BookmarkName = ""     // triggers overview-based docking
+            };
+            logDest = $"{system} (dock via overview)";
+        }
+
         _activeBot = bot;
         _isMonitorMode = false;
 
         IBot effectiveBot = SurvivalEnabled ? new SurvivalWrappedBot(bot) : bot;
         _runner!.SwapBot(effectiveBot, isMonitorMode: false);
 
-        _logSink.Add("Info", "Orchestrator", $"Autopilot started → {destination}");
+        _logSink.Add("Info", "Orchestrator", $"Travel started → {logDest}");
         await _hub.Clients.All.SendAsync("StateChanged", BotRunnerState.Running.ToString());
     }
 

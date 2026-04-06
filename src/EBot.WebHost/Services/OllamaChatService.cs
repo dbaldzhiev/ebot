@@ -111,8 +111,9 @@ public sealed class OllamaChatService(
             ("count", "integer", "Number of log lines (default 20, max 50)", false)),
 
         MakeTool("travel_to",
-            "Start the Autopilot Bot to travel to a solar system using warp-to-0. E.g. 'travel to Jita'.",
-            ("destination", "string", "Target solar system name, e.g. 'Jita'", true)),
+            "Start traveling to a destination. Supports station aliases (e.g. 'Jita 4-4') " +
+            "which automatically use bookmark-based docking. For systems without an alias uses warp-to-0.",
+            ("destination", "string", "Station alias (e.g. 'Jita 4-4') or solar system name", true)),
 
         MakeTool("undock",
             "Click the Undock button. Only works when docked at a station or structure."),
@@ -127,11 +128,20 @@ public sealed class OllamaChatService(
             "Get ship HP, capacitor, speed, and module status."),
 
         MakeTool("add_quick_travel",
-            "Save a solar system to the quick travel list.",
-            ("station", "string", "Solar system name, e.g. 'Jita'", true)),
+            "Save a station alias or solar system to the quick travel list.",
+            ("station", "string", "Station alias or system name, e.g. 'Jita 4-4'", true)),
 
         MakeTool("get_quick_travel",
             "List all saved quick travel destinations."),
+
+        MakeTool("get_station_aliases",
+            "List all configured station aliases (friendly name → system + bookmark)."),
+
+        MakeTool("add_station_alias",
+            "Add or update a station alias mapping a friendly name to a system and optional bookmark.",
+            ("alias",    "string", "Friendly name, e.g. 'Jita 4-4'", true),
+            ("system",   "string", "Solar system name, e.g. 'Jita'",  true),
+            ("bookmark", "string", "Exact in-game bookmark name. Omit to use overview docking.", false)),
     ];
 
     private static OllamaTool MakeTool(string name, string description,
@@ -365,7 +375,7 @@ public sealed class OllamaChatService(
                 if (string.IsNullOrWhiteSpace(destination))
                     return "Error: destination is required.";
                 await orchestrator.TravelToAsync(destination);
-                return $"Autopilot Bot started. Navigating to '{destination}'.";
+                return $"Travel started to '{destination}'.";
             }
 
             case "undock":
@@ -425,6 +435,31 @@ public sealed class OllamaChatService(
                 List<string> list = [];
                 try { if (File.Exists(path)) list = JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path)) ?? []; } catch { }
                 return list.Count == 0 ? "No quick travel destinations saved." : Serialize(list);
+            }
+
+            case "get_station_aliases":
+            {
+                var path = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
+                List<StationAlias> list = [];
+                try { if (File.Exists(path)) list = JsonSerializer.Deserialize<List<StationAlias>>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []; } catch { }
+                return list.Count == 0 ? "No station aliases configured." : Serialize(list.Select(a => new { alias = a.Alias, system = a.System, bookmark = a.Bookmark }));
+            }
+
+            case "add_station_alias":
+            {
+                var alias    = Str(input, "alias");
+                var system   = Str(input, "system");
+                var bookmark = Str(input, "bookmark");
+                if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(system))
+                    return "Error: alias and system are required.";
+                var path = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
+                List<StationAlias> list = [];
+                try { if (File.Exists(path)) list = JsonSerializer.Deserialize<List<StationAlias>>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []; } catch { }
+                list.RemoveAll(a => a.Alias.Equals(alias, StringComparison.OrdinalIgnoreCase));
+                list.Add(new StationAlias(alias, system, bookmark));
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, JsonSerializer.Serialize(list));
+                return $"Alias '{alias}' → {system}{(bookmark != null ? $" (bookmark: {bookmark})" : "")} saved.";
             }
 
             default:
