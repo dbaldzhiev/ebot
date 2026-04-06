@@ -122,6 +122,8 @@ public sealed class UITreeNode
 
     /// <summary>
     /// Gets a dictionary entry as a bool.
+    /// Handles JSON booleans, numbers (0=false), string "True"/"1", and
+    /// the Sanderling {"bool": true} nested-object format for Python booleans.
     /// </summary>
     public bool? GetDictBool(string key)
     {
@@ -130,8 +132,20 @@ public sealed class UITreeNode
 
         return element.ValueKind switch
         {
-            JsonValueKind.True => true,
+            JsonValueKind.True  => true,
             JsonValueKind.False => false,
+            JsonValueKind.Number => element.GetDouble() != 0,
+            JsonValueKind.String => element.GetString() switch
+            {
+                "True" or "true" or "1" => true,
+                "False" or "false" or "0" => false,
+                _ => null,
+            },
+            // {"bool": true} — Python bool encoded as object by Sanderling
+            JsonValueKind.Object when element.TryGetProperty("bool", out var b) =>
+                b.ValueKind == JsonValueKind.True ? true
+                : b.ValueKind == JsonValueKind.False ? false
+                : null,
             _ => null,
         };
     }

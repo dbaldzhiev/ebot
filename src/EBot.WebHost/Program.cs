@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EBot.Core.Execution;
+using EBot.Core.GameState;
 using EBot.Core.MemoryReading;
 using EBot.WebHost;
 using EBot.WebHost.Hubs;
@@ -142,6 +143,17 @@ api.MapPost("/emergency-stop", async (BotOrchestrator o) =>
     return Results.Ok(new { success = true });
 });
 
+// POST /api/kill  — gracefully shut down the EBot server process
+api.MapPost("/kill", (IHostApplicationLifetime lifetime) =>
+{
+    _ = Task.Run(async () =>
+    {
+        await Task.Delay(300); // allow response to be sent first
+        lifetime.StopApplication();
+    });
+    return Results.Ok(new { success = true, message = "Server shutting down…" });
+});
+
 // POST /api/pause
 api.MapPost("/pause", async (BotOrchestrator o) =>
 {
@@ -231,6 +243,127 @@ api.MapPost("/dpi/scale", ([FromBody] DpiScaleRequest req) =>
         return Results.BadRequest(new { error = "scale must be between 0.1 and 4.0" });
     InputSimulator.CoordinateScale = req.Scale;
     return Results.Ok(new { coordinate_scale = InputSimulator.CoordinateScale });
+});
+
+// GET /api/debug/input  — verifies SendInput works; reports screen/window/cursor state
+api.MapGet("/debug/input", (BotOrchestrator orch) =>
+{
+    var client = EveProcessFinder.FindFirstClient();
+    var handle = client?.MainWindowHandle ?? 0;
+    var report = InputDiagnostics.Run(handle);
+    return Results.Ok(new { report = report.Summary(), passed = report.MoveOk });
+});
+
+// POST /api/undock  — click the undock button
+api.MapPost("/undock", async (BotOrchestrator o) =>
+{
+    try
+    {
+        await o.UndockAsync();
+        return Results.Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { success = false, message = ex.Message });
+    }
+});
+
+// POST /api/dock  — right-click nearest station → Dock
+api.MapPost("/dock", async (BotOrchestrator o) =>
+{
+    try
+    {
+        await o.DockAsync();
+        return Results.Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { success = false, message = ex.Message });
+    }
+});
+
+// ─── Quick Travel config ───────────────────────────────────────────────────
+
+var quickTravelPath = Path.Combine(AppContext.BaseDirectory, "data", "quick-travel.json");
+
+List<string> LoadQuickTravel()
+{
+    try
+    {
+        if (File.Exists(quickTravelPath))
+            return JsonSerializer.Deserialize<List<string>>(File.ReadAllText(quickTravelPath)) ?? [];
+    }
+    catch { }
+    return [];
+}
+
+void SaveQuickTravel(List<string> stations)
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(quickTravelPath)!);
+    File.WriteAllText(quickTravelPath, JsonSerializer.Serialize(stations, new JsonSerializerOptions { WriteIndented = true }));
+}
+
+// GET /api/quick-travel  — list saved stations
+api.MapGet("/quick-travel", () => Results.Ok(LoadQuickTravel()));
+
+// POST /api/quick-travel  { "station": "Jita" }
+api.MapPost("/quick-travel", ([FromBody] QuickTravelRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Station))
+        return Results.BadRequest(new { error = "station name required" });
+    var list = LoadQuickTravel();
+    var name = req.Station.Trim();
+    if (!list.Contains(name, StringComparer.OrdinalIgnoreCase))
+    {
+        list.Add(name);
+        SaveQuickTravel(list);
+    }
+    return Results.Ok(list);
+});
+
+// DELETE /api/quick-travel/{station}
+api.MapDelete("/quick-travel/{station}", (string station) =>
+{
+    var list = LoadQuickTravel();
+    var removed = list.RemoveAll(s => s.Equals(station, StringComparison.OrdinalIgnoreCase));
+    if (removed > 0) SaveQuickTravel(list);
+    return Results.Ok(list);
+});
+
+// POST /api/quick-travel/{station}/go  — start autopilot to that station
+api.MapPost("/quick-travel/{station}/go", async (string station, BotOrchestrator o) =>
+{
+    try
+    {
+        await o.TravelToAsync(station);
+        return Results.Ok(new { success = true, destination = station });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { success = false, message = ex.Message });
+    }
+});
+
+// GET /api/debug/modules  — dump raw dict keys for each module slot (diagnostic)
+api.MapGet("/debug/modules", (BotOrchestrator orch) =>
+{
+    var ui = orch.LastContext?.GameState.ParsedUI;
+    if (ui?.ShipUI == null) return Results.Ok("Ship UI not visible.");
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine($"Total module slots: {ui.ShipUI.ModuleButtons.Count}");
+    foreach (var (m, i) in ui.ShipUI.ModuleButtons.Select((m, i) => (m, i)))
+    {
+        var slotType = m.SlotNode.Node.PythonObjectTypeName;
+        var btnType  = m.UINode.Node.PythonObjectTypeName;
+        var dictKeys = string.Join(", ", (IEnumerable<string>?)m.UINode.Node.DictEntriesOfInterest?.Keys ?? []);
+        var slotKeys = string.Join(", ", (IEnumerable<string>?)m.SlotNode.Node.DictEntriesOfInterest?.Keys ?? []);
+        sb.AppendLine($"[{i}] slot={slotType} btn={btnType}");
+        sb.AppendLine($"     isActive={m.IsActive} isBusy={m.IsBusy} isOverloaded={m.IsOverloaded} isOffline={m.IsOffline}");
+        sb.AppendLine($"     btn-keys: {dictKeys}");
+        sb.AppendLine($"     slot-keys: {slotKeys}");
+    }
+    return Results.Ok(sb.ToString());
 });
 
 // GET /api/debug/reader  — diagnostic using the already-running runner's last JSON

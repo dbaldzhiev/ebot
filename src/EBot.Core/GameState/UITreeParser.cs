@@ -232,26 +232,48 @@ public sealed partial class UITreeParser
         UITreeNodeWithDisplayRegion moduleButton,
         UITreeNodeWithDisplayRegion slotNode)
     {
-        // ramp_active: bool dict entry on the module button node
-        var rampRaw = moduleButton.Node.GetDictBool("ramp_active");
-        bool? isActive = rampRaw
-            ?? (moduleButton.Node.GetDictString("ramp_active") is "1" or "True" ? true
-              : moduleButton.Node.GetDictString("ramp_active") is "0" or "False" ? false
-              : null);
+        // ramp_active: primary bool indicator that the module is cycling
+        var isActiveFromAttr = moduleButton.Node.GetDictBool("ramp_active");
 
-        // Sprite-based state: look for named Sprite children on the slot node
-        bool HasSlotSprite(string spriteName) =>
-            slotNode.FindFirst(n =>
-                n.Node.PythonObjectTypeName.Contains("Sprite", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(n.Node.GetDictString("_name"), spriteName, StringComparison.OrdinalIgnoreCase)) != null;
+        // Sprite-based fallback for all states (EVE renders state via named sprites on the slot)
+        bool HasSprite(UITreeNodeWithDisplayRegion container, params string[] names) =>
+            names.Any(name =>
+                container.FindFirst(n =>
+                    (n.Node.PythonObjectTypeName.Contains("Sprite", StringComparison.OrdinalIgnoreCase)
+                     || n.Node.PythonObjectTypeName.Contains("Icon", StringComparison.OrdinalIgnoreCase))
+                    && string.Equals(n.Node.GetDictString("_name"), name, StringComparison.OrdinalIgnoreCase)) != null);
+
+        // "active" state: ramp_active flag OR a visible ramp/active sprite with non-zero opacity
+        bool spriteActive = HasSprite(slotNode, "ramp", "activeRamp", "active", "activation")
+                         || HasSprite(moduleButton, "ramp", "activeRamp");
+
+        bool? isActive = isActiveFromAttr ?? (spriteActive ? true : null);
+
+        // "busy" = transitioning between on/off (activation/deactivation in progress)
+        bool isBusy = HasSprite(slotNode, "busy", "deactivation")
+                   || HasSprite(moduleButton, "busy");
+
+        // "overloaded" = overheating
+        bool isOverloaded = HasSprite(slotNode, "overheat", "overload", "overloadRamp", "overheatRamp")
+                         || HasSprite(moduleButton, "overheat", "overload");
+
+        // "offline" = module is offline (greyed out, usually a separate sprite or color)
+        bool isOffline = HasSprite(slotNode, "offline", "offlineModule")
+                      || HasSprite(moduleButton, "offline")
+                      || (moduleButton.Node.GetDictBool("isOffline") == true);
+
+        // If overloaded also implies active cycling
+        if (isOverloaded && isActive == null) isActive = true;
 
         return new ShipUIModuleButton
         {
             UINode = slotNode,
             SlotNode = slotNode,
             IsActive = isActive,
-            IsHiliteVisible = HasSlotSprite("hilite"),
-            IsBusy = HasSlotSprite("busy"),
+            IsHiliteVisible = HasSprite(slotNode, "hilite", "hiliteSprite"),
+            IsBusy = isBusy,
+            IsOverloaded = isOverloaded,
+            IsOffline = isOffline,
             RampRotationMilli = moduleButton.Node.GetDictInt("ramp_rotationMilli"),
         };
     }
@@ -373,11 +395,31 @@ public sealed partial class UITreeParser
             .Select(e => BuildOverviewEntry(e, headers))
             .ToList();
 
+        // Extract overview filter tabs (TabGroup → individual Tab/Button children)
+        var tabs = new List<OverviewTab>();
+        var tabGroup = overviewNode.FindFirst(n =>
+            n.Node.PythonObjectTypeName.Contains("TabGroup", StringComparison.OrdinalIgnoreCase) ||
+            n.Node.PythonObjectTypeName.Contains("OverviewTab", StringComparison.OrdinalIgnoreCase));
+        if (tabGroup != null)
+        {
+            foreach (var tab in tabGroup.Children)
+            {
+                var name = tab.GetAllContainedDisplayTexts().FirstOrDefault();
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                // "selected" or highlighted tab is the active one
+                bool isActive = tab.Node.GetDictBool("_selected") == true
+                    || tab.Node.GetDictBool("selected") == true
+                    || (tab.Node.GetDictString("_state") ?? "").Contains("selected", StringComparison.OrdinalIgnoreCase);
+                tabs.Add(new OverviewTab { UINode = tab, Name = name, IsActive = isActive });
+            }
+        }
+
         return new OverviewWindow
         {
             UINode = overviewNode,
             ColumnHeaders = headers.Select(h => h.Name).ToList(),
             Entries = entries,
+            Tabs = tabs,
         };
     }
 
@@ -615,10 +657,36 @@ public sealed partial class UITreeParser
         return new StationWindow
         {
             UINode = node,
-            UndockButton = node.FindFirst(b =>
-                b.GetAllContainedDisplayTexts().Any(t =>
-                    t.Contains("undock", StringComparison.OrdinalIgnoreCase))),
+            UndockButton = FindUndockButton(node),
         };
+    }
+
+    /// <summary>
+    /// Finds the undock button in the station lobby. Prefers a Button-type container
+    /// over a text-label child so that clicks land on the full clickable region.
+    /// </summary>
+    private static UITreeNodeWithDisplayRegion? FindUndockButton(UITreeNodeWithDisplayRegion lobby)
+    {
+        // 1. Prefer nodes whose type or _name explicitly says "undock" AND have non-zero size.
+        var byName = lobby.FindFirst(n =>
+            (n.Node.PythonObjectTypeName.Contains("Undock", StringComparison.OrdinalIgnoreCase)
+             || (n.Node.GetDictString("_name") ?? "").Contains("undock", StringComparison.OrdinalIgnoreCase))
+            && n.Region.Width > 0 && n.Region.Height > 0);
+        if (byName != null) return byName;
+
+        // 2. Find a Button-type parent that contains "undock" text.
+        var byButton = lobby.FindFirst(n =>
+            n.Node.PythonObjectTypeName.Contains("Button", StringComparison.OrdinalIgnoreCase)
+            && n.Region.Width > 10 && n.Region.Height > 8
+            && n.GetAllContainedDisplayTexts().Any(t =>
+                t.Contains("undock", StringComparison.OrdinalIgnoreCase)));
+        if (byButton != null) return byButton;
+
+        // 3. Last resort: any node with "undock" text that has a usable size.
+        return lobby.FindFirst(n =>
+            n.Region.Width > 10 && n.Region.Height > 8
+            && n.GetAllContainedDisplayTexts().Any(t =>
+                t.Contains("undock", StringComparison.OrdinalIgnoreCase)));
     }
 
     // ────────────────────────────────────────────────────────────────────────

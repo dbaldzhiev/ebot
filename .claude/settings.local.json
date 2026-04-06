@@ -23,7 +23,8 @@
       "Bash(grep -r \"RouteElement\\\\|routeElement\\\\|RouteMarker\\\\|routeMarker\\\\|autopilot\\\\|AutopilotDestination\" c:/Users/Dimitar/sanderling-ref --include=*.elm -l)",
       "Bash(find c:/Users/Dimitar/sanderling-ref -name *.elm)",
       "Bash(find c:/Users/Dimitar/ebot/sanderling-ref -name *.elm)",
-      "Bash(ls -lh c:UsersDimitarebotsrcEBot.WebHost/*.json)"
+      "Bash(ls -lh c:UsersDimitarebotsrcEBot.WebHost/*.json)",
+      "Bash(ls c:/Users/dbaldzhiev/ebot/*.bat)"
     ]
   }
 }

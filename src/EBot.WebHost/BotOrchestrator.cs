@@ -47,6 +47,10 @@ public sealed class BotOrchestrator : IDisposable
 
     private BotContext? _lastContext;
 
+    // Input and executor for manual API-driven actions (undock, dock, etc.)
+    private InputSimulator? _lastInput;
+    private ActionExecutor? _lastExecutor;
+
     // ─── Available bots registry ────────────────────────────────────────────
 
     public static readonly IReadOnlyList<IBot> AvailableBots =
@@ -111,6 +115,34 @@ public sealed class BotOrchestrator : IDisposable
 
         _runner.Start(isMonitorMode: true);
         _logSink.Add("Info", "Orchestrator", "Monitor started — reading game state continuously");
+
+        // Quick non-invasive input environment summary (no cursor movement)
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var eveClient = EveProcessFinder.FindFirstClient();
+                var diag = InputDiagnostics.Run(eveClient?.MainWindowHandle ?? 0);
+                _logSink.Add("Info", "Input",
+                    $"Screen {diag.ScreenWidth}×{diag.ScreenHeight}  DPI={diag.SystemDpi}  Scale={diag.CoordScale:F2}");
+                if (diag.EveValid)
+                {
+                    bool fullscreen = diag.EveClientOrigin.X == 0 && diag.EveClientOrigin.Y == 0
+                                      && diag.EveClientSize.W == diag.ScreenWidth
+                                      && diag.EveClientSize.H == diag.ScreenHeight;
+                    _logSink.Add("Info", "Input",
+                        $"EVE window: {(fullscreen ? "fullscreen" : "windowed")}  " +
+                        $"origin=({diag.EveClientOrigin.X},{diag.EveClientOrigin.Y})  " +
+                        $"size={diag.EveClientSize.W}×{diag.EveClientSize.H}");
+                }
+                else
+                {
+                    _logSink.Add("Warn", "Input", "EVE window not found — start EVE before running a bot");
+                }
+            }
+            catch { /* non-critical */ }
+        });
+
         await Task.CompletedTask;
     }
 
@@ -233,6 +265,157 @@ public sealed class BotOrchestrator : IDisposable
         _ = _hub.Clients.All.SendAsync("SurvivalChanged", enabled);
     }
 
+    // ─── Manual actions (undock, dock) ──────────────────────────────────────
+
+    /// <summary>Clicks the Undock button in the station window.</summary>
+    public async Task UndockAsync()
+    {
+        var ui = _lastContext?.GameState.ParsedUI;
+        var btn = ui?.StationWindow?.UndockButton;
+        if (btn == null)
+            throw new InvalidOperationException("Not docked or undock button not found in UI.");
+
+        await EnsureExecutorAsync();
+        var eveClient = EveProcessFinder.FindFirstClient();
+        var handle = eveClient?.MainWindowHandle ?? 0;
+
+        var cx = btn.Region.X + btn.Region.Width / 2;
+        var cy = btn.Region.Y + btn.Region.Height / 2;
+
+        var queue = new ActionQueue();
+        queue.Enqueue(new ClickAction(cx, cy));
+        await _lastExecutor!.ExecuteAllAsync(queue, handle);
+        _logSink.Add("Info", "Action", $"Undock clicked ({cx},{cy})");
+    }
+
+    /// <summary>
+    /// Docks to the nearest dockable object in the overview.
+    /// Searches all overview tabs if the current one has no recognisable station/structure.
+    /// </summary>
+    public async Task DockAsync()
+    {
+        await EnsureExecutorAsync();
+        var eveClient = EveProcessFinder.FindFirstClient();
+        var handle = eveClient?.MainWindowHandle ?? 0;
+
+        var target = FindDockableEntry();
+
+        // Not in active tab — try other tabs
+        if (target == null)
+        {
+            var tabs = _lastContext?.GameState.ParsedUI
+                .OverviewWindows.FirstOrDefault()?.Tabs ?? [];
+            foreach (var tab in tabs.Where(t => !t.IsActive))
+            {
+                _logSink.Add("Info", "Action", $"No station in current tab — switching to '{tab.Name}'");
+                var (tx, ty) = tab.UINode.Center;
+                var tq = new ActionQueue();
+                tq.Enqueue(new ClickAction(tx, ty));
+                await _lastExecutor!.ExecuteAllAsync(tq, handle);
+                await Task.Delay(700); // wait for tick refresh
+                target = FindDockableEntry();
+                if (target != null) break;
+            }
+        }
+
+        if (target == null)
+            throw new InvalidOperationException(
+                "No dockable station/structure found in any overview tab. " +
+                "Add a tab with stations visible or warp closer.");
+
+        var (cx, cy) = target.UINode.Center;
+        _logSink.Add("Info", "Action", $"Dock: RightClick '{target.Name}' ({cx},{cy})");
+
+        // Right-click → context menu
+        var q = new ActionQueue();
+        q.Enqueue(new RightClickAction(cx, cy));
+        await _lastExecutor!.ExecuteAllAsync(q, handle);
+
+        // Poll for context menu (up to ~1 s)
+        ContextMenuEntry? dockEntry = null;
+        for (int i = 0; i < 5; i++)
+        {
+            await Task.Delay(220);
+            dockEntry = _lastContext?.GameState.ParsedUI.ContextMenus
+                .SelectMany(m => m.Entries)
+                .FirstOrDefault(e => e.Text?.Contains("Dock", StringComparison.OrdinalIgnoreCase) == true);
+            if (dockEntry != null) break;
+        }
+
+        if (dockEntry != null)
+        {
+            var (ex, ey) = dockEntry.UINode.Center;
+            var q2 = new ActionQueue();
+            q2.Enqueue(new ClickAction(ex, ey));
+            await _lastExecutor!.ExecuteAllAsync(q2, handle);
+            _logSink.Add("Info", "Action", $"Dock menu entry clicked ({ex},{ey})");
+        }
+        else
+        {
+            _logSink.Add("Warn", "Action",
+                "Dock context menu did not appear — right-click may have missed. Try again.");
+        }
+    }
+
+    // Known player-structure and NPC-station type keywords
+    private static readonly string[] _stationKeywords =
+    [
+        "Station", "Outpost", "Astrahus", "Fortizar", "Keepstar",
+        "Raitaru", "Azbel", "Sotiyo", "Tatara", "Athanor", "Metenox",
+        "Structure", "Engineering", "Citadel", "Refinery"
+    ];
+
+    private static readonly string[] _nonDockableKeywords =
+    [
+        "Ship", "Pod", "Capsule", "Drone", "Fighter",
+        "Gate", "Beacon", "Asteroid", "Cloud", "Wreck", "Rat",
+    ];
+
+    /// <summary>Finds the nearest dockable overview entry using broad text-based heuristics.</summary>
+    private OverviewEntry? FindDockableEntry()
+    {
+        var overview = _lastContext?.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
+        if (overview == null) return null;
+
+        static bool LooksLikeStation(OverviewEntry e)
+        {
+            var allTexts = new[] { e.ObjectType ?? "", e.Name ?? "" }
+                .Concat(e.Texts)
+                .Concat(e.CellsTexts.Values);
+            return allTexts.Any(t => _stationKeywords.Any(k =>
+                t.Contains(k, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        static bool LooksLikeNonDockable(OverviewEntry e)
+        {
+            var allTexts = new[] { e.ObjectType ?? "" }
+                .Concat(e.CellsTexts.Values);
+            return allTexts.Any(t => _nonDockableKeywords.Any(k =>
+                t.Contains(k, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        // First: explicit station/structure match, nearest
+        var byType = overview.Entries
+            .Where(e => LooksLikeStation(e) && !LooksLikeNonDockable(e))
+            .OrderBy(e => e.DistanceInMeters ?? double.MaxValue)
+            .FirstOrDefault();
+        if (byType != null) return byType;
+
+        // Second: any entry that isn't obviously a ship, gate, or beacon
+        return overview.Entries
+            .Where(e => e.DistanceInMeters.HasValue && !LooksLikeNonDockable(e))
+            .OrderBy(e => e.DistanceInMeters!.Value)
+            .FirstOrDefault();
+    }
+
+    private async Task EnsureExecutorAsync()
+    {
+        if (_lastInput == null || _lastExecutor == null)
+            await EnsureMonitorAsync();
+        if (_lastInput == null)
+            throw new InvalidOperationException("InputSimulator not initialized.");
+    }
+
     // ─── Internal ───────────────────────────────────────────────────────────
 
     private BotRunner CreateRunner(IBot bot, string? exePath, bool isMonitorMode)
@@ -264,8 +447,15 @@ public sealed class BotOrchestrator : IDisposable
         }
 
         var parser   = new UITreeParser(_loggerFactory.CreateLogger<UITreeParser>());
+
+        // Re-read screen metrics on each runner creation (resolution may change).
+        InputSimulator.InvalidateScreenMetrics();
+
         var input    = new InputSimulator(_loggerFactory.CreateLogger<InputSimulator>());
         var executor = new ActionExecutor(input, _loggerFactory.CreateLogger<ActionExecutor>());
+
+        _lastInput    = input;
+        _lastExecutor = executor;
 
         var runner = new BotRunner(bot, settings, reader, parser, input, executor,
             _loggerFactory.CreateLogger<BotRunner>());

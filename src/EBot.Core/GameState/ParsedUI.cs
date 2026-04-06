@@ -95,12 +95,16 @@ public sealed class ShipUIModuleButton
     public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
     /// <summary>Slot node (parent of UINode); used for sprite lookups.</summary>
     public UITreeNodeWithDisplayRegion SlotNode { get; init; } = null!;
-    /// <summary>True when the module is actively cycling (ramp_active == true).</summary>
+    /// <summary>True when the module is actively cycling (ramp_active == true or ramp sprite visible).</summary>
     public bool? IsActive { get; init; }
     /// <summary>True when the selection highlight sprite is visible on the slot.</summary>
     public bool IsHiliteVisible { get; init; }
     /// <summary>True when the module is in a busy/transitioning state.</summary>
     public bool IsBusy { get; init; }
+    /// <summary>True when the module is overloaded (overheating).</summary>
+    public bool IsOverloaded { get; init; }
+    /// <summary>True when the module is offline.</summary>
+    public bool IsOffline { get; init; }
     /// <summary>Ramp cycle progress 0–1000 ms equivalent (derived from ramp sprite rotation).</summary>
     public int? RampRotationMilli { get; init; }
 }
@@ -131,6 +135,15 @@ public sealed class OverviewWindow
     /// <summary>Column header labels extracted from the header row, in left-to-right order.</summary>
     public IReadOnlyList<string> ColumnHeaders { get; init; } = [];
     public IReadOnlyList<OverviewEntry> Entries { get; init; } = [];
+    /// <summary>Overview filter tabs (tab group at the top of the overview window).</summary>
+    public IReadOnlyList<OverviewTab> Tabs { get; init; } = [];
+}
+
+public sealed class OverviewTab
+{
+    public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
+    public string? Name { get; init; }
+    public bool IsActive { get; init; }
 }
 
 public sealed class OverviewEntry

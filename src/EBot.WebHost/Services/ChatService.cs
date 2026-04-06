@@ -80,6 +80,25 @@ public sealed class ChatService(
             "then start the Autopilot Bot to travel there using warp-to-0 technique. " +
             "Example: 'travel to Jita' → call travel_to(destination='Jita').",
             ("destination", "string", "Target solar system name, e.g. 'Jita' or 'Amarr'", true)),
+
+        MakeTool("undock",
+            "Click the Undock button in the station services window. Only works when docked."),
+
+        MakeTool("dock",
+            "Dock to the nearest station or structure visible in the overview."),
+
+        MakeTool("get_cargo",
+            "Get the current ship cargo: used/max volume and list of items."),
+
+        MakeTool("get_ship_status",
+            "Get ship HP, capacitor, speed, and active module count."),
+
+        MakeTool("add_quick_travel",
+            "Add a solar system to the quick travel button list.",
+            ("station", "string", "Solar system name to save, e.g. 'Jita'", true)),
+
+        MakeTool("get_quick_travel",
+            "List all configured quick travel destinations."),
     ];
 
     // ─── Public entry point ────────────────────────────────────────────────
@@ -326,7 +345,68 @@ public sealed class ChatService(
                 if (string.IsNullOrWhiteSpace(destination))
                     return "Error: destination is required.";
                 await orchestrator.TravelToAsync(destination);
-                return $"Autopilot Bot started. Searching for '{destination}' in People & Places and setting as destination. Navigation (warp-to-0) will begin once the route is set.";
+                return $"Autopilot Bot started. Navigating to '{destination}'.";
+            }
+
+            case "undock":
+            {
+                try { await orchestrator.UndockAsync(); return "Undock command sent."; }
+                catch (Exception ex) { return $"Undock failed: {ex.Message}"; }
+            }
+
+            case "dock":
+            {
+                try { await orchestrator.DockAsync(); return "Dock command sent."; }
+                catch (Exception ex) { return $"Dock failed: {ex.Message}"; }
+            }
+
+            case "get_cargo":
+            {
+                var ctx = orchestrator.LastContext;
+                if (ctx == null) return "No game state available.";
+                var inv = ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
+                if (inv == null) return "No inventory window visible (open cargo hold in EVE).";
+                var used = inv.CapacityGauge?.Used;
+                var max  = inv.CapacityGauge?.Maximum;
+                var items = inv.Items.Select(i => new { name = i.Name, qty = i.Quantity });
+                return Serialize(new { used_m3 = used, max_m3 = max, fill_pct = inv.CapacityGauge?.FillPercent, items });
+            }
+
+            case "get_ship_status":
+            {
+                var ctx = orchestrator.LastContext;
+                if (ctx == null) return "No game state available.";
+                var ship = ctx.GameState.ParsedUI.ShipUI;
+                if (ship == null) return "Ship UI not visible (are you in space?).";
+                return Serialize(new
+                {
+                    capacitor_pct = ship.Capacitor?.LevelPercent,
+                    shield_pct = ship.HitpointsPercent?.Shield,
+                    armor_pct = ship.HitpointsPercent?.Armor,
+                    structure_pct = ship.HitpointsPercent?.Structure,
+                    speed = ship.SpeedText,
+                    modules_total = ship.ModuleButtons.Count,
+                    modules_active = ship.ModuleButtons.Count(m => m.IsActive == true),
+                });
+            }
+
+            case "add_quick_travel":
+            {
+                var station = Str(input, "station");
+                if (string.IsNullOrWhiteSpace(station)) return "station name required.";
+                var path = Path.Combine(AppContext.BaseDirectory, "data", "quick-travel.json");
+                List<string> list = [];
+                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path)) ?? []; } catch { }
+                if (!list.Contains(station, StringComparer.OrdinalIgnoreCase)) { list.Add(station); Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(list)); }
+                return $"'{station}' added to quick travel list.";
+            }
+
+            case "get_quick_travel":
+            {
+                var path = Path.Combine(AppContext.BaseDirectory, "data", "quick-travel.json");
+                List<string> list = [];
+                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path)) ?? []; } catch { }
+                return list.Count == 0 ? "No quick travel destinations saved." : Serialize(list);
             }
 
             default:

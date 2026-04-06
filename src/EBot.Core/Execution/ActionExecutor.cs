@@ -31,6 +31,8 @@ public sealed class ActionExecutor
     /// </summary>
     public async Task ExecuteAllAsync(ActionQueue queue, nint windowHandle, CancellationToken ct = default)
     {
+        // Keep the window in the foreground so keyboard SendInput reaches it.
+        // Uses AttachThreadInput for reliability in VM guest environments.
         EnsureWindowFocus(windowHandle);
         UpdateWindowClientOffset(windowHandle);
 
@@ -110,27 +112,46 @@ public sealed class ActionExecutor
         }
     }
 
+    /// <summary>
+    /// Brings the EVE window to the foreground using the AttachThreadInput trick,
+    /// which works even when the calling process does not currently own the foreground.
+    /// This is particularly important in VM guest environments where SetForegroundWindow
+    /// alone is often silently ignored.
+    /// </summary>
     private void EnsureWindowFocus(nint windowHandle)
     {
         if (windowHandle == 0) return;
 
-        if (NativeMethods.IsWindow(windowHandle))
-        {
-            NativeMethods.SetForegroundWindow(windowHandle);
-        }
-        else
+        if (!NativeMethods.IsWindow(windowHandle))
         {
             _logger.LogWarning("EVE window handle {Handle} is no longer valid", windowHandle);
+            return;
+        }
+
+        var targetThread  = NativeMethods.GetWindowThreadProcessId(windowHandle, out _);
+        var currentThread = NativeMethods.GetCurrentThreadId();
+
+        bool attached = targetThread != currentThread &&
+                        NativeMethods.AttachThreadInput(currentThread, targetThread, true);
+        try
+        {
+            NativeMethods.BringWindowToTop(windowHandle);
+            NativeMethods.SetForegroundWindow(windowHandle);
+        }
+        finally
+        {
+            if (attached)
+                NativeMethods.AttachThreadInput(currentThread, targetThread, false);
         }
     }
 
     /// <summary>
     /// Computes the screen coordinates of the EVE window's client-area top-left corner
-    /// and stores them in <see cref="InputSimulator.WindowClientOffsetX/Y"/>.
+    /// and stores them in InputSimulator.WindowClientOffsetX/Y.
     /// This corrects clicks when EVE is running in windowed mode (title bar + border offset).
     /// In fullscreen mode ClientToScreen(0,0) returns (0,0), which is a no-op.
     /// </summary>
-    private static void UpdateWindowClientOffset(nint windowHandle)
+    private void UpdateWindowClientOffset(nint windowHandle)
     {
         if (windowHandle == 0 || !NativeMethods.IsWindow(windowHandle))
         {
@@ -142,8 +163,17 @@ public sealed class ActionExecutor
         var pt = new NativeMethods.POINT { X = 0, Y = 0 };
         if (NativeMethods.ClientToScreen(windowHandle, ref pt))
         {
+            int prevX = InputSimulator.WindowClientOffsetX;
+            int prevY = InputSimulator.WindowClientOffsetY;
             InputSimulator.WindowClientOffsetX = pt.X;
             InputSimulator.WindowClientOffsetY = pt.Y;
+
+            // Log when the offset changes (e.g. first tick, or window moved)
+            if (pt.X != prevX || pt.Y != prevY)
+                _logger.LogInformation(
+                    "EVE client offset updated: ({X},{Y}) — {Mode}",
+                    pt.X, pt.Y,
+                    (pt.X == 0 && pt.Y == 0) ? "fullscreen" : "windowed/RDP fixed-window");
         }
     }
 }
