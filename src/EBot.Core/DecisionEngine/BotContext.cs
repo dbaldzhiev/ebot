@@ -41,6 +41,26 @@ public sealed class BotContext
 
     // ─── Action Enqueue Helpers ────────────────────────────────────────
 
+    // ─── Self-termination ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Set by a behavior tree node to signal that the bot has finished its task
+    /// and should return to monitor (idle) mode after this tick completes.
+    /// Checked and consumed by BotRunner at the end of each tick.
+    /// </summary>
+    public bool StopRequested { get; private set; }
+
+    /// <summary>
+    /// Request the runner to stop this bot and return to idle/monitor mode.
+    /// Safe to call from any behavior tree node.
+    /// </summary>
+    public void RequestStop() => StopRequested = true;
+
+    /// <summary>Called by BotRunner after consuming the stop request.</summary>
+    internal void ConsumeStopRequest() => StopRequested = false;
+
+    // ─── Action Enqueue Helpers ────────────────────────────────────────
+
     /// <summary>
     /// Enqueues a left-click on a UI node's center.
     /// </summary>

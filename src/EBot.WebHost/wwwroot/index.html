@@ -253,6 +253,8 @@
       <div class="action-grid">
         <button class="btn btn-green" id="btn-undock" onclick="apiClick('/api/undock')" disabled>&#9650; Undock</button>
         <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')">&#9660; Dock Nearest</button>
+        <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/clear-destination')">&#10007; Clear Destination</button>
+        <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/open-cargo')">&#128230; Open Cargo / Inventory</button>
       </div>
 
       <div class="sec">Quick Travel</div>
@@ -316,7 +318,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
 
-let botState = 'Idle', chatBusy = false;
+let botState = 'Idle', botName = null, botDesc = null, chatBusy = false;
 let quickTravel = [];
 let stationAliases = {};  // alias → {system, bookmark}
 
@@ -328,9 +330,19 @@ const conn = new signalR.HubConnectionBuilder()
 
 conn.onreconnecting(() => $('conn-dot').classList.remove('ok'));
 conn.onreconnected(() => { $('conn-dot').classList.add('ok'); loadInitialState(); });
-conn.on('StateChanged',    state => { botState = state; refreshUI(); });
+conn.on('StateChanged',    state => {
+  botState = state;
+  // Refresh status to pick up new botName / botDesc
+  fetch('/api/status').then(r => r.json()).then(s => {
+    botName = s.botName; botDesc = s.botDescription;
+    refreshUI();
+  }).catch(() => refreshUI());
+});
 conn.on('SurvivalChanged', en    => { $('toggle-survival').checked = en; });
-conn.on('TickUpdate',      gs    => renderGameState(gs));
+conn.on('TickUpdate',      gs    => {
+  renderGameState(gs);
+  if (botName === 'Mining Bot') pollMiningStats();
+});
 conn.on('LogEntry',        e     => addLogEntry(e));
 conn.on('ChatToolCall',    d     => addBubble('🔧 ' + d.name + '(…)', 'tool-call'));
 conn.on('ChatToolResult',  d     => addBubble('↳ ' + (d.result || '').slice(0, 200), 'tool-result'));
@@ -352,7 +364,7 @@ async function startConnection() {
 async function loadInitialState() {
   try {
     const s = await fetch('/api/status').then(r => r.json());
-    botState = s.state;
+    botState = s.state; botName = s.botName; botDesc = s.botDescription;
     $('toggle-survival').checked = s.survivalEnabled;
     if (s.gameState) renderGameState(s.gameState);
     refreshUI();
@@ -414,30 +426,31 @@ function renderGameState(gs) {
     return `<div class="module-btn ${cls.trim()}" title="${esc(tip)}">${i+1}${dot}</div>`;
   }).join('') : '<div class="empty">No modules detected</div>';
 
-  // ── Cargo ────────────────────────────────────────────────────────────────
-  let cargoHtml = '<div class="empty">Open cargo hold in EVE to see contents</div>';
-  if (gs.cargoMaxM3 != null && gs.cargoMaxM3 > 0) {
-    const pct = Math.min(100, (gs.cargoUsedM3 / gs.cargoMaxM3) * 100);
-    const used = gs.cargoUsedM3 != null ? gs.cargoUsedM3.toFixed(1) : '—';
-    const max  = gs.cargoMaxM3.toFixed(1);
-    cargoHtml = `
-      <div class="stat-row" style="margin-bottom:4px;">
-        <span class="stat-key">Volume</span>
-        <div class="bar-wrap">
-          <div class="bar-track"><div class="bar-fill cargo${pct > 90 ? ' low' : ''}" style="width:${pct.toFixed(1)}%"></div></div>
-          <span class="bar-pct" style="width:auto;font-size:.68rem">${used}/${max}</span>
-        </div>
-      </div>`;
-    const items = gs.cargoItems || [];
-    if (items.length) {
-      cargoHtml += items.slice(0, 20).map(it =>
+  // ── Inventory holds ──────────────────────────────────────────────────────
+  function holdHtml(usedM3, maxM3, items, emptyMsg) {
+    if (maxM3 == null || maxM3 <= 0) return `<div class="empty">${emptyMsg}</div>`;
+    const pct  = Math.min(100, (usedM3 / maxM3) * 100);
+    const used = usedM3 != null ? usedM3.toFixed(1) : '—';
+    const max  = maxM3.toFixed(1);
+    let html = `<div class="stat-row" style="margin-bottom:4px;">
+      <span class="stat-key">Volume</span>
+      <div class="bar-wrap">
+        <div class="bar-track"><div class="bar-fill cargo${pct > 90 ? ' low' : ''}" style="width:${pct.toFixed(1)}%"></div></div>
+        <span class="bar-pct" style="width:auto;font-size:.68rem">${used}/${max} m³</span>
+      </div></div>`;
+    const list = items || [];
+    if (list.length) {
+      html += list.slice(0, 20).map(it =>
         `<div class="cargo-item"><span class="cargo-name">${esc(it.name || '—')}</span><span class="cargo-qty">${it.quantity != null ? 'x' + it.quantity : ''}</span></div>`
       ).join('');
-      if (items.length > 20) cargoHtml += `<div class="empty">…and ${items.length - 20} more</div>`;
+      if (list.length > 20) html += `<div class="empty">…and ${list.length - 20} more</div>`;
     } else {
-      cargoHtml += '<div class="empty">Empty</div>';
+      html += '<div class="empty">Empty</div>';
     }
+    return html;
   }
+  const cargoHtml   = holdHtml(gs.cargoUsedM3,   gs.cargoMaxM3,   gs.cargoItems,   'Not open — click Open Cargo or press Alt+C in EVE');
+  const oreHoldHtml = holdHtml(gs.oreHoldUsedM3, gs.oreHoldMaxM3, gs.oreHoldItems, 'Not open — click Open Cargo or press Alt+C in EVE');
 
   // ── Update action button states (undock only when docked, dock only in space) ──
   const undockBtn = $('btn-undock');
@@ -466,8 +479,11 @@ function renderGameState(gs) {
     <div class="sec">Modules — ${mods.filter(m=>m.isActive).length} active, ${mods.filter(m=>m.isOverloaded).length} hot, ${mods.filter(m=>m.isOffline).length} offline / ${mods.length} total</div>
     <div class="module-grid">${modHtml}</div>
 
-    <div class="sec">Cargo</div>
+    <div class="sec">Cargo Hold</div>
     ${cargoHtml}
+    <div class="sec">Mining / Ore Hold</div>
+    ${oreHoldHtml}
+    ${renderMiningStats()}
   `;
 
   // Overview
@@ -480,6 +496,29 @@ function renderGameState(gs) {
         <td style="text-align:right;color:var(--text-dim)">${esc(e.distance || '')}</td>
       </tr>`).join('')
     : '<tr><td colspan="3" class="empty" style="padding:8px">Empty</td></tr>';
+}
+
+// Mining-specific stats — shown only when Mining Bot is active
+let miningStats = { totalM3: 0, cycles: 0 };
+let _miningPollBusy = false;
+async function pollMiningStats() {
+  if (_miningPollBusy) return;
+  _miningPollBusy = true;
+  try {
+    const s = await fetch('/api/mining-stats').then(r => r.json());
+    miningStats = { totalM3: s.total_m3, cycles: s.cycles };
+  } catch(e) {}
+  _miningPollBusy = false;
+}
+function renderMiningStats() {
+  if (botName !== 'Mining Bot') return '';
+  const m3 = miningStats.totalM3 ?? 0;
+  const cy = miningStats.cycles ?? 0;
+  return `
+    <div class="sec">Mining Session</div>
+    <div class="stat-row"><span class="stat-key">Ore unloaded</span><span>${m3.toFixed(0)} m³</span></div>
+    <div class="stat-row"><span class="stat-key">Unload runs</span><span>${cy}</span></div>
+  `;
 }
 
 function bar(label, pct, cls) {
@@ -588,6 +627,15 @@ function refreshUI() {
   $('btn-stop').disabled   = idle;
   $('btn-pause').disabled  = !running;
   $('btn-resume').disabled = !paused;
+  // Show bot description badge when active
+  let descEl = $('bot-desc-badge');
+  if (!descEl) {
+    descEl = document.createElement('span');
+    descEl.id = 'bot-desc-badge';
+    descEl.style.cssText = 'font-size:.7rem;color:var(--text-dim);margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;';
+    pill.insertAdjacentElement('afterend', descEl);
+  }
+  descEl.textContent = (!idle && botDesc) ? botDesc : '';
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────

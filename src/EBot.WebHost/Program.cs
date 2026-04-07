@@ -254,6 +254,27 @@ api.MapGet("/debug/input", (BotOrchestrator orch) =>
     return Results.Ok(new { report = report.Summary(), passed = report.MoveOk });
 });
 
+// POST /api/open-cargo  — opens ship inventory (Alt+C)
+api.MapPost("/open-cargo", async (BotOrchestrator o) =>
+{
+    try { await o.OpenCargoAsync(); return Results.Ok(new { success = true }); }
+    catch (Exception ex) { return Results.BadRequest(new { success = false, message = ex.Message }); }
+});
+
+// POST /api/clear-destination  — right-click last route marker → Remove Waypoint
+api.MapPost("/clear-destination", async (BotOrchestrator o) =>
+{
+    try
+    {
+        await o.ClearDestinationAsync();
+        return Results.Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { success = false, message = ex.Message });
+    }
+});
+
 // POST /api/undock  — click the undock button
 api.MapPost("/undock", async (BotOrchestrator o) =>
 {
@@ -408,6 +429,21 @@ api.MapPost("/quick-travel/{station}/go", async (string station, BotOrchestrator
     {
         return Results.BadRequest(new { success = false, message = ex.Message });
     }
+});
+
+// GET /api/mining-stats  — current session mining statistics from the blackboard
+api.MapGet("/mining-stats", (BotOrchestrator o) =>
+{
+    var bb = o.LastContext?.Blackboard;
+    return Results.Ok(new
+    {
+        total_m3     = bb?.Get<double>("total_unloaded_m3") ?? 0,
+        cycles       = bb?.Get<int>("unload_cycles")        ?? 0,
+        phase        = bb?.Get<string>("unload_phase")      ?? "",
+        return_phase = bb?.Get<string>("return_phase")      ?? "",
+        needs_unload = bb?.Get<bool>("needs_unload")        ?? false,
+        home_station = bb?.Get<string>("home_station")      ?? "",
+    });
 });
 
 // GET /api/debug/modules  — dump raw dict keys for each module slot (diagnostic)

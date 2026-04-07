@@ -79,11 +79,54 @@ public sealed class BookmarkDockBot : IBot
                 var phase = ctx.Blackboard.Get<string>("dest_phase") ?? "";
                 switch (phase)
                 {
+                    // ── Step 0: clear any existing destination first ──────
                     case "":
+                    {
+                        var markers = ctx.GameState.ParsedUI.InfoPanelContainer?
+                            .InfoPanelRoute?.RouteElementMarkers ?? [];
+                        if (markers.Count > 0)
+                        {
+                            // Right-click the LAST marker (= current destination square)
+                            ctx.Blackboard.Set("menu_expected", true);
+                            ctx.RightClick(markers[^1]);
+                            ctx.Wait(TimeSpan.FromMilliseconds(600));
+                            ctx.Blackboard.Set("dest_phase", "clear_menu");
+                        }
+                        else
+                        {
+                            // Nothing to clear — open search immediately
+                            ctx.KeyPress(VirtualKey.S, VirtualKey.Shift);
+                            ctx.Wait(TimeSpan.FromSeconds(1));
+                            ctx.Blackboard.Set("dest_phase", "typing");
+                        }
+                        return NodeStatus.Running;
+                    }
+
+                    case "clear_menu":
+                    {
+                        ctx.Blackboard.Set("menu_expected", false);
+                        if (ctx.GameState.HasContextMenu)
+                        {
+                            var menu   = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
+                            var remove = menu?.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Remove", StringComparison.OrdinalIgnoreCase) == true ||
+                                e.Text?.Contains("Clear",  StringComparison.OrdinalIgnoreCase) == true);
+                            if (remove != null)
+                            {
+                                ctx.Click(remove.UINode);
+                                ctx.Wait(TimeSpan.FromMilliseconds(600));
+                            }
+                            else
+                            {
+                                ctx.KeyPress(VirtualKey.Escape);
+                            }
+                        }
+                        // Whether we cleared or not, proceed to open search
                         ctx.KeyPress(VirtualKey.S, VirtualKey.Shift);
                         ctx.Wait(TimeSpan.FromSeconds(1));
                         ctx.Blackboard.Set("dest_phase", "typing");
                         return NodeStatus.Running;
+                    }
 
                     case "typing":
                     {
@@ -108,20 +151,56 @@ public sealed class BookmarkDockBot : IBot
                             if (setDest != null)
                             {
                                 ctx.Click(setDest.UINode);
+                                ctx.Wait(TimeSpan.FromMilliseconds(400));
                                 ctx.Blackboard.Set("destination_set", true);
-                                ctx.Blackboard.Set("dest_phase", "done");
-                                return NodeStatus.Success;
+                                ctx.Blackboard.Set("dest_phase", "close_search");
+                                return NodeStatus.Running;
                             }
                         }
                         var dest = ctx.Blackboard.Get<string>("autopilot_destination")!;
+
+                        // We must check only the node's OWN text (not children).
+                        // GetAllContainedDisplayTexts() is recursive, so a parent container
+                        // (e.g. "Stations (1)" group) would also match, and FindFirst
+                        // (pre-order DFS) would return the container before the actual row.
+                        // By reading _setText/_text directly we skip group headers whose own
+                        // text is something like "Stations (1)" — not the destination name.
+                        static string OwnText(UITreeNodeWithDisplayRegion n)
+                        {
+                            var s = EveTextUtil.StripTags(n.Node.GetDictString("_setText"));
+                            if (!string.IsNullOrEmpty(s)) return s;
+                            return EveTextUtil.StripTags(n.Node.GetDictString("_text")) ?? "";
+                        }
+
+                        // Search result rows: own text contains the destination,
+                        // sized like a list row (height 10–40 px), not an edit field.
                         var result = ctx.GameState.ParsedUI.UITree?.FindFirst(n =>
                         {
-                            var texts = n.GetAllContainedDisplayTexts().ToList();
-                            return texts.Any(t => t.Contains(dest, StringComparison.OrdinalIgnoreCase))
-                                && texts.Any(t => t.Contains("Solar System", StringComparison.OrdinalIgnoreCase));
+                            if (n.Region.Width < 60 || n.Region.Height < 10 || n.Region.Height > 45) return false;
+                            if (n.Node.PythonObjectTypeName.Contains("Edit",
+                                StringComparison.OrdinalIgnoreCase)) return false;
+                            var own = OwnText(n);
+                            return own.Contains(dest, StringComparison.OrdinalIgnoreCase);
                         });
                         if (result != null) { ctx.RightClick(result); return NodeStatus.Running; }
                         return NodeStatus.Running;
+                    }
+
+                    // Close the Search Results dialog via its "Close" button
+                    case "close_search":
+                    {
+                        var closeBtn = ctx.GameState.ParsedUI.UITree?.FindFirst(n =>
+                        {
+                            var own = EveTextUtil.StripTags(n.Node.GetDictString("_setText"))
+                                   ?? EveTextUtil.StripTags(n.Node.GetDictString("_text"))
+                                   ?? "";
+                            return own.Equals("Close", StringComparison.OrdinalIgnoreCase)
+                                && n.Region.Width > 30 && n.Region.Height > 10;
+                        });
+                        if (closeBtn != null)
+                            ctx.Click(closeBtn);
+                        ctx.Blackboard.Set("dest_phase", "done");
+                        return NodeStatus.Success;
                     }
 
                     default:
@@ -176,7 +255,16 @@ public sealed class BookmarkDockBot : IBot
                         if (chosen == null) { ctx.KeyPress(VirtualKey.Escape); return NodeStatus.Failure; }
                         ctx.Click(chosen.UINode);
                         if (chosen.Text?.Contains("jump", StringComparison.OrdinalIgnoreCase) == true)
-                            ctx.Blackboard.SetCooldown("post_jump", TimeSpan.FromSeconds(12));
+                        {
+                            // Post-jump: gate session change takes ~10-12 s
+                            ctx.Blackboard.SetCooldown("post_jump",    TimeSpan.FromSeconds(12));
+                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(14));
+                        }
+                        else
+                        {
+                            // Post-warp command: ship needs 1-3 s to enter warp — don't re-click
+                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(5));
+                        }
                         return NodeStatus.Success;
                     })),
 
@@ -313,6 +401,9 @@ public sealed class BookmarkDockBot : IBot
                     }
 
                     case "done":
+                        // Task complete — tell the runner to return to monitor/idle mode.
+                        // This ensures autopilot never bleeds into mining or any other bot.
+                        ctx.RequestStop();
                         return NodeStatus.Success;
 
                     default:

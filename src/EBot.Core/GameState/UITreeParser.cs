@@ -442,9 +442,10 @@ public sealed partial class UITreeParser
             {
                 if (string.IsNullOrWhiteSpace(rawText)) continue;
                 var clean = rawText.Trim();
-                // Find nearest column header within ±40px
+                // Find nearest column header — use generous tolerance because EVE's cell text
+                // nodes are often indented a few pixels relative to the column header left edge.
                 var best = columnHeaders.MinBy(h => Math.Abs(h.X - cellX));
-                if (best != default && Math.Abs(best.X - cellX) <= 40)
+                if (best != default && Math.Abs(best.X - cellX) <= 80)
                     cellsTexts.TryAdd(best.Name, clean);
             }
         }
@@ -553,19 +554,32 @@ public sealed partial class UITreeParser
 
     private List<InventoryWindow> FindInventoryWindows(UITreeNodeWithDisplayRegion root)
     {
-        return root.FindAll(n => IsType(n, "InventoryPrimary", "Inventory"))
-            .Where(n => !IsType(n, "Item")) // filter out inventory items
+        // EVE's inventory window Python type has changed across patches; cover all known names.
+        // Filter out individual inventory *items* (InvItem / Item) — they share "Inventory" substring.
+        return root.FindAll(n =>
+                n.Node.PythonObjectTypeName.Contains("InventoryPrimary",   StringComparison.OrdinalIgnoreCase) ||
+                n.Node.PythonObjectTypeName.Contains("ActiveShipCargo",    StringComparison.OrdinalIgnoreCase) ||
+                n.Node.PythonObjectTypeName.Contains("ShipCargo",          StringComparison.OrdinalIgnoreCase) ||
+                // Generic fallback — must have a capacity gauge child to qualify as an inventory container
+                (n.Node.PythonObjectTypeName.Contains("Inventory",         StringComparison.OrdinalIgnoreCase) &&
+                 n.Region.Width > 100 && n.Region.Height > 100))
+            .Where(n =>
+                !n.Node.PythonObjectTypeName.Contains("InvItem",   StringComparison.OrdinalIgnoreCase) &&
+                !n.Node.PythonObjectTypeName.Contains("Item",      StringComparison.OrdinalIgnoreCase))
             .Select(n => new InventoryWindow
             {
                 UINode = n,
-                SubCaptionLabelText = n.FindFirst(c => IsType(c, "SubCaption"))
-                    ?.GetAllContainedDisplayTexts().FirstOrDefault(),
+                SubCaptionLabelText = ExtractInventoryTitle(n),
                 CapacityGauge = ExtractCapacityGauge(n),
-                Items = n.FindAll(i => IsType(i, "Item", "InvItem"))
+                Items = n.FindAll(i =>
+                        i.Node.PythonObjectTypeName.Contains("InvItem", StringComparison.OrdinalIgnoreCase) ||
+                        i.Node.PythonObjectTypeName.Contains("Item",    StringComparison.OrdinalIgnoreCase))
+                    .Where(i => i.Region.Width > 20 && i.Region.Height > 6)
                     .Select(i => new InventoryItem
                     {
                         UINode = i,
-                        Name = i.GetAllContainedDisplayTexts().FirstOrDefault(),
+                        Name  = i.GetAllContainedDisplayTexts().FirstOrDefault(),
+                        Quantity = ExtractItemQuantity(i),
                     })
                     .ToList(),
                 ButtonToStackAll = n.FindFirst(b =>
@@ -575,22 +589,106 @@ public sealed partial class UITreeParser
             .ToList();
     }
 
+    /// <summary>
+    /// Extracts the human-readable title of an inventory container
+    /// (e.g. "Cargo Hold", "Ore Hold", "Item Hangar").
+    /// EVE stores this in different places across versions:
+    ///   • SubCaptionLabel node (_setText / _text)
+    ///   • Caption label (_name == "captionLabel" or "subCaptionLabel")
+    ///   • Any label whose text contains a known hold keyword
+    /// </summary>
+    private static string? ExtractInventoryTitle(UITreeNodeWithDisplayRegion invNode)
+    {
+        // Approach 1: explicit SubCaption type node
+        var subCap = invNode.FindFirst(n =>
+            n.Node.PythonObjectTypeName.Contains("SubCaption", StringComparison.OrdinalIgnoreCase));
+        if (subCap != null)
+        {
+            var t = subCap.GetAllContainedDisplayTexts().FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(t)) return t;
+        }
+
+        // Approach 2: node named "captionLabel", "subCaptionLabel", "headerLabel" etc.
+        var captionNode = invNode.FindFirst(n =>
+        {
+            var nm = n.Node.GetDictString("_name") ?? "";
+            return nm.Contains("caption", StringComparison.OrdinalIgnoreCase)
+                || nm.Contains("header",  StringComparison.OrdinalIgnoreCase);
+        });
+        if (captionNode != null)
+        {
+            var t = EveTextUtil.StripTags(captionNode.Node.GetDictString("_setText"))
+                 ?? EveTextUtil.StripTags(captionNode.Node.GetDictString("_text"));
+            if (!string.IsNullOrWhiteSpace(t)) return t;
+        }
+
+        // Approach 3: scan for any label whose text contains a known hold/container keyword
+        var keywords = new[]
+        {
+            "Cargo Hold", "Ore Hold", "Mining Hold", "Item Hangar",
+            "Fleet Hangar", "Ship Hangar", "Fuel Bay", "Maintenance Bay",
+        };
+        var keyNode = invNode.FindFirst(n =>
+        {
+            var own = EveTextUtil.StripTags(n.Node.GetDictString("_setText"))
+                   ?? EveTextUtil.StripTags(n.Node.GetDictString("_text"));
+            return own != null && keywords.Any(k =>
+                own.Contains(k, StringComparison.OrdinalIgnoreCase));
+        });
+        return keyNode != null
+            ? (EveTextUtil.StripTags(keyNode.Node.GetDictString("_setText"))
+               ?? EveTextUtil.StripTags(keyNode.Node.GetDictString("_text")))
+            : null;
+    }
+
+    private static int? ExtractItemQuantity(UITreeNodeWithDisplayRegion item)
+    {
+        foreach (var text in item.GetAllContainedDisplayTexts())
+        {
+            var t = text.Replace(",", "").Replace(".", "").Trim();
+            if (int.TryParse(t, out var q) && q > 0) return q;
+        }
+        return null;
+    }
+
     private static InventoryCapacityGauge? ExtractCapacityGauge(UITreeNodeWithDisplayRegion invNode)
     {
-        var gaugeNode = invNode.FindFirst(n => IsType(n, "CapacityGauge", "Gauge"));
+        // Look for the capacity gauge node by type or by name
+        var gaugeNode = invNode.FindFirst(n =>
+            n.Node.PythonObjectTypeName.Contains("CapacityGauge", StringComparison.OrdinalIgnoreCase) ||
+            n.Node.PythonObjectTypeName.Contains("Gauge",         StringComparison.OrdinalIgnoreCase) ||
+            (n.Node.GetDictString("_name") ?? "")
+                .Contains("capacity", StringComparison.OrdinalIgnoreCase));
         if (gaugeNode == null) return null;
 
-        var text = gaugeNode.GetAllContainedDisplayTexts().FirstOrDefault();
-        if (text == null) return null;
-
-        // Format: "123.45 / 500.00 m³" or "123.45/500.00"
-        var parts = text.Replace(",", "").Split('/');
-        if (parts.Length < 2) return null;
-
-        if (double.TryParse(parts[0].Trim(), out var used) &&
-            double.TryParse(parts[1].Trim().Split(' ')[0], out var max))
+        // Try all text nodes inside the gauge for the "used / max" pattern
+        foreach (var text in gaugeNode.GetAllContainedDisplayTexts())
         {
-            return new InventoryCapacityGauge { Used = used, Maximum = max };
+            // Normalise: remove thousands-separator commas, strip m³ / m3 unit suffix
+            var normalised = text
+                .Replace("\u00A0", " ")   // non-breaking space
+                .Replace("m\u00B3", "")   // m³
+                .Replace("m3", "")
+                .Trim();
+
+            // Remove thousands commas only (keep decimal dot)
+            // Strategy: replace commas that are followed by exactly 3 digits before / or end
+            // Simple approach: just remove all commas
+            normalised = normalised.Replace(",", "");
+
+            var parts = normalised.Split('/');
+            if (parts.Length < 2) continue;
+
+            if (double.TryParse(parts[0].Trim(),
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var used) &&
+                double.TryParse(parts[1].Trim().Split(' ')[0],
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var max) &&
+                max > 0)
+            {
+                return new InventoryCapacityGauge { Used = used, Maximum = max };
+            }
         }
         return null;
     }

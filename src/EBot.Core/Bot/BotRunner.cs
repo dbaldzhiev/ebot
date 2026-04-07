@@ -11,6 +11,9 @@ namespace EBot.Core.Bot;
 /// </summary>
 public sealed class BotRunner : IDisposable
 {
+    // Shared singleton no-op bot used for monitor mode self-stops
+    private static readonly IBot _monitorBot = new NoOpBot();
+
     private IBot _bot;
     private bool _isMonitorMode;
     private readonly BotSettings _settings;
@@ -252,6 +255,15 @@ public sealed class BotRunner : IDisposable
                     await _executor.ExecuteAllAsync(_context.Actions, windowHandle, ct);
                 }
 
+                // STEP 6: Handle self-stop request (bot signals task complete)
+                if (_context.StopRequested && !_isMonitorMode)
+                {
+                    _context.ConsumeStopRequest();
+                    // Queue a swap to the no-op monitor bot — processed at top of next tick
+                    _pendingSwap = new SwapRequest(_monitorBot, isMonitorMode: true);
+                    _logger.LogInformation("Bot requested self-stop — returning to monitor mode");
+                }
+
                 // Record tick timestamp for TPM
                 lock (_tpmLock)
                     _tickTimestampsMs.Enqueue(Environment.TickCount64);
@@ -311,6 +323,20 @@ public sealed class BotRunner : IDisposable
         _cts?.Dispose();
         _reader.Dispose();
     }
+}
+
+/// <summary>
+/// Minimal no-op bot used as the monitor-mode placeholder inside BotRunner.
+/// Keeps EBot.Core self-contained (no dependency on EBot.ExampleBots).
+/// </summary>
+internal sealed class NoOpBot : IBot
+{
+    public string Name        => "Monitor";
+    public string Description => "Monitoring — no bot active";
+    public BotSettings GetDefaultSettings() => new();
+    public IBehaviorNode BuildBehaviorTree() =>
+        new EBot.Core.DecisionEngine.ActionNode("Idle", _ =>
+            EBot.Core.DecisionEngine.NodeStatus.Failure);
 }
 
 /// <summary>

@@ -31,10 +31,14 @@ public sealed record GameStateSummary(
     int RouteJumpsRemaining,
     bool HasContextMenu,
     IReadOnlyList<string> ContextMenuEntries,
-    // Cargo
+    // Cargo Hold (regular ship cargo)
     double? CargoUsedM3,
     double? CargoMaxM3,
-    IReadOnlyList<CargoItemDto> CargoItems);
+    IReadOnlyList<CargoItemDto> CargoItems,
+    // Ore / Mining Hold
+    double? OreHoldUsedM3,
+    double? OreHoldMaxM3,
+    IReadOnlyList<CargoItemDto> OreHoldItems);
 
 public sealed record TargetDto(
     string? Name,
@@ -65,6 +69,7 @@ public sealed record CargoItemDto(string? Name, int? Quantity);
 public sealed record BotStatusResponse(
     string State,
     string? BotName,
+    string? BotDescription,
     GameStateSummary? GameState,
     int Port,
     bool SurvivalEnabled);
@@ -132,11 +137,29 @@ public static class DtoMapper
             .Where(t => !string.IsNullOrEmpty(t))
             .ToList() ?? [];
 
-        // Cargo: first inventory window that looks like ship cargo
-        var cargoWin = ui.InventoryWindows.FirstOrDefault();
+        // Inventory windows — distinguish cargo hold from ore/mining hold by title
+        static bool IsOreHold(InventoryWindow w) =>
+            w.SubCaptionLabelText?.Contains("Ore",    StringComparison.OrdinalIgnoreCase) == true ||
+            w.SubCaptionLabelText?.Contains("Mining", StringComparison.OrdinalIgnoreCase) == true;
+
+        static bool IsCargoHold(InventoryWindow w) =>
+            w.SubCaptionLabelText?.Contains("Cargo",  StringComparison.OrdinalIgnoreCase) == true ||
+            // If no title detected, treat as generic cargo (fallback)
+            string.IsNullOrEmpty(w.SubCaptionLabelText);
+
+        var oreWin   = ui.InventoryWindows.FirstOrDefault(IsOreHold);
+        var cargoWin = ui.InventoryWindows.FirstOrDefault(w => !IsOreHold(w) && IsCargoHold(w))
+                    ?? ui.InventoryWindows.FirstOrDefault(w => !IsOreHold(w));
+
         double? cargoUsed = cargoWin?.CapacityGauge?.Used;
         double? cargoMax  = cargoWin?.CapacityGauge?.Maximum;
         var cargoItems = (cargoWin?.Items ?? [])
+            .Select(i => new CargoItemDto(i.Name, i.Quantity))
+            .ToList();
+
+        double? oreUsed = oreWin?.CapacityGauge?.Used;
+        double? oreMax  = oreWin?.CapacityGauge?.Maximum;
+        var oreItems = (oreWin?.Items ?? [])
             .Select(i => new CargoItemDto(i.Name, i.Quantity))
             .ToList();
 
@@ -162,7 +185,10 @@ public static class DtoMapper
             contextMenuEntries,
             cargoUsed,
             cargoMax,
-            cargoItems);
+            cargoItems,
+            oreUsed,
+            oreMax,
+            oreItems);
     }
 
     private static string FormatDistance(double meters)

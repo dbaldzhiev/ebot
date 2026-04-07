@@ -192,6 +192,13 @@ public sealed class BotOrchestrator : IDisposable
         if (_runner == null)
             await EnsureMonitorAsync(exePath);
 
+        // Stop any running bot first — quick travel must never mix with mining or other bots
+        if (!_isMonitorMode)
+        {
+            _logSink.Add("Info", "Orchestrator", "Stopping current bot before starting quick travel");
+            await StopAsync();
+        }
+
         // Resolve alias → {system, bookmark}
         StationAlias? alias = null;
         try
@@ -309,6 +316,73 @@ public sealed class BotOrchestrator : IDisposable
     }
 
     // ─── Manual actions (undock, dock) ──────────────────────────────────────
+
+    /// <summary>Opens the ship inventory / cargo hold (Alt+C default EVE shortcut).</summary>
+    public async Task OpenCargoAsync()
+    {
+        await EnsureExecutorAsync();
+        var eveClient = EveProcessFinder.FindFirstClient();
+        var handle    = eveClient?.MainWindowHandle ?? 0;
+        var q = new ActionQueue();
+        q.Enqueue(new KeyPressAction(VirtualKey.C, [VirtualKey.Alt]));
+        await _lastExecutor!.ExecuteAllAsync(q, handle);
+        _logSink.Add("Info", "Action", "Opened inventory (Alt+C)");
+    }
+
+    /// <summary>
+    /// Clears the autopilot destination by right-clicking the last route marker
+    /// and selecting "Remove Waypoint".
+    /// </summary>
+    public async Task ClearDestinationAsync()
+    {
+        await EnsureExecutorAsync();
+        var eveClient = EveProcessFinder.FindFirstClient();
+        var handle    = eveClient?.MainWindowHandle ?? 0;
+
+        var markers = _lastContext?.GameState.ParsedUI.InfoPanelContainer?
+            .InfoPanelRoute?.RouteElementMarkers ?? [];
+        if (markers.Count == 0)
+            return; // nothing to clear
+
+        var last = markers[^1];
+        var (cx, cy) = last.Center;
+
+        // Right-click the destination marker
+        var q = new ActionQueue();
+        q.Enqueue(new RightClickAction(cx, cy));
+        await _lastExecutor!.ExecuteAllAsync(q, handle);
+
+        // Poll for context menu
+        ContextMenuEntry? removeEntry = null;
+        for (int i = 0; i < 6; i++)
+        {
+            await Task.Delay(200);
+            removeEntry = _lastContext?.GameState.ParsedUI.ContextMenus
+                .SelectMany(m => m.Entries)
+                .FirstOrDefault(e =>
+                    e.Text?.Contains("Remove",      StringComparison.OrdinalIgnoreCase) == true ||
+                    e.Text?.Contains("Clear",       StringComparison.OrdinalIgnoreCase) == true ||
+                    e.Text?.Contains("Destination", StringComparison.OrdinalIgnoreCase) == true);
+            if (removeEntry != null) break;
+        }
+
+        if (removeEntry != null)
+        {
+            var (ex, ey) = removeEntry.UINode.Center;
+            var q2 = new ActionQueue();
+            q2.Enqueue(new ClickAction(ex, ey));
+            await _lastExecutor!.ExecuteAllAsync(q2, handle);
+            _logSink.Add("Info", "Action", "Destination cleared");
+        }
+        else
+        {
+            // Dismiss stray menu
+            var q2 = new ActionQueue();
+            q2.Enqueue(new KeyPressAction(VirtualKey.Escape, []));
+            await _lastExecutor!.ExecuteAllAsync(q2, handle);
+            _logSink.Add("Warn", "Action", "Clear destination: no Remove entry found in menu");
+        }
+    }
 
     /// <summary>Clicks the Undock button in the station window.</summary>
     public async Task UndockAsync()
@@ -527,6 +601,7 @@ public sealed class BotOrchestrator : IDisposable
     public BotStatusResponse GetStatus(int port) => new(
         State.ToString(),
         CurrentBotName,
+        _activeBot?.Description,
         _lastContext != null ? DtoMapper.ToDto(_lastContext) : null,
         port,
         SurvivalEnabled);
