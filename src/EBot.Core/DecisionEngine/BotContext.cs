@@ -39,6 +39,24 @@ public sealed class BotContext
     /// </summary>
     public TimeSpan RunDuration => DateTimeOffset.UtcNow - StartTime;
 
+    // ─── Diagnostic log (per-tick messages forwarded to ILogger by BotRunner) ──
+
+    private readonly List<string> _diagMessages = [];
+
+    /// <summary>
+    /// Enqueue a diagnostic message to be logged this tick.
+    /// Use sparingly — only for debugging hard-to-reproduce state machine issues.
+    /// </summary>
+    public void Log(string message) => _diagMessages.Add(message);
+
+    /// <summary>Called by BotRunner after each tick to drain and log pending messages.</summary>
+    internal IReadOnlyList<string> DrainDiagMessages()
+    {
+        var msgs = _diagMessages.ToList();
+        _diagMessages.Clear();
+        return msgs;
+    }
+
     // ─── Action Enqueue Helpers ────────────────────────────────────────
 
     // ─── Self-termination ─────────────────────────────────────────────────
@@ -101,6 +119,16 @@ public sealed class BotContext
     public void ClickAt(int x, int y)
     {
         Actions.Enqueue(new ClickAction(x, y));
+    }
+
+    /// <summary>
+    /// Enqueues a mouse move (hover) to a UI node's center — no button press.
+    /// Use for context-menu entries that expand submenus on hover.
+    /// </summary>
+    public void Hover(UITreeNodeWithDisplayRegion node)
+    {
+        var (x, y) = node.Center;
+        Actions.Enqueue(new MoveMouseAction(x, y));
     }
 
     /// <summary>

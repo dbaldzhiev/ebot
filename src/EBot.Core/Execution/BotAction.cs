@@ -77,6 +77,12 @@ public sealed record WaitAction(TimeSpan Duration) : BotAction;
 public sealed record TypeTextAction(string Text) : BotAction;
 
 /// <summary>
+/// Move the mouse cursor to screen coordinates without pressing any button.
+/// Used to hover over context-menu entries that have submenus (they expand on hover, not click).
+/// </summary>
+public sealed record MoveMouseAction(int X, int Y) : BotAction;
+
+/// <summary>
 /// A queue of bot actions to be executed by the execution engine.
 /// </summary>
 public sealed class ActionQueue

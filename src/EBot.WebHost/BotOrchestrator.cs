@@ -47,6 +47,9 @@ public sealed class BotOrchestrator : IDisposable
 
     private BotContext? _lastContext;
 
+    // Multi-tick hold cache: only one hold is visible at a time, so we cache across ticks
+    private readonly Dictionary<string, HoldInfoDto> _holdCache = new();
+
     // Input and executor for manual API-driven actions (undock, dock, etc.)
     private InputSimulator? _lastInput;
     private ActionExecutor? _lastExecutor;
@@ -330,6 +333,89 @@ public sealed class BotOrchestrator : IDisposable
     }
 
     /// <summary>
+    /// Clicks a hold entry in the inventory left panel, switching the view to that hold
+    /// so its capacity and items become visible (and enter the hold cache).
+    /// </summary>
+    public async Task SwitchToHoldAsync(string holdType)
+    {
+        await EnsureExecutorAsync();
+        var eveClient = EveProcessFinder.FindFirstClient();
+        var handle = eveClient?.MainWindowHandle ?? 0;
+
+        var invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
+        if (invWin == null)
+        {
+            // Open inventory first
+            await OpenCargoAsync();
+            await Task.Delay(900);
+            invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
+            if (invWin == null)
+            {
+                _logSink.Add("Warn", "Action", "SwitchToHold: inventory not open");
+                return;
+            }
+        }
+
+        var entry = invWin.NavEntries.FirstOrDefault(e =>
+            e.HoldType.ToString().Equals(holdType, StringComparison.OrdinalIgnoreCase) ||
+            (e.Label?.Contains(holdType, StringComparison.OrdinalIgnoreCase) == true));
+
+        if (entry == null)
+        {
+            _logSink.Add("Warn", "Action", $"SwitchToHold: hold '{holdType}' not found in nav panel");
+            return;
+        }
+
+        var (cx, cy) = entry.UINode.Center;
+        var q = new ActionQueue();
+        q.Enqueue(new ClickAction(cx, cy));
+        await _lastExecutor!.ExecuteAllAsync(q, handle);
+        _logSink.Add("Info", "Action", $"Switched to hold: {entry.Label}");
+    }
+
+    /// <summary>
+    /// Opens inventory and cycles through every nav entry, pausing briefly on each
+    /// so the hold's capacity and items are captured into the cache.
+    /// </summary>
+    public async Task ScanAllHoldsAsync()
+    {
+        await EnsureExecutorAsync();
+        var eveClient = EveProcessFinder.FindFirstClient();
+        var handle = eveClient?.MainWindowHandle ?? 0;
+
+        // Open inventory if not already open
+        var invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
+        if (invWin == null)
+        {
+            await OpenCargoAsync();
+            await Task.Delay(1000);
+            invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
+        }
+        if (invWin == null)
+        {
+            _logSink.Add("Warn", "Action", "ScanAllHolds: inventory not open after Alt+C");
+            return;
+        }
+
+        if (invWin.NavEntries.Count == 0)
+        {
+            _logSink.Add("Info", "Action", "ScanAllHolds: no navigation entries found; only one hold or ship nav not visible");
+            return;
+        }
+
+        foreach (var entry in invWin.NavEntries)
+        {
+            var (cx, cy) = entry.UINode.Center;
+            var q = new ActionQueue();
+            q.Enqueue(new ClickAction(cx, cy));
+            await _lastExecutor!.ExecuteAllAsync(q, handle);
+            await Task.Delay(700);  // wait for EVE to update the right panel
+            _logSink.Add("Info", "Action", $"Scanned hold: {entry.Label}");
+        }
+        _logSink.Add("Info", "Action", $"ScanAllHolds complete — {invWin.NavEntries.Count} holds scanned");
+    }
+
+    /// <summary>
     /// Clears the autopilot destination by right-clicking the last route marker
     /// and selecting "Remove Waypoint".
     /// </summary>
@@ -580,7 +666,21 @@ public sealed class BotOrchestrator : IDisposable
         runner.OnTick += ctx =>
         {
             _lastContext = ctx;
-            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx));
+            // Update hold cache from whatever hold is currently visible in the inventory window
+            var ui = ctx.GameState.ParsedUI;
+            foreach (var w in ui.InventoryWindows)
+            {
+                if (w.CapacityGauge == null) continue;
+                var key = w.HoldType != InventoryHoldType.Unknown
+                          ? w.HoldType.ToString()
+                          : (w.SubCaptionLabelText ?? "Unknown");
+                var name = w.SubCaptionLabelText ?? key;
+                _holdCache[key] = new HoldInfoDto(
+                    name, key,
+                    w.CapacityGauge.Used, w.CapacityGauge.Maximum,
+                    (w.Items ?? []).Select(i => new CargoItemDto(i.Name, i.Quantity)).ToList());
+            }
+            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache));
         };
 
         runner.OnError += ex =>
@@ -602,7 +702,7 @@ public sealed class BotOrchestrator : IDisposable
         State.ToString(),
         CurrentBotName,
         _activeBot?.Description,
-        _lastContext != null ? DtoMapper.ToDto(_lastContext) : null,
+        _lastContext != null ? DtoMapper.ToDto(_lastContext, _holdCache) : null,
         port,
         SurvivalEnabled);
 

@@ -165,13 +165,37 @@ public sealed class OverviewEntry
 
 // ─── Inventory ─────────────────────────────────────────────────────────────
 
+public enum InventoryHoldType
+{
+    Unknown,
+    Cargo,
+    Mining,          // Ore Hold / Mining Hold
+    Infrastructure,
+    ShipMaintenance,
+    Fleet,
+    Fuel,
+    Item             // Item Hangar (station/citadel personal hangar)
+}
+
+/// <summary>A clickable hold entry in the inventory window's left navigation tree.</summary>
+public sealed class InventoryNavEntry
+{
+    public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
+    public string? Label { get; init; }
+    public InventoryHoldType HoldType { get; init; }
+    public bool IsSelected { get; init; }
+}
+
 public sealed class InventoryWindow
 {
     public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
     public string? SubCaptionLabelText { get; init; }
+    public InventoryHoldType HoldType { get; init; }
     public InventoryCapacityGauge? CapacityGauge { get; init; }
     public IReadOnlyList<InventoryItem> Items { get; init; } = [];
     public UITreeNodeWithDisplayRegion? ButtonToStackAll { get; init; }
+    /// <summary>Clickable hold entries in the left navigation panel (Cargo Hold, Mining Hold, etc.).</summary>
+    public IReadOnlyList<InventoryNavEntry> NavEntries { get; init; } = [];
 }
 
 public sealed class InventoryCapacityGauge

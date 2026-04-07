@@ -255,6 +255,10 @@ public sealed class BotRunner : IDisposable
                     await _executor.ExecuteAllAsync(_context.Actions, windowHandle, ct);
                 }
 
+                // STEP 5b: Forward any diagnostic log messages from behavior tree nodes
+                foreach (var msg in _context.DrainDiagMessages())
+                    _logger.LogDebug("{DiagMsg}", msg);
+
                 // STEP 6: Handle self-stop request (bot signals task complete)
                 if (_context.StopRequested && !_isMonitorMode)
                 {

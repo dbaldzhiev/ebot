@@ -65,6 +65,7 @@ public sealed class ActionExecutor
             RightClickAction rc  => $"RightClick ({rc.X}, {rc.Y})",
             DoubleClickAction dc => $"DoubleClick ({dc.X}, {dc.Y})",
             DragAction d         => $"Drag ({d.FromX},{d.FromY})→({d.ToX},{d.ToY})",
+            MoveMouseAction mm   => $"MoveMouse ({mm.X}, {mm.Y})",
             KeyPressAction kp    => kp.Modifiers is { Length: > 0 }
                                        ? $"KeyPress: {kp.Key} + {string.Join("+", kp.Modifiers)}"
                                        : $"KeyPress: {kp.Key}",
@@ -91,6 +92,10 @@ public sealed class ActionExecutor
 
             case DragAction drag:
                 await _input.Drag(drag.FromX, drag.FromY, drag.ToX, drag.ToY, ct);
+                break;
+
+            case MoveMouseAction moveMouse:
+                await _input.MoveTo(moveMouse.X, moveMouse.Y, ct);
                 break;
 
             case KeyPressAction keyPress:

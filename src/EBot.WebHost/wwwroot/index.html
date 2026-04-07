@@ -254,7 +254,8 @@
         <button class="btn btn-green" id="btn-undock" onclick="apiClick('/api/undock')" disabled>&#9650; Undock</button>
         <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')">&#9660; Dock Nearest</button>
         <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/clear-destination')">&#10007; Clear Destination</button>
-        <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/open-cargo')">&#128230; Open Cargo / Inventory</button>
+        <button class="btn btn-muted" onclick="apiClick('/api/open-cargo')">&#128230; Open Cargo</button>
+        <button class="btn btn-muted" onclick="apiClick('/api/scan-holds')">&#128269; Scan Holds</button>
       </div>
 
       <div class="sec">Quick Travel</div>
@@ -427,8 +428,9 @@ function renderGameState(gs) {
   }).join('') : '<div class="empty">No modules detected</div>';
 
   // ── Inventory holds ──────────────────────────────────────────────────────
-  function holdHtml(usedM3, maxM3, items, emptyMsg) {
-    if (maxM3 == null || maxM3 <= 0) return `<div class="empty">${emptyMsg}</div>`;
+  function holdHtml(hold) {
+    const usedM3 = hold?.usedM3, maxM3 = hold?.maxM3, items = hold?.items || [];
+    if (maxM3 == null || maxM3 <= 0) return '';
     const pct  = Math.min(100, (usedM3 / maxM3) * 100);
     const used = usedM3 != null ? usedM3.toFixed(1) : '—';
     const max  = maxM3.toFixed(1);
@@ -438,19 +440,26 @@ function renderGameState(gs) {
         <div class="bar-track"><div class="bar-fill cargo${pct > 90 ? ' low' : ''}" style="width:${pct.toFixed(1)}%"></div></div>
         <span class="bar-pct" style="width:auto;font-size:.68rem">${used}/${max} m³</span>
       </div></div>`;
-    const list = items || [];
-    if (list.length) {
-      html += list.slice(0, 20).map(it =>
+    if (items.length) {
+      html += items.slice(0, 20).map(it =>
         `<div class="cargo-item"><span class="cargo-name">${esc(it.name || '—')}</span><span class="cargo-qty">${it.quantity != null ? 'x' + it.quantity : ''}</span></div>`
       ).join('');
-      if (list.length > 20) html += `<div class="empty">…and ${list.length - 20} more</div>`;
+      if (items.length > 20) html += `<div class="empty">…and ${items.length - 20} more</div>`;
     } else {
       html += '<div class="empty">Empty</div>';
     }
     return html;
   }
-  const cargoHtml   = holdHtml(gs.cargoUsedM3,   gs.cargoMaxM3,   gs.cargoItems,   'Not open — click Open Cargo or press Alt+C in EVE');
-  const oreHoldHtml = holdHtml(gs.oreHoldUsedM3, gs.oreHoldMaxM3, gs.oreHoldItems, 'Not open — click Open Cargo or press Alt+C in EVE');
+
+  const holds = gs.holds || [];
+  const holdsHtml = holds.length
+    ? holds.map(h => `
+        <div class="sec" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>${esc(h.name || h.holdType)}</span>
+          <button class="btn" style="padding:1px 7px;font-size:.68rem;" onclick="switchHold('${esc(h.holdType)}')">View</button>
+        </div>
+        ${holdHtml(h)}`).join('')
+    : `<div class="sec">Inventory</div><div class="empty">Not open — click Open Cargo or Scan Holds</div>`;
 
   // ── Update action button states (undock only when docked, dock only in space) ──
   const undockBtn = $('btn-undock');
@@ -479,10 +488,7 @@ function renderGameState(gs) {
     <div class="sec">Modules — ${mods.filter(m=>m.isActive).length} active, ${mods.filter(m=>m.isOverloaded).length} hot, ${mods.filter(m=>m.isOffline).length} offline / ${mods.length} total</div>
     <div class="module-grid">${modHtml}</div>
 
-    <div class="sec">Cargo Hold</div>
-    ${cargoHtml}
-    <div class="sec">Mining / Ore Hold</div>
-    ${oreHoldHtml}
+    ${holdsHtml}
     ${renderMiningStats()}
   `;
 
@@ -589,6 +595,17 @@ function refreshTravelGrid() {
 async function apiClick(url) {
   try {
     const r = await fetch(url, { method: 'POST' });
+    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed'); }
+  } catch(e) {}
+}
+
+async function switchHold(holdType) {
+  try {
+    const r = await fetch('/api/switch-hold', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ holdType })
+    });
     if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed'); }
   } catch(e) {}
 }

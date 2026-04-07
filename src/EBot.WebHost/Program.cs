@@ -261,6 +261,20 @@ api.MapPost("/open-cargo", async (BotOrchestrator o) =>
     catch (Exception ex) { return Results.BadRequest(new { success = false, message = ex.Message }); }
 });
 
+// POST /api/scan-holds  — cycles through all inventory hold nav entries to populate hold cache
+api.MapPost("/scan-holds", async (BotOrchestrator o) =>
+{
+    try { await o.ScanAllHoldsAsync(); return Results.Ok(new { success = true }); }
+    catch (Exception ex) { return Results.BadRequest(new { success = false, message = ex.Message }); }
+});
+
+// POST /api/switch-hold  — clicks a specific hold in the inventory nav panel
+api.MapPost("/switch-hold", async (SwitchHoldRequest req, BotOrchestrator o) =>
+{
+    try { await o.SwitchToHoldAsync(req.HoldType); return Results.Ok(new { success = true }); }
+    catch (Exception ex) { return Results.BadRequest(new { success = false, message = ex.Message }); }
+});
+
 // POST /api/clear-destination  — right-click last route marker → Remove Waypoint
 api.MapPost("/clear-destination", async (BotOrchestrator o) =>
 {

@@ -639,10 +639,15 @@ public sealed class MiningBot : IBot
 
     // ─── 7e. Warp to next asteroid belt ─────────────────────────────────────
     //
-    //  Right-click in empty 3D space → "Asteroid Belts" → pick a belt → "Warp to 0".
-    //  All three context-menu levels are handled by the same "space_menu" phase:
-    //  the bot always acts on the LAST (deepest) open context menu, working its way
-    //  from Asteroid Belts header → belt name → warp entry across successive ticks.
+    //  Right-click in empty 3D space → 4-level hover/click chain:
+    //
+    //    Level 1 — space menu:    "Asteroid Belts ▶"          → HOVER to expand
+    //    Level 2 — belt list:     "Gergish X - Asteroid Belt N ▶" → HOVER to expand
+    //    Level 3 — belt actions:  "Warp to Within (0 m) ▶"    → HOVER to expand
+    //    Level 4 — warp distances:"Within 0 m"                → CLICK
+    //
+    //  Every entry with a ▶ arrow must be hovered, not clicked.
+    //  Only the final leaf ("Within 0 m") is clicked.
 
     private static IBehaviorNode WarpToBelt() =>
         new SequenceNode("Warp to belt",
@@ -653,96 +658,204 @@ public sealed class MiningBot : IBot
             {
                 var phase = ctx.Blackboard.Get<string>("belt_phase") ?? "";
 
+                // Timeout counter — incremented each tick we're waiting; reset on progress
+                int ticks = ctx.Blackboard.Get<int>("belt_phase_ticks");
+
+                void Progress(string nextPhase)
+                {
+                    ctx.Blackboard.Set("belt_phase", nextPhase);
+                    ctx.Blackboard.Set("belt_phase_ticks", 0);
+                }
+
+                void Reset(int cooldownSec = 10)
+                {
+                    ctx.Blackboard.Set("belt_phase", "");
+                    ctx.Blackboard.Set("belt_phase_ticks", 0);
+                    ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(cooldownSec));
+                }
+
+                bool TimedOut(int maxTicks = 8)
+                {
+                    ticks++;
+                    ctx.Blackboard.Set("belt_phase_ticks", ticks);
+                    return ticks > maxTicks;
+                }
+
                 switch (phase)
                 {
-                    // ── Initial: right-click in 3D space ─────────────────
+                    // ─────────────────────────────────────────────────────────
+                    // Phase 1: right-click in empty space
+                    // ─────────────────────────────────────────────────────────
                     case "":
                     {
-                        ctx.Blackboard.Set("menu_expected", true);
                         RightClickInSpace(ctx);
-                        ctx.Wait(TimeSpan.FromMilliseconds(700));
-                        ctx.Blackboard.Set("belt_phase", "space_menu");
+                        ctx.Wait(TimeSpan.FromMilliseconds(800));
+                        Progress("await_space_menu");
                         return NodeStatus.Running;
                     }
 
-                    // ── Navigate context-menu hierarchy ───────────────────
-                    //  Same phase handles all three levels:
-                    //    Level 1 (space menu)  : contains "Asteroid Belts" header
-                    //    Level 2 (belt list)   : contains individual belt names
-                    //    Level 3 (belt actions): contains "Warp to Location at 0 m"
-                    case "space_menu":
+                    // ─────────────────────────────────────────────────────────
+                    // Phase 2: space context menu appeared — hover "Asteroid Belts ▶"
+                    // ─────────────────────────────────────────────────────────
+                    case "await_space_menu":
                     {
                         if (!ctx.GameState.HasContextMenu)
                         {
-                            // Menu never appeared — reset and add longer cooldown
-                            ctx.Blackboard.Set("menu_expected", false);
-                            ctx.Blackboard.Set("belt_phase", "");
-                            ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(8));
+                            if (TimedOut()) Reset(8);
                             return NodeStatus.Running;
                         }
 
-                        var menus    = ctx.GameState.ParsedUI.ContextMenus;
-                        var lastMenu = menus.LastOrDefault();  // deepest open submenu
+                        // Menu[0] is always the space menu
+                        var spaceMenu = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
+                        var beltsEntry = spaceMenu?.Entries.FirstOrDefault(e =>
+                            e.Text?.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase) == true &&
+                            e.Text.Trim().Length < 25); // "Asteroid Belts" not "Gergish X - Asteroid Belt 1"
 
-                        // ── Level 3 check: "Warp to Location at 0 m" ──────
-                        var warpZero = lastMenu?.Entries.FirstOrDefault(e =>
-                            e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true &&
-                            (e.Text.Contains(" 0") || e.Text.Contains("0 m")));
-                        warpZero ??= lastMenu?.Entries.FirstOrDefault(e =>
-                            e.Text?.Contains("Warp to Location", StringComparison.OrdinalIgnoreCase) == true);
-
-                        if (warpZero != null)
+                        if (beltsEntry == null)
                         {
-                            ctx.Blackboard.Set("menu_expected", false);
-                            ctx.Click(warpZero.UINode);
-                            ctx.Blackboard.Set("belt_phase", "");
+                            ctx.KeyPress(VirtualKey.Escape);
+                            Reset(20); // no belts in this system
+                            return NodeStatus.Running;
+                        }
+
+                        // HOVER — submenus open on mouse-over, not click
+                        ctx.Hover(beltsEntry.UINode);
+                        ctx.Wait(TimeSpan.FromMilliseconds(700));
+                        Progress("await_belt_list");
+                        return NodeStatus.Running;
+                    }
+
+                    // ─────────────────────────────────────────────────────────
+                    // Phase 3: belt list submenu appeared — hover first belt "▶"
+                    //   Belt entries look like: "Gergish IX - Asteroid Belt 3 ▶"
+                    //   Submenus are sibling nodes in the UI tree, so ordering of
+                    //   ContextMenus[] is not guaranteed — search ALL menus.
+                    // ─────────────────────────────────────────────────────────
+                    case "await_belt_list":
+                    {
+                        if (!ctx.GameState.HasContextMenu)
+                        {
+                            if (TimedOut(12)) Reset(8);
+                            return NodeStatus.Running;
+                        }
+
+                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+
+                        // Search every open menu for a belt entry.
+                        // Belt names: "Gergish X - Asteroid Belt 1", "Sparse Ore Deposit", etc.
+                        // They are longer than the category header "Asteroid Belts" (len ~15).
+                        ContextMenuEntry? beltEntry = null;
+                        foreach (var menu in allMenus)
+                        {
+                            beltEntry = menu.Entries.FirstOrDefault(e =>
+                                e.Text != null && e.Text.Length > 15 &&
+                                (e.Text.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase) ||
+                                 e.Text.Contains("Ore Deposit",   StringComparison.OrdinalIgnoreCase) ||
+                                 e.Text.Contains("Cluster",       StringComparison.OrdinalIgnoreCase)));
+                            if (beltEntry != null) break;
+                        }
+
+                        if (beltEntry == null)
+                        {
+                            // Log what we actually see for diagnostics
+                            if (ticks == 2)
+                            {
+                                var allEntries = allMenus.SelectMany(m => m.Entries)
+                                    .Select(e => e.Text ?? "null").Take(20);
+                                ctx.Log($"[WarpToBelt] await_belt_list: menus={allMenus.Count} entries=[{string.Join("|", allEntries)}]");
+                            }
+                            if (TimedOut(12))
+                            {
+                                ctx.KeyPress(VirtualKey.Escape);
+                                Reset(20);
+                            }
+                            return NodeStatus.Running;
+                        }
+
+                        ctx.Log($"[WarpToBelt] Hovering belt: {beltEntry.Text}");
+                        // HOVER the belt name — it has ▶ and expands action submenu
+                        ctx.Hover(beltEntry.UINode);
+                        ctx.Wait(TimeSpan.FromMilliseconds(700));
+                        Progress("await_actions_menu");
+                        return NodeStatus.Running;
+                    }
+
+                    // ─────────────────────────────────────────────────────────
+                    // Phase 4: belt-actions submenu appeared — hover "Warp to Within (0 m) ▶"
+                    //   Search all menus; the action menu may not be the last one.
+                    // ─────────────────────────────────────────────────────────
+                    case "await_actions_menu":
+                    {
+                        if (!ctx.GameState.HasContextMenu)
+                        {
+                            if (TimedOut(12)) Reset(8);
+                            return NodeStatus.Running;
+                        }
+
+                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+
+                        // "Warp to Within (0 m)" — has ▶, expands distance submenu
+                        ContextMenuEntry? warpEntry = null;
+                        foreach (var menu in allMenus)
+                        {
+                            warpEntry = menu.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true &&
+                                e.Text.Contains("0",     StringComparison.OrdinalIgnoreCase));
+                            warpEntry ??= menu.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true);
+                            if (warpEntry != null) break;
+                        }
+
+                        if (warpEntry == null)
+                        {
+                            if (TimedOut(12)) Reset(8);
+                            return NodeStatus.Running;
+                        }
+
+                        ctx.Log($"[WarpToBelt] Hovering warp entry: {warpEntry.Text}");
+                        // HOVER — "Warp to Within (0 m)" has ▶ → expands distance submenu
+                        ctx.Hover(warpEntry.UINode);
+                        ctx.Wait(TimeSpan.FromMilliseconds(700));
+                        Progress("await_warp_distances");
+                        return NodeStatus.Running;
+                    }
+
+                    // ─────────────────────────────────────────────────────────
+                    // Phase 5: distance submenu appeared — CLICK "Within 0 m"
+                    //   Search all menus for the distance entries.
+                    // ─────────────────────────────────────────────────────────
+                    case "await_warp_distances":
+                    {
+                        if (!ctx.GameState.HasContextMenu)
+                        {
+                            if (TimedOut(12)) Reset(8);
+                            return NodeStatus.Running;
+                        }
+
+                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+
+                        // "Within 0 m" is the leaf — CLICK, not hover
+                        ContextMenuEntry? within0 = null;
+                        foreach (var menu in allMenus)
+                        {
+                            within0 = menu.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Within 0", StringComparison.OrdinalIgnoreCase) == true);
+                            within0 ??= menu.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Within", StringComparison.OrdinalIgnoreCase) == true &&
+                                e.Text.Contains("0",       StringComparison.OrdinalIgnoreCase));
+                            if (within0 != null) break;
+                        }
+
+                        if (within0 != null)
+                        {
+                            ctx.Log($"[WarpToBelt] Clicking: {within0.Text}");
+                            ctx.Click(within0.UINode);
+                            Reset();
                             ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(30));
                             return NodeStatus.Running;
                         }
 
-                        // ── Level 2 check: individual belt name ───────────
-                        //  Belt names look like: "Asteroid Belt I", "Asteroid Belt II",
-                        //  "Sparse Asteroid Cluster", "Ore Deposit", etc.
-                        var beltEntry = lastMenu?.Entries.FirstOrDefault(e =>
-                            e.Text != null &&
-                            !e.Text.Trim().Equals("Asteroid Belts", StringComparison.OrdinalIgnoreCase) &&
-                            (e.Text.Contains("Belt",    StringComparison.OrdinalIgnoreCase) ||
-                             e.Text.Contains("Ore ",    StringComparison.OrdinalIgnoreCase) ||
-                             e.Text.Contains("Cluster", StringComparison.OrdinalIgnoreCase) ||
-                             e.Text.Contains("Deposit", StringComparison.OrdinalIgnoreCase)));
-
-                        if (beltEntry != null)
-                        {
-                            // Click belt name → opens Level 3 submenu with warp options
-                            ctx.Blackboard.Set("menu_expected", true);
-                            ctx.Click(beltEntry.UINode);
-                            ctx.Wait(TimeSpan.FromMilliseconds(500));
-                            return NodeStatus.Running; // stay in space_menu; next tick = Level 3
-                        }
-
-                        // ── Level 1 check: "Asteroid Belts" submenu header ─
-                        var asteroidsHeader = menus.SelectMany(m => m.Entries)
-                            .FirstOrDefault(e =>
-                                e.Text?.Trim().Equals("Asteroid Belts",
-                                    StringComparison.OrdinalIgnoreCase) == true ||
-                                (e.Text?.Contains("Asteroid Belt",
-                                    StringComparison.OrdinalIgnoreCase) == true &&
-                                 e.Text.Length < 20)); // short = header, not a specific belt
-
-                        if (asteroidsHeader != null)
-                        {
-                            // Click header → opens Level 2 submenu with belt list
-                            ctx.Blackboard.Set("menu_expected", true);
-                            ctx.Click(asteroidsHeader.UINode);
-                            ctx.Wait(TimeSpan.FromMilliseconds(500));
-                            return NodeStatus.Running; // stay in space_menu; next tick = Level 2
-                        }
-
-                        // ── No useful entry found — no belts in system? ───
-                        ctx.Blackboard.Set("menu_expected", false);
-                        ctx.KeyPress(VirtualKey.Escape);
-                        ctx.Blackboard.Set("belt_phase", "");
-                        ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(15));
+                        if (TimedOut(12)) Reset(8);
                         return NodeStatus.Running;
                     }
 
@@ -795,16 +908,15 @@ public sealed class MiningBot : IBot
 
     private static InventoryWindow? FindOreHoldWindow(BotContext ctx) =>
         ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault(w =>
-            w.SubCaptionLabelText?.Contains("Ore Hold",
-                StringComparison.OrdinalIgnoreCase) == true ||
-            w.SubCaptionLabelText?.Contains("ore",
-                StringComparison.OrdinalIgnoreCase) == true);
+            w.HoldType == InventoryHoldType.Mining) ??
+        // Fallback: text match in case title extraction returns Unknown
+        ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault(w =>
+            w.SubCaptionLabelText?.Contains("ore",   StringComparison.OrdinalIgnoreCase) == true ||
+            w.SubCaptionLabelText?.Contains("mining", StringComparison.OrdinalIgnoreCase) == true);
 
     private static bool IsOreHoldFull(BotContext ctx)
     {
-        var w = ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault(w =>
-            w.SubCaptionLabelText?.Contains("ore",
-                StringComparison.OrdinalIgnoreCase) == true);
+        var w = FindOreHoldWindow(ctx);
         return w?.CapacityGauge?.FillPercent >= OreHoldFullPercent;
     }
 

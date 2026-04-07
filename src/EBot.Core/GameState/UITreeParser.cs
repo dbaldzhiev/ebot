@@ -566,10 +566,14 @@ public sealed partial class UITreeParser
             .Where(n =>
                 !n.Node.PythonObjectTypeName.Contains("InvItem",   StringComparison.OrdinalIgnoreCase) &&
                 !n.Node.PythonObjectTypeName.Contains("Item",      StringComparison.OrdinalIgnoreCase))
-            .Select(n => new InventoryWindow
-            {
+            .Select(n => {
+                var title = ExtractInventoryTitle(n);
+                return new InventoryWindow
+                {
                 UINode = n,
-                SubCaptionLabelText = ExtractInventoryTitle(n),
+                SubCaptionLabelText = title,
+                HoldType = ClassifyHoldType(title),
+                NavEntries = ExtractNavEntries(n),
                 CapacityGauge = ExtractCapacityGauge(n),
                 Items = n.FindAll(i =>
                         i.Node.PythonObjectTypeName.Contains("InvItem", StringComparison.OrdinalIgnoreCase) ||
@@ -585,6 +589,7 @@ public sealed partial class UITreeParser
                 ButtonToStackAll = n.FindFirst(b =>
                     b.GetAllContainedDisplayTexts().Any(t =>
                         t.Contains("stack", StringComparison.OrdinalIgnoreCase))),
+                };
             })
             .ToList();
     }
@@ -622,14 +627,18 @@ public sealed partial class UITreeParser
             if (!string.IsNullOrWhiteSpace(t)) return t;
         }
 
-        // Approach 3: scan for any label whose text contains a known hold/container keyword
+        // Approach 3: scan ONLY the top strip of the window for a hold keyword —
+        // the left nav panel also contains hold names, so we must not scan the whole subtree.
         var keywords = new[]
         {
             "Cargo Hold", "Ore Hold", "Mining Hold", "Item Hangar",
             "Fleet Hangar", "Ship Hangar", "Fuel Bay", "Maintenance Bay",
+            "Infrastructure Hold", "Ship Maintenance",
         };
+        var titleStripMaxY = invNode.Region.Y + Math.Min(80, invNode.Region.Height / 5);
         var keyNode = invNode.FindFirst(n =>
         {
+            if (n.Region.Y > titleStripMaxY) return false;
             var own = EveTextUtil.StripTags(n.Node.GetDictString("_setText"))
                    ?? EveTextUtil.StripTags(n.Node.GetDictString("_text"));
             return own != null && keywords.Any(k =>
@@ -639,6 +648,80 @@ public sealed partial class UITreeParser
             ? (EveTextUtil.StripTags(keyNode.Node.GetDictString("_setText"))
                ?? EveTextUtil.StripTags(keyNode.Node.GetDictString("_text")))
             : null;
+    }
+
+    /// <summary>Classifies a hold title string into a typed enum.</summary>
+    public static InventoryHoldType ClassifyHoldType(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return InventoryHoldType.Unknown;
+        if (title.Contains("Cargo",          StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.Cargo;
+        if (title.Contains("Ore",            StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.Mining;
+        if (title.Contains("Mining",         StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.Mining;
+        if (title.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.Infrastructure;
+        if (title.Contains("Maintenance",    StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.ShipMaintenance;
+        if (title.Contains("Ship Hangar",    StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.ShipMaintenance;
+        if (title.Contains("Fleet Hangar",   StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.Fleet;
+        if (title.Contains("Fuel",           StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.Fuel;
+        if (title.Contains("Item Hangar",    StringComparison.OrdinalIgnoreCase)) return InventoryHoldType.Item;
+        return InventoryHoldType.Unknown;
+    }
+
+    /// <summary>
+    /// Finds the clickable hold entries in the inventory window's left navigation tree.
+    /// Each entry corresponds to a different hold (Cargo Hold, Ore Hold, etc.).
+    /// </summary>
+    private static List<InventoryNavEntry> ExtractNavEntries(UITreeNodeWithDisplayRegion invNode)
+    {
+        var holdKeywords = new (string Keyword, InventoryHoldType Type)[]
+        {
+            ("Cargo Hold",          InventoryHoldType.Cargo),
+            ("Ore Hold",            InventoryHoldType.Mining),
+            ("Mining Hold",         InventoryHoldType.Mining),
+            ("Infrastructure Hold", InventoryHoldType.Infrastructure),
+            ("Ship Maintenance",    InventoryHoldType.ShipMaintenance),
+            ("Maintenance Bay",     InventoryHoldType.ShipMaintenance),
+            ("Fleet Hangar",        InventoryHoldType.Fleet),
+            ("Fuel Bay",            InventoryHoldType.Fuel),
+            ("Item Hangar",         InventoryHoldType.Item),
+        };
+
+        // The nav panel occupies the left ~40% of the inventory window
+        var navPanelRightEdge = invNode.Region.X + invNode.Region.Width * 0.42;
+
+        var result = new List<InventoryNavEntry>();
+        var seenTypes = new HashSet<InventoryHoldType>();
+
+        // Find text-bearing nodes within the nav panel area
+        foreach (var n in invNode.FindAll(n =>
+            n.Region.Width is >= 50 and <= 400 &&
+            n.Region.Height is >= 10 and <= 32 &&
+            n.Region.X + n.Region.Width / 2 < navPanelRightEdge))
+        {
+            var own = EveTextUtil.StripTags(n.Node.GetDictString("_setText"))
+                   ?? EveTextUtil.StripTags(n.Node.GetDictString("_text"));
+            if (string.IsNullOrWhiteSpace(own)) continue;
+
+            foreach (var (keyword, holdType) in holdKeywords)
+            {
+                if (own.Contains(keyword, StringComparison.OrdinalIgnoreCase) && seenTypes.Add(holdType))
+                {
+                    var isSelected = n.Node.GetDictBool("_selected") == true
+                                  || n.Node.GetDictBool("selected")  == true
+                                  || (n.Node.GetDictString("_state") ?? "")
+                                         .Contains("selected", StringComparison.OrdinalIgnoreCase);
+                    result.Add(new InventoryNavEntry
+                    {
+                        UINode     = n,
+                        Label      = own.Trim(),
+                        HoldType   = holdType,
+                        IsSelected = isSelected,
+                    });
+                    break;
+                }
+            }
+        }
+
+        return result;
     }
 
     private static int? ExtractItemQuantity(UITreeNodeWithDisplayRegion item)

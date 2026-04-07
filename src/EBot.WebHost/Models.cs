@@ -31,14 +31,10 @@ public sealed record GameStateSummary(
     int RouteJumpsRemaining,
     bool HasContextMenu,
     IReadOnlyList<string> ContextMenuEntries,
-    // Cargo Hold (regular ship cargo)
-    double? CargoUsedM3,
-    double? CargoMaxM3,
-    IReadOnlyList<CargoItemDto> CargoItems,
-    // Ore / Mining Hold
-    double? OreHoldUsedM3,
-    double? OreHoldMaxM3,
-    IReadOnlyList<CargoItemDto> OreHoldItems);
+    // All detected inventory holds (currently-visible + orchestrator hold cache)
+    IReadOnlyList<HoldInfoDto> Holds,
+    // Nav entries (clickable holds in the left panel)
+    IReadOnlyList<HoldNavEntryDto> HoldNavEntries);
 
 public sealed record TargetDto(
     string? Name,
@@ -65,6 +61,20 @@ public sealed record ModuleButtonDto(
     int? RampRotationMilli);
 
 public sealed record CargoItemDto(string? Name, int? Quantity);
+
+/// <summary>Inventory hold data (capacity + items) for one hold type.</summary>
+public sealed record HoldInfoDto(
+    string Name,
+    string HoldType,
+    double? UsedM3,
+    double? MaxM3,
+    IReadOnlyList<CargoItemDto> Items);
+
+/// <summary>A clickable hold navigation entry in the left panel of the EVE inventory window.</summary>
+public sealed record HoldNavEntryDto(
+    string Label,
+    string HoldType,
+    bool IsSelected);
 
 public sealed record BotStatusResponse(
     string State,
@@ -103,11 +113,20 @@ public sealed record StationAlias(string Alias, string System, string? Bookmark)
 
 public sealed record StationAliasRequest(string Alias, string System, string? Bookmark);
 
+public sealed record SwitchHoldRequest(string HoldType);
+
 // ─── Builder helpers ────────────────────────────────────────────────────────
 
 public static class DtoMapper
 {
-    public static GameStateSummary ToDto(EBot.Core.DecisionEngine.BotContext ctx)
+    /// <summary>
+    /// Converts a BotContext to a GameStateSummary DTO.
+    /// <paramref name="holdCache"/> is the orchestrator's multi-tick hold data cache;
+    /// currently-visible holds override it for freshness.
+    /// </summary>
+    public static GameStateSummary ToDto(
+        EBot.Core.DecisionEngine.BotContext ctx,
+        IReadOnlyDictionary<string, HoldInfoDto>? holdCache = null)
     {
         var gs = ctx.GameState;
         var ui = gs.ParsedUI;
@@ -137,31 +156,45 @@ public static class DtoMapper
             .Where(t => !string.IsNullOrEmpty(t))
             .ToList() ?? [];
 
-        // Inventory windows — distinguish cargo hold from ore/mining hold by title
-        static bool IsOreHold(InventoryWindow w) =>
-            w.SubCaptionLabelText?.Contains("Ore",    StringComparison.OrdinalIgnoreCase) == true ||
-            w.SubCaptionLabelText?.Contains("Mining", StringComparison.OrdinalIgnoreCase) == true;
+        // ── Inventory holds ──────────────────────────────────────────────────
+        // Start with cached holds from previous ticks, then overlay the currently-visible window.
+        var holdsDict = holdCache?.ToDictionary(kv => kv.Key, kv => kv.Value)
+                        ?? new Dictionary<string, HoldInfoDto>();
 
-        static bool IsCargoHold(InventoryWindow w) =>
-            w.SubCaptionLabelText?.Contains("Cargo",  StringComparison.OrdinalIgnoreCase) == true ||
-            // If no title detected, treat as generic cargo (fallback)
-            string.IsNullOrEmpty(w.SubCaptionLabelText);
+        foreach (var w in ui.InventoryWindows)
+        {
+            if (w.CapacityGauge == null) continue;  // no gauge = skip
+            var key  = w.HoldType != InventoryHoldType.Unknown
+                       ? w.HoldType.ToString()
+                       : (w.SubCaptionLabelText ?? "Unknown");
+            var name = w.SubCaptionLabelText ?? (w.HoldType != InventoryHoldType.Unknown
+                       ? w.HoldType.ToString() : "Hold");
+            holdsDict[key] = new HoldInfoDto(
+                name, key,
+                w.CapacityGauge.Used, w.CapacityGauge.Maximum,
+                (w.Items ?? []).Select(i => new CargoItemDto(i.Name, i.Quantity)).ToList());
+        }
 
-        var oreWin   = ui.InventoryWindows.FirstOrDefault(IsOreHold);
-        var cargoWin = ui.InventoryWindows.FirstOrDefault(w => !IsOreHold(w) && IsCargoHold(w))
-                    ?? ui.InventoryWindows.FirstOrDefault(w => !IsOreHold(w));
-
-        double? cargoUsed = cargoWin?.CapacityGauge?.Used;
-        double? cargoMax  = cargoWin?.CapacityGauge?.Maximum;
-        var cargoItems = (cargoWin?.Items ?? [])
-            .Select(i => new CargoItemDto(i.Name, i.Quantity))
+        // Sort: Cargo first, then by hold type name
+        var holdOrder = new Dictionary<string, int>
+        {
+            ["Cargo"]           = 0,
+            ["Mining"]          = 1,
+            ["Infrastructure"]  = 2,
+            ["ShipMaintenance"] = 3,
+            ["Fleet"]           = 4,
+            ["Fuel"]            = 5,
+            ["Item"]            = 6,
+            ["Unknown"]         = 99,
+        };
+        var holds = holdsDict.Values
+            .OrderBy(h => holdOrder.GetValueOrDefault(h.HoldType, 50))
             .ToList();
 
-        double? oreUsed = oreWin?.CapacityGauge?.Used;
-        double? oreMax  = oreWin?.CapacityGauge?.Maximum;
-        var oreItems = (oreWin?.Items ?? [])
-            .Select(i => new CargoItemDto(i.Name, i.Quantity))
-            .ToList();
+        // Nav entries from the currently-open inventory window
+        var navEntries = ui.InventoryWindows.FirstOrDefault()?.NavEntries
+            .Select(e => new HoldNavEntryDto(e.Label ?? e.HoldType.ToString(), e.HoldType.ToString(), e.IsSelected))
+            .ToList() ?? [];
 
         return new GameStateSummary(
             gs.IsInSpace,
@@ -183,12 +216,8 @@ public static class DtoMapper
             gs.RouteJumpsRemaining,
             gs.HasContextMenu,
             contextMenuEntries,
-            cargoUsed,
-            cargoMax,
-            cargoItems,
-            oreUsed,
-            oreMax,
-            oreItems);
+            holds,
+            navEntries);
     }
 
     private static string FormatDistance(double meters)
