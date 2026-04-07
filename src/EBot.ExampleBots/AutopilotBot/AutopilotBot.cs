@@ -104,19 +104,14 @@ public sealed class AutopilotBot : IBot
                         ctx.Blackboard.Set("dest_phase", "typing");
                         return NodeStatus.Running;
 
-                    // ── Step 2: click search field, type, Enter ──────────────
+                    // ── Step 2: type into the search bar, Enter ──────────────
                     case "typing":
                     {
-                        // Click any focused/visible text input field
-                        var field = ctx.GameState.ParsedUI.UITree?.FindFirst(n =>
-                            n.Node.PythonObjectTypeName.Contains("EditText",
-                                StringComparison.OrdinalIgnoreCase) ||
-                            n.Node.PythonObjectTypeName.Contains("SingleLineEditText",
-                                StringComparison.OrdinalIgnoreCase));
-                        if (field != null)
-                            ctx.Click(field);
-
-                        ctx.KeyPress(VirtualKey.A, VirtualKey.Control);   // select all
+                        // Shift+S (from phase "") already focused the global "Search New Eden"
+                        // bar.  Do NOT click any EditText here — a depth-first FindFirst would
+                        // hit the hangar/cargo search bar while docked and send the text there
+                        // instead, causing the "selecting" phase to never find results.
+                        ctx.KeyPress(VirtualKey.A, VirtualKey.Control);   // select all existing text
                         ctx.TypeText(ctx.Blackboard.Get<string>("autopilot_destination")!);
                         ctx.KeyPress(VirtualKey.Enter);
                         ctx.Wait(TimeSpan.FromSeconds(2));
@@ -137,6 +132,9 @@ public sealed class AutopilotBot : IBot
                             if (setDest != null)
                             {
                                 ctx.Click(setDest.UINode);
+                                // Wait a few seconds for the route panel to populate so that
+                                // HandleDocked sees RouteJumpsRemaining > 0 when it fires next.
+                                ctx.Wait(TimeSpan.FromSeconds(3));
                                 ctx.Blackboard.Set("destination_set", true);
                                 ctx.Blackboard.Set("dest_phase", "done");
                                 return NodeStatus.Success;
@@ -163,7 +161,11 @@ public sealed class AutopilotBot : IBot
 
     private static IBehaviorNode HandleDocked() =>
         new SequenceNode("Undock",
-            new ConditionNode("Is docked?", ctx => ctx.GameState.IsDocked),
+            // Only undock when there are still route hops to cover.
+            // When route is empty we are at the destination — stay docked.
+            new ConditionNode("Is docked with route remaining?", ctx =>
+                ctx.GameState.IsDocked &&
+                ctx.GameState.RouteJumpsRemaining > 0),
             new ActionNode("Click undock", ctx =>
             {
                 var btn = ctx.GameState.ParsedUI.StationWindow?.UndockButton;
@@ -196,12 +198,27 @@ public sealed class AutopilotBot : IBot
                         ctx => !ctx.Blackboard.IsCooldownReady("post_jump")),
                     new ActionNode("Wait", _ => NodeStatus.Success)),
 
-                // Context menu is open — pick the right entry
-                new SequenceNode("Handle context menu",
-                    new ConditionNode("Context menu visible?",
-                        ctx => ctx.GameState.HasContextMenu),
+                // Stray context menu (opened by user or leftover) — dismiss it
+                // so we don't accidentally warp/jump to something unexpected.
+                new SequenceNode("Dismiss stray menu",
+                    new ConditionNode("Unexpected menu open?", ctx =>
+                        ctx.GameState.HasContextMenu &&
+                        !ctx.Blackboard.Get<bool>("nav_menu_expected")),
+                    new ActionNode("Press Escape", ctx =>
+                    {
+                        ctx.KeyPress(VirtualKey.Escape);
+                        return NodeStatus.Success;
+                    })),
+
+                // Context menu that WE opened by right-clicking a route marker
+                new SequenceNode("Handle nav context menu",
+                    new ConditionNode("Our nav menu visible?", ctx =>
+                        ctx.GameState.HasContextMenu &&
+                        ctx.Blackboard.Get<bool>("nav_menu_expected")),
                     new ActionNode("Click jump / dock / warp entry", ctx =>
                     {
+                        ctx.Blackboard.Set("nav_menu_expected", false);
+
                         var menu = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
                         if (menu == null) return NodeStatus.Failure;
 
@@ -223,18 +240,25 @@ public sealed class AutopilotBot : IBot
 
                         if (chosen == null)
                         {
-                            // Wrong menu (e.g., residual from something else) — dismiss
+                            // Menu appeared but has no usable nav entry — dismiss
                             ctx.KeyPress(VirtualKey.Escape);
                             return NodeStatus.Failure;
                         }
 
                         ctx.Click(chosen.UINode);
 
-                        if (chosen.Text?.Contains("jump", StringComparison.OrdinalIgnoreCase) == true ||
-                            chosen.Text?.Contains("dock", StringComparison.OrdinalIgnoreCase) == true)
+                        if (chosen.Text?.Contains("jump", StringComparison.OrdinalIgnoreCase) == true)
                         {
-                            // Give extra time for session change / docking
-                            ctx.Blackboard.SetCooldown("post_jump", TimeSpan.FromSeconds(12));
+                            // Long cooldown: ship may warp to the gate first (up to ~30 s),
+                            // then auto-jumps, then session change (~10 s).
+                            // Prevents the bot re-clicking the gate while all that plays out.
+                            ctx.Blackboard.SetCooldown("post_jump",    TimeSpan.FromSeconds(60));
+                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(60));
+                        }
+                        else if (chosen.Text?.Contains("dock", StringComparison.OrdinalIgnoreCase) == true)
+                        {
+                            ctx.Blackboard.SetCooldown("post_jump",    TimeSpan.FromSeconds(20));
+                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(20));
                         }
 
                         return NodeStatus.Success;
@@ -244,12 +268,15 @@ public sealed class AutopilotBot : IBot
                 new SequenceNode("Right-click route marker",
                     new ConditionNode("Has route markers?", ctx =>
                         FirstRouteMarker(ctx.GameState.ParsedUI) != null),
+                    new ConditionNode("No menu open?", ctx =>
+                        !ctx.GameState.HasContextMenu),
                     new ConditionNode("Action cooldown ready?", ctx =>
                         ctx.Blackboard.IsCooldownReady("marker_click")),
                     new ActionNode("Right-click next marker", ctx =>
                     {
                         var marker = FirstRouteMarker(ctx.GameState.ParsedUI);
                         if (marker == null) return NodeStatus.Failure;
+                        ctx.Blackboard.Set("nav_menu_expected", true);
                         ctx.RightClick(marker);
                         ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(2));
                         return NodeStatus.Success;

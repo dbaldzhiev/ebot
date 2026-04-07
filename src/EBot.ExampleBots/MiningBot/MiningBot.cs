@@ -671,6 +671,7 @@ public sealed class MiningBot : IBot
                 {
                     ctx.Blackboard.Set("belt_phase", "");
                     ctx.Blackboard.Set("belt_phase_ticks", 0);
+                    ctx.Blackboard.Set("menu_expected", false);
                     ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(cooldownSec));
                 }
 
@@ -688,6 +689,10 @@ public sealed class MiningBot : IBot
                     // ─────────────────────────────────────────────────────────
                     case "":
                     {
+                        // Mark menu as expected NOW so HandleStrayContextMenu (which
+                        // runs at higher priority) does not dismiss the space menu or
+                        // any of the cascade submenus that appear during navigation.
+                        ctx.Blackboard.Set("menu_expected", true);
                         RightClickInSpace(ctx);
                         ctx.Wait(TimeSpan.FromMilliseconds(800));
                         Progress("await_space_menu");
@@ -705,150 +710,150 @@ public sealed class MiningBot : IBot
                             return NodeStatus.Running;
                         }
 
-                        // Menu[0] is always the space menu
-                        var spaceMenu = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
-                        var beltsEntry = spaceMenu?.Entries.FirstOrDefault(e =>
-                            e.Text?.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase) == true &&
-                            e.Text.Trim().Length < 25); // "Asteroid Belts" not "Gergish X - Asteroid Belt 1"
+                        // Search all open menus for the short "Asteroid Belts" header.
+                        // Length < 20 distinguishes "Asteroid Belts" (15) from belt names
+                        // like "Gergish X - Asteroid Belt 1" (28+).
+                        ContextMenuEntry? beltsEntry = null;
+                        foreach (var m in ctx.GameState.ParsedUI.ContextMenus)
+                        {
+                            beltsEntry = m.Entries.FirstOrDefault(e =>
+                                e.Text != null &&
+                                e.Text.Trim().Length < 20 &&
+                                e.Text.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase));
+                            if (beltsEntry != null) break;
+                        }
 
                         if (beltsEntry == null)
                         {
+                            // Menu appeared but has no Asteroid Belts entry — this system has none
                             ctx.KeyPress(VirtualKey.Escape);
-                            Reset(20); // no belts in this system
+                            Reset(20);
                             return NodeStatus.Running;
                         }
 
                         // HOVER — submenus open on mouse-over, not click
                         ctx.Hover(beltsEntry.UINode);
-                        ctx.Wait(TimeSpan.FromMilliseconds(700));
+                        ctx.Wait(TimeSpan.FromMilliseconds(800));
                         Progress("await_belt_list");
                         return NodeStatus.Running;
                     }
 
                     // ─────────────────────────────────────────────────────────
-                    // Phase 3: belt list submenu appeared — hover first belt "▶"
-                    //   Belt entries look like: "Gergish IX - Asteroid Belt 3 ▶"
-                    //   Submenus are sibling nodes in the UI tree, so ordering of
-                    //   ContextMenus[] is not guaranteed — search ALL menus.
+                    // Phase 3: belt list visible — hover a belt entry
+                    //
+                    //  EVE may render submenus as:
+                    //  (a) separate ContextMenu nodes → allMenus.Count grows
+                    //  (b) MenuEntryView nodes nested inside the first ContextMenu
+                    //      → allMenus.Count stays 1, but entries contain belt names
+                    //
+                    //  Strategy: search ALL entries across ALL menus by text.
+                    //  Positional fallback: if 2+ menus, hover first entry of rightmost.
                     // ─────────────────────────────────────────────────────────
                     case "await_belt_list":
                     {
                         if (!ctx.GameState.HasContextMenu)
                         {
-                            if (TimedOut(12)) Reset(8);
+                            if (TimedOut(12)) { ctx.KeyPress(VirtualKey.Escape); Reset(8); }
                             return NodeStatus.Running;
                         }
 
-                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+                        var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
+                        var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
+                        ctx.Log($"[WarpToBelt] belt_list t={ticks+1} menus={allMenus.Count} entries={allEntries.Count} " +
+                                $"[{string.Join("|", allEntries.Take(5).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(18, (e.Text ?? "").Length))}'"))}]");
 
-                        // Search every open menu for a belt entry.
-                        // Belt names: "Gergish X - Asteroid Belt 1", "Sparse Ore Deposit", etc.
-                        // They are longer than the category header "Asteroid Belts" (len ~15).
-                        ContextMenuEntry? beltEntry = null;
-                        foreach (var menu in allMenus)
+                        // Text match: belt names like "Gergish II - Asteroid Belt 1"
+                        var beltEntry = allEntries.FirstOrDefault(e =>
+                            e.Text != null && e.Text.Length > 14 &&
+                            e.Text.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase));
+                        beltEntry ??= allEntries.FirstOrDefault(e =>
+                            e.Text != null && e.Text.Length > 8 &&
+                            (e.Text.Contains("Ore Deposit", StringComparison.OrdinalIgnoreCase) ||
+                             e.Text.Contains("Cluster",     StringComparison.OrdinalIgnoreCase)));
+
+                        // Positional fallback: rightmost separate menu's first entry
+                        if (beltEntry == null && allMenus.Count >= 2)
                         {
-                            beltEntry = menu.Entries.FirstOrDefault(e =>
-                                e.Text != null && e.Text.Length > 15 &&
-                                (e.Text.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase) ||
-                                 e.Text.Contains("Ore Deposit",   StringComparison.OrdinalIgnoreCase) ||
-                                 e.Text.Contains("Cluster",       StringComparison.OrdinalIgnoreCase)));
-                            if (beltEntry != null) break;
+                            var rightmost = allMenus.MaxBy(m => m.UINode.Region.X);
+                            beltEntry = rightmost?.Entries.FirstOrDefault();
+                            if (beltEntry != null)
+                                ctx.Log($"[WarpToBelt] belt positional fallback: '{beltEntry.Text}'");
                         }
 
                         if (beltEntry == null)
                         {
-                            // Log what we actually see for diagnostics
-                            if (ticks == 2)
-                            {
-                                var allEntries = allMenus.SelectMany(m => m.Entries)
-                                    .Select(e => e.Text ?? "null").Take(20);
-                                ctx.Log($"[WarpToBelt] await_belt_list: menus={allMenus.Count} entries=[{string.Join("|", allEntries)}]");
-                            }
-                            if (TimedOut(12))
-                            {
-                                ctx.KeyPress(VirtualKey.Escape);
-                                Reset(20);
-                            }
+                            if (TimedOut(12)) { ctx.KeyPress(VirtualKey.Escape); Reset(20); }
                             return NodeStatus.Running;
                         }
 
-                        ctx.Log($"[WarpToBelt] Hovering belt: {beltEntry.Text}");
-                        // HOVER the belt name — it has ▶ and expands action submenu
+                        ctx.Log($"[WarpToBelt] Hovering belt: '{beltEntry.Text}'");
                         ctx.Hover(beltEntry.UINode);
-                        ctx.Wait(TimeSpan.FromMilliseconds(700));
+                        ctx.Wait(TimeSpan.FromMilliseconds(800));
                         Progress("await_actions_menu");
                         return NodeStatus.Running;
                     }
 
                     // ─────────────────────────────────────────────────────────
-                    // Phase 4: belt-actions submenu appeared — hover "Warp to Within (0 m) ▶"
-                    //   Search all menus; the action menu may not be the last one.
+                    // Phase 4: hover "Warp to Within (0 m) ▶"
+                    //  No count requirement — search ALL entries for "Warp"+"Within".
+                    //  Belt names never contain "Warp", space menu never contains "Warp".
                     // ─────────────────────────────────────────────────────────
                     case "await_actions_menu":
                     {
                         if (!ctx.GameState.HasContextMenu)
                         {
-                            if (TimedOut(12)) Reset(8);
+                            if (TimedOut(12)) { ctx.KeyPress(VirtualKey.Escape); Reset(8); }
                             return NodeStatus.Running;
                         }
 
-                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+                        var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
+                        var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
+                        ctx.Log($"[WarpToBelt] actions t={ticks+1} menus={allMenus.Count} entries={allEntries.Count} " +
+                                $"[{string.Join("|", allEntries.Take(5).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(18, (e.Text ?? "").Length))}'"))}]");
 
-                        // "Warp to Within (0 m)" — has ▶, expands distance submenu
-                        ContextMenuEntry? warpEntry = null;
-                        foreach (var menu in allMenus)
-                        {
-                            warpEntry = menu.Entries.FirstOrDefault(e =>
-                                e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true &&
-                                e.Text.Contains("0",     StringComparison.OrdinalIgnoreCase));
-                            warpEntry ??= menu.Entries.FirstOrDefault(e =>
-                                e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true);
-                            if (warpEntry != null) break;
-                        }
+                        // "Warp to Within (0 m)" — prefer match with both Warp+Within
+                        var warpEntry = allEntries.FirstOrDefault(e =>
+                            e.Text?.Contains("Warp",   StringComparison.OrdinalIgnoreCase) == true &&
+                            e.Text.Contains("Within",  StringComparison.OrdinalIgnoreCase));
+                        warpEntry ??= allEntries.FirstOrDefault(e =>
+                            e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true);
 
                         if (warpEntry == null)
                         {
-                            if (TimedOut(12)) Reset(8);
+                            if (TimedOut(12)) { ctx.KeyPress(VirtualKey.Escape); Reset(8); }
                             return NodeStatus.Running;
                         }
 
-                        ctx.Log($"[WarpToBelt] Hovering warp entry: {warpEntry.Text}");
-                        // HOVER — "Warp to Within (0 m)" has ▶ → expands distance submenu
+                        ctx.Log($"[WarpToBelt] Hovering warp: '{warpEntry.Text}'");
                         ctx.Hover(warpEntry.UINode);
-                        ctx.Wait(TimeSpan.FromMilliseconds(700));
+                        ctx.Wait(TimeSpan.FromMilliseconds(800));
                         Progress("await_warp_distances");
                         return NodeStatus.Running;
                     }
 
                     // ─────────────────────────────────────────────────────────
-                    // Phase 5: distance submenu appeared — CLICK "Within 0 m"
-                    //   Search all menus for the distance entries.
+                    // Phase 5: CLICK "Within 0 m"
+                    //  Search ALL entries — "Within 0" is unique to the distance menu.
                     // ─────────────────────────────────────────────────────────
                     case "await_warp_distances":
                     {
                         if (!ctx.GameState.HasContextMenu)
                         {
-                            if (TimedOut(12)) Reset(8);
+                            if (TimedOut(12)) { ctx.KeyPress(VirtualKey.Escape); Reset(8); }
                             return NodeStatus.Running;
                         }
 
-                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+                        var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
+                        var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
+                        ctx.Log($"[WarpToBelt] distances t={ticks+1} menus={allMenus.Count} entries={allEntries.Count} " +
+                                $"[{string.Join("|", allEntries.Take(6).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(18, (e.Text ?? "").Length))}'"))}]");
 
-                        // "Within 0 m" is the leaf — CLICK, not hover
-                        ContextMenuEntry? within0 = null;
-                        foreach (var menu in allMenus)
-                        {
-                            within0 = menu.Entries.FirstOrDefault(e =>
-                                e.Text?.Contains("Within 0", StringComparison.OrdinalIgnoreCase) == true);
-                            within0 ??= menu.Entries.FirstOrDefault(e =>
-                                e.Text?.Contains("Within", StringComparison.OrdinalIgnoreCase) == true &&
-                                e.Text.Contains("0",       StringComparison.OrdinalIgnoreCase));
-                            if (within0 != null) break;
-                        }
+                        var within0 = allEntries.FirstOrDefault(e =>
+                            e.Text?.Contains("Within 0", StringComparison.OrdinalIgnoreCase) == true);
 
                         if (within0 != null)
                         {
-                            ctx.Log($"[WarpToBelt] Clicking: {within0.Text}");
+                            ctx.Log($"[WarpToBelt] Clicking: '{within0.Text}'");
                             ctx.Click(within0.UINode);
                             Reset();
                             ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(30));

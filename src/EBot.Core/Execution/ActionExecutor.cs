@@ -95,7 +95,7 @@ public sealed class ActionExecutor
                 break;
 
             case MoveMouseAction moveMouse:
-                await _input.MoveTo(moveMouse.X, moveMouse.Y, ct);
+                await _input.MoveToClient(moveMouse.X, moveMouse.Y, ct);
                 break;
 
             case KeyPressAction keyPress:

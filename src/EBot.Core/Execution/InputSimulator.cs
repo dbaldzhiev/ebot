@@ -117,6 +117,18 @@ public sealed class InputSimulator
     }
 
     /// <summary>
+    /// Moves the cursor to EVE client-area coordinates (same coordinate space as Click/RightClick).
+    /// Translates to screen coords, applies jitter, and moves via humanized Bézier arc.
+    /// Use this for hover-triggered submenus (context menu entries with ▶).
+    /// </summary>
+    public async Task MoveToClient(int clientX, int clientY, CancellationToken ct = default)
+    {
+        var (sx, sy) = ClientToScreen(clientX, clientY);
+        var (jx, jy) = ApplyJitter(sx, sy);
+        await MoveToSmooth(jx, jy, ct);
+    }
+
+    /// <summary>
     /// Moves to target screen coordinates along a humanized Bézier arc.
     /// Falls back to a single move when human movement is disabled or distance is tiny.
     /// </summary>
