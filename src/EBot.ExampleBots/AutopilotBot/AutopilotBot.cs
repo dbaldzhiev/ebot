@@ -59,12 +59,40 @@ public sealed class AutopilotBot : IBot
 
     public IBehaviorNode BuildBehaviorTree() =>
         new SelectorNode("Autopilot Root",
+            TrackSystemChange(),     // Always Failure — side-effect: detects jumps, sets 2s cooldown
             HandleMessageBoxes(),
             SetupDestination(),
             HandleDocked(),
             HandleInSpace());
 
     // ─── Sub-trees ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tracks the current solar system each tick.
+    /// When the system name changes (= a stargate jump just completed), sets a 2-second
+    /// post-jump cooldown and clears the nav_menu_expected flag so stale menus are dismissed.
+    /// Always returns Failure so the parent Selector continues to the real logic.
+    /// </summary>
+    private static IBehaviorNode TrackSystemChange() =>
+        new ActionNode("Track system change", ctx =>
+        {
+            var sys = ctx.GameState.ParsedUI.InfoPanelContainer?.InfoPanelLocationInfo?.SystemName;
+            var prev = ctx.Blackboard.Get<string>("nav_current_system");
+
+            if (sys != null && prev != null &&
+                !string.Equals(sys, prev, StringComparison.OrdinalIgnoreCase))
+            {
+                // System just changed → gate jump completed; wait 2 s then proceed
+                ctx.Blackboard.SetCooldown("post_jump", TimeSpan.FromSeconds(2));
+                ctx.Blackboard.Set("nav_menu_expected", false);
+                ctx.Log($"[Autopilot] Jump detected: {prev} → {sys} — 2 s cooldown");
+            }
+
+            if (sys != null)
+                ctx.Blackboard.Set("nav_current_system", sys);
+
+            return NodeStatus.Failure; // always fail — this is a side-effect-only node
+        });
 
     private static IBehaviorNode HandleMessageBoxes() =>
         new SequenceNode("Close message boxes",
@@ -224,19 +252,24 @@ public sealed class AutopilotBot : IBot
 
                         var entries = menu.Entries;
 
+                        // Search by UINode full texts (more robust than ContextMenuEntry.Text
+                        // which may still be a glyph for some EVE UI versions).
+                        static bool HasText(ContextMenuEntry e, string keyword) =>
+                            (e.Text?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true) ||
+                            e.UINode.GetAllContainedDisplayTexts()
+                                    .Any(t => t.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+
                         // Priority: jump → dock → warp-to-0 → any warp
                         var chosen =
+                            entries.FirstOrDefault(e => HasText(e, "jump")) ??
+                            entries.FirstOrDefault(e => HasText(e, "dock")) ??
                             entries.FirstOrDefault(e =>
-                                e.Text?.Contains("jump", StringComparison.OrdinalIgnoreCase) == true) ??
-                            entries.FirstOrDefault(e =>
-                                e.Text?.Contains("dock", StringComparison.OrdinalIgnoreCase) == true) ??
-                            entries.FirstOrDefault(e =>
-                                e.Text?.Contains("warp", StringComparison.OrdinalIgnoreCase) == true &&
-                                (e.Text.Contains(" 0 ", StringComparison.OrdinalIgnoreCase) ||
-                                 e.Text.Contains("0 m", StringComparison.OrdinalIgnoreCase) ||
-                                 e.Text.EndsWith(" 0", StringComparison.OrdinalIgnoreCase))) ??
-                            entries.FirstOrDefault(e =>
-                                e.Text?.Contains("warp", StringComparison.OrdinalIgnoreCase) == true);
+                                HasText(e, "warp") &&
+                                e.UINode.GetAllContainedDisplayTexts().Any(t =>
+                                    t.Contains(" 0 ", StringComparison.OrdinalIgnoreCase) ||
+                                    t.Contains("0 m", StringComparison.OrdinalIgnoreCase) ||
+                                    t.EndsWith(" 0",  StringComparison.OrdinalIgnoreCase))) ??
+                            entries.FirstOrDefault(e => HasText(e, "warp"));
 
                         if (chosen == null)
                         {
@@ -247,18 +280,24 @@ public sealed class AutopilotBot : IBot
 
                         ctx.Click(chosen.UINode);
 
-                        if (chosen.Text?.Contains("jump", StringComparison.OrdinalIgnoreCase) == true)
+                        if (HasText(chosen, "jump"))
                         {
-                            // Long cooldown: ship may warp to the gate first (up to ~30 s),
-                            // then auto-jumps, then session change (~10 s).
-                            // Prevents the bot re-clicking the gate while all that plays out.
-                            ctx.Blackboard.SetCooldown("post_jump",    TimeSpan.FromSeconds(60));
-                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(60));
+                            // The ship will warp to the gate (IsWarping handles the wait).
+                            // System change detection sets post_jump = 2 s after landing.
+                            // Only set a short marker_click to prevent immediate re-click
+                            // during the warp initiation window.
+                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(5));
                         }
-                        else if (chosen.Text?.Contains("dock", StringComparison.OrdinalIgnoreCase) == true)
+                        else if (HasText(chosen, "dock"))
                         {
-                            ctx.Blackboard.SetCooldown("post_jump",    TimeSpan.FromSeconds(20));
-                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(20));
+                            // Short cooldown while docking animation plays
+                            ctx.Blackboard.SetCooldown("post_jump",    TimeSpan.FromSeconds(5));
+                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(5));
+                        }
+                        else
+                        {
+                            // Warp to waypoint — no long cooldown; IsWarping state handles the wait
+                            ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(3));
                         }
 
                         return NodeStatus.Success;

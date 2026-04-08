@@ -100,7 +100,8 @@ public sealed partial class UITreeParser
     private List<ContextMenu> FindContextMenus(UITreeNodeWithDisplayRegion root)
     {
         // EVE's context menu container Python type name is exactly "ContextMenu" (Elm reference).
-        // Entries are exactly "MenuEntryView" at any descendant depth.
+        // Submenus may also appear as separate ContextMenu nodes (EVE creates them dynamically).
+        // Entries are "MenuEntryView" at any descendant depth.
         return root.FindAll(n => n.Node.PythonObjectTypeName == "ContextMenu")
             .Select(n => new ContextMenu
             {
@@ -109,7 +110,14 @@ public sealed partial class UITreeParser
                     .Select(c => new ContextMenuEntry
                     {
                         UINode = c,
-                        Text = c.GetAllContainedDisplayTexts().FirstOrDefault(),
+                        // Skip single-char glyphs (▶, ►, etc.) — prefer any text ≥2 chars with a letter.
+                        // Some menu entries store their label in a child Label node; the MenuEntryView
+                        // itself may have only a glyph in _setText, causing FirstOrDefault() to return
+                        // the wrong text.  We scan all texts and find the first one that looks like a
+                        // real word (≥2 chars, at least one letter), falling back to whatever is first.
+                        Text = c.GetAllContainedDisplayTexts()
+                                 .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter))
+                               ?? c.GetAllContainedDisplayTexts().FirstOrDefault(),
                         IsHighlighted = c.Node.GetDictBool("_hilite") ?? false,
                     })
                     .ToList(),
@@ -265,10 +273,23 @@ public sealed partial class UITreeParser
         // If overloaded also implies active cycling
         if (isOverloaded && isActive == null) isActive = true;
 
+        // Module name: EVE stores the name in the _hint attribute of the slot or button.
+        // Strip "Slot N: " prefix that EVE sometimes prepends.
+        var rawHint = EveTextUtil.StripTags(moduleButton.Node.GetDictString("_hint"))
+                   ?? EveTextUtil.StripTags(slotNode.Node.GetDictString("_hint"));
+        string? moduleName = null;
+        if (rawHint != null)
+        {
+            var colon = rawHint.IndexOf(':');
+            moduleName = colon >= 0 ? rawHint[(colon + 1)..].Trim() : rawHint.Trim();
+            if (moduleName.Length == 0) moduleName = null;
+        }
+
         return new ShipUIModuleButton
         {
             UINode = slotNode,
             SlotNode = slotNode,
+            Name = moduleName,
             IsActive = isActive,
             IsHiliteVisible = HasSprite(slotNode, "hilite", "hiliteSprite"),
             IsBusy = isBusy,
@@ -383,7 +404,10 @@ public sealed partial class UITreeParser
         {
             foreach (var child in headerRow.Children)
             {
-                var text = child.GetAllContainedDisplayTexts().FirstOrDefault()?.Trim();
+                // Skip glyph-only text (same fix as ContextMenuEntry.Text)
+                var text = (child.GetAllContainedDisplayTexts()
+                                 .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter))
+                           ?? child.GetAllContainedDisplayTexts().FirstOrDefault())?.Trim();
                 if (!string.IsNullOrEmpty(text))
                     headers.Add((text, child.Region.X));
             }
@@ -468,6 +492,16 @@ public sealed partial class UITreeParser
         cellsTexts.TryGetValue("Type", out var objectType);
         if (string.IsNullOrEmpty(objectType)) cellsTexts.TryGetValue("Ship Type", out objectType);
         if (string.IsNullOrEmpty(objectType)) cellsTexts.TryGetValue("Category", out objectType);
+        if (string.IsNullOrEmpty(objectType)) cellsTexts.TryGetValue("Entity Type", out objectType);
+        if (string.IsNullOrEmpty(objectType)) cellsTexts.TryGetValue("Ship", out objectType);
+        if (string.IsNullOrEmpty(objectType))
+        {
+            // Last-resort: any column header that contains "type" or "category" (case-insensitive)
+            var typeCol = cellsTexts.Keys.FirstOrDefault(k =>
+                k.Contains("type",     StringComparison.OrdinalIgnoreCase) ||
+                k.Contains("category", StringComparison.OrdinalIgnoreCase));
+            if (typeCol != null) cellsTexts.TryGetValue(typeCol, out objectType);
+        }
 
         cellsTexts.TryGetValue("Distance", out var cellDistText);
         var resolvedDistText = !string.IsNullOrEmpty(cellDistText) ? cellDistText : distText;
@@ -582,7 +616,11 @@ public sealed partial class UITreeParser
                     .Select(i => new InventoryItem
                     {
                         UINode = i,
-                        Name  = i.GetAllContainedDisplayTexts().FirstOrDefault(),
+                        // Prefer the item's own _setText/_text; skip short glyphs.
+                        Name = EveTextUtil.StripTags(i.Node.GetDictString("_setText"))
+                            ?? EveTextUtil.StripTags(i.Node.GetDictString("_text"))
+                            ?? i.GetAllContainedDisplayTexts()
+                                .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter)),
                         Quantity = ExtractItemQuantity(i),
                     })
                     .ToList(),

@@ -741,13 +741,16 @@ public sealed class MiningBot : IBot
                     // ─────────────────────────────────────────────────────────
                     // Phase 3: belt list visible — hover a belt entry
                     //
-                    //  EVE may render submenus as:
-                    //  (a) separate ContextMenu nodes → allMenus.Count grows
-                    //  (b) MenuEntryView nodes nested inside the first ContextMenu
-                    //      → allMenus.Count stays 1, but entries contain belt names
-                    //
-                    //  Strategy: search ALL entries across ALL menus by text.
-                    //  Positional fallback: if 2+ menus, hover first entry of rightmost.
+                    //  After hovering "Asteroid Belts" the belt submenu appears.
+                    //  Strategy:
+                    //  1. Search ALL entries across ALL menus by UINode full texts
+                    //     (more reliable than ContextMenuEntry.Text which may still
+                    //     return a glyph for some entries).
+                    //  2. Positional fallback: if ≥2 menus, hover first entry of the
+                    //     rightmost menu (the submenu, not the space menu).
+                    //  3. Re-hover "Asteroid Belts" on every tick where the submenu
+                    //     is not yet detected — keeps the submenu open while waiting
+                    //     for the UI tree to capture it.
                     // ─────────────────────────────────────────────────────────
                     case "await_belt_list":
                     {
@@ -760,29 +763,48 @@ public sealed class MiningBot : IBot
                         var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
                         var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
                         ctx.Log($"[WarpToBelt] belt_list t={ticks+1} menus={allMenus.Count} entries={allEntries.Count} " +
-                                $"[{string.Join("|", allEntries.Take(5).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(18, (e.Text ?? "").Length))}'"))}]");
+                                $"[{string.Join("|", allEntries.Take(6).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(20, (e.Text ?? "").Length))}'"))}]");
 
-                        // Text match: belt names like "Gergish II - Asteroid Belt 1"
+                        // Helper: scan all UINode texts (not just parsed Text field)
+                        static bool EntryHasText(ContextMenuEntry e, Func<string, bool> pred)
+                            => e.UINode.GetAllContainedDisplayTexts().Any(pred);
+
+                        // Text match: belt names like "Gergish II - Asteroid Belt 1" (>14 chars)
                         var beltEntry = allEntries.FirstOrDefault(e =>
-                            e.Text != null && e.Text.Length > 14 &&
-                            e.Text.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase));
+                            EntryHasText(e, t => t.Length > 14 &&
+                                t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)));
                         beltEntry ??= allEntries.FirstOrDefault(e =>
-                            e.Text != null && e.Text.Length > 8 &&
-                            (e.Text.Contains("Ore Deposit", StringComparison.OrdinalIgnoreCase) ||
-                             e.Text.Contains("Cluster",     StringComparison.OrdinalIgnoreCase)));
+                            EntryHasText(e, t => t.Length > 8 &&
+                                (t.Contains("Ore Deposit", StringComparison.OrdinalIgnoreCase) ||
+                                 t.Contains("Cluster",     StringComparison.OrdinalIgnoreCase))));
 
                         // Positional fallback: rightmost separate menu's first entry
+                        // (the submenu always opens to the RIGHT of the space menu)
                         if (beltEntry == null && allMenus.Count >= 2)
                         {
-                            var rightmost = allMenus.MaxBy(m => m.UINode.Region.X);
-                            beltEntry = rightmost?.Entries.FirstOrDefault();
+                            var spaceMenuX = allMenus.Min(m => m.UINode.Region.X);
+                            var subMenu = allMenus
+                                .Where(m => m.UINode.Region.X > spaceMenuX + 10)
+                                .MaxBy(m => m.UINode.Region.X);
+                            beltEntry = subMenu?.Entries.FirstOrDefault();
                             if (beltEntry != null)
-                                ctx.Log($"[WarpToBelt] belt positional fallback: '{beltEntry.Text}'");
+                                ctx.Log($"[WarpToBelt] positional belt fallback from menu x={subMenu!.UINode.Region.X}: '{beltEntry.Text}'");
                         }
 
                         if (beltEntry == null)
                         {
-                            if (TimedOut(12)) { ctx.KeyPress(VirtualKey.Escape); Reset(20); }
+                            // Submenu not yet detected — re-hover "Asteroid Belts" to keep it open.
+                            // "Asteroid Belts" is short (<20 chars) and contains "Asteroid Belt".
+                            var beltsHeader = allEntries.FirstOrDefault(e =>
+                                EntryHasText(e, t => t.Length < 20 &&
+                                    t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)));
+                            if (beltsHeader != null)
+                            {
+                                ctx.Log("[WarpToBelt] Re-hovering 'Asteroid Belts' — submenu not yet visible");
+                                ctx.Hover(beltsHeader.UINode);
+                                ctx.Wait(TimeSpan.FromMilliseconds(800));
+                            }
+                            if (TimedOut(16)) { ctx.KeyPress(VirtualKey.Escape); Reset(20); }
                             return NodeStatus.Running;
                         }
 
@@ -795,7 +817,7 @@ public sealed class MiningBot : IBot
 
                     // ─────────────────────────────────────────────────────────
                     // Phase 4: hover "Warp to Within (0 m) ▶"
-                    //  No count requirement — search ALL entries for "Warp"+"Within".
+                    //  Search ALL entries across ALL menus by UINode full texts.
                     //  Belt names never contain "Warp", space menu never contains "Warp".
                     // ─────────────────────────────────────────────────────────
                     case "await_actions_menu":
@@ -809,14 +831,17 @@ public sealed class MiningBot : IBot
                         var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
                         var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
                         ctx.Log($"[WarpToBelt] actions t={ticks+1} menus={allMenus.Count} entries={allEntries.Count} " +
-                                $"[{string.Join("|", allEntries.Take(5).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(18, (e.Text ?? "").Length))}'"))}]");
+                                $"[{string.Join("|", allEntries.Take(6).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(20, (e.Text ?? "").Length))}'"))}]");
+
+                        static bool EntryHasText(ContextMenuEntry e, Func<string, bool> pred)
+                            => e.UINode.GetAllContainedDisplayTexts().Any(pred);
 
                         // "Warp to Within (0 m)" — prefer match with both Warp+Within
                         var warpEntry = allEntries.FirstOrDefault(e =>
-                            e.Text?.Contains("Warp",   StringComparison.OrdinalIgnoreCase) == true &&
-                            e.Text.Contains("Within",  StringComparison.OrdinalIgnoreCase));
+                            EntryHasText(e, t => t.Contains("Warp",   StringComparison.OrdinalIgnoreCase)
+                                              && t.Contains("Within",  StringComparison.OrdinalIgnoreCase)));
                         warpEntry ??= allEntries.FirstOrDefault(e =>
-                            e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true);
+                            EntryHasText(e, t => t.Contains("Warp", StringComparison.OrdinalIgnoreCase)));
 
                         if (warpEntry == null)
                         {
@@ -833,7 +858,7 @@ public sealed class MiningBot : IBot
 
                     // ─────────────────────────────────────────────────────────
                     // Phase 5: CLICK "Within 0 m"
-                    //  Search ALL entries — "Within 0" is unique to the distance menu.
+                    //  Search ALL entries by UINode full texts — "Within 0" is unique.
                     // ─────────────────────────────────────────────────────────
                     case "await_warp_distances":
                     {
@@ -846,10 +871,18 @@ public sealed class MiningBot : IBot
                         var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
                         var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
                         ctx.Log($"[WarpToBelt] distances t={ticks+1} menus={allMenus.Count} entries={allEntries.Count} " +
-                                $"[{string.Join("|", allEntries.Take(6).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(18, (e.Text ?? "").Length))}'"))}]");
+                                $"[{string.Join("|", allEntries.Take(6).Select(e => $"'{(e.Text ?? "").Substring(0, Math.Min(20, (e.Text ?? "").Length))}'"))}]");
+
+                        static bool EntryHasText(ContextMenuEntry e, Func<string, bool> pred)
+                            => e.UINode.GetAllContainedDisplayTexts().Any(pred);
 
                         var within0 = allEntries.FirstOrDefault(e =>
-                            e.Text?.Contains("Within 0", StringComparison.OrdinalIgnoreCase) == true);
+                            EntryHasText(e, t => t.Contains("Within 0", StringComparison.OrdinalIgnoreCase)));
+                        // Fallback: any entry with just "0 m" or "0m" (the 0-distance option)
+                        within0 ??= allEntries.FirstOrDefault(e =>
+                            EntryHasText(e, t =>
+                                (t.Equals("0 m", StringComparison.OrdinalIgnoreCase) ||
+                                 t.Equals("0m",  StringComparison.OrdinalIgnoreCase))));
 
                         if (within0 != null)
                         {

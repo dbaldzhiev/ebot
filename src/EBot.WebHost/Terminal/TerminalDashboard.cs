@@ -100,11 +100,18 @@ public sealed class TerminalDashboard(
                 var mods = ui.ShipUI.ModuleButtons;
                 if (mods.Count > 0)
                 {
-                    var modStr = string.Concat(mods.Select(m =>
-                        m.IsBusy         ? "[yellow]◈[/]" :
-                        m.IsActive == true  ? "[green]◉[/]" :
-                        m.IsActive == false ? "[grey]○[/]" : "[grey]·[/]"));
-                    statusTable.AddRow("[dim]Modules[/]", modStr);
+                    // Show name if available, otherwise slot number; colour by state
+                    var modParts = mods.Select((m, i) =>
+                    {
+                        var color = m.IsBusy           ? "yellow" :
+                                    m.IsActive == true  ? "green" :
+                                                          "grey";
+                        var tag   = string.IsNullOrEmpty(m.Name)
+                            ? $"[{i + 1}]"
+                            : (m.Name.Length > 14 ? m.Name[..14] : m.Name);
+                        return $"[{color}]{Markup.Escape(tag)}[/]";
+                    });
+                    statusTable.AddRow("[dim]Modules[/]", string.Join(" ", modParts));
                 }
             }
 

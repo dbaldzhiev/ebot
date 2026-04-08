@@ -53,6 +53,7 @@ public sealed record OverviewEntryDto(
 
 public sealed record ModuleButtonDto(
     int SlotIndex,
+    string? Name,
     bool? IsActive,
     bool IsHiliteVisible,
     bool IsBusy,
@@ -147,7 +148,7 @@ public static class DtoMapper
             .ToList() ?? [];
 
         var modules = (ui.ShipUI?.ModuleButtons ?? [])
-            .Select((m, i) => new ModuleButtonDto(i, m.IsActive, m.IsHiliteVisible, m.IsBusy, m.IsOverloaded, m.IsOffline, m.RampRotationMilli))
+            .Select((m, i) => new ModuleButtonDto(i, m.Name, m.IsActive, m.IsHiliteVisible, m.IsBusy, m.IsOverloaded, m.IsOffline, m.RampRotationMilli))
             .ToList();
 
         var loc = ui.InfoPanelContainer?.InfoPanelLocationInfo;
