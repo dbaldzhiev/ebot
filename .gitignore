@@ -70,3 +70,4 @@ coverage/
 
 # Publish output
 publish/
+examples/*

@@ -228,3 +228,38 @@ public static class DtoMapper
         return $"{meters:F0} m";
     }
 }
+
+// ─── Visual Sequence Builder models ───────────────────────────────────────
+
+/// <summary>A visual bot sequence graph — the serialized form of the canvas.</summary>
+public sealed class SequenceGraph
+{
+    public string? Id   { get; set; }
+    public string  Name { get; set; } = "Untitled";
+    public List<SequenceNode> Nodes { get; set; } = [];
+    public List<SequenceEdge> Edges { get; set; } = [];
+}
+
+/// <summary>A single node in the visual sequence graph.</summary>
+public sealed class SequenceNode
+{
+    public string Id   { get; set; } = "";
+    public string Type { get; set; } = "";
+    /// <summary>Node parameters — keys match the palette definition (action, check, value, ms, iterations, param1, …).</summary>
+    public Dictionary<string, string?> Params { get; set; } = [];
+    public double X { get; set; }
+    public double Y { get; set; }
+}
+
+/// <summary>A directed edge connecting two nodes in the visual graph.</summary>
+public sealed class SequenceEdge
+{
+    public string Id       { get; set; } = "";
+    public string From     { get; set; } = "";
+    public string FromPort { get; set; } = "next";
+    public string To       { get; set; } = "";
+    public string ToPort   { get; set; } = "in";
+}
+
+/// <summary>Sequence list entry returned by GET /api/sequences.</summary>
+public sealed record SequenceListItem(string Id, string Name);

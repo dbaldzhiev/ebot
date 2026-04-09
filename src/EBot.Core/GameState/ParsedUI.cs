@@ -126,6 +126,8 @@ public sealed class Target
     public string? TextLabel { get; init; }
     public HitpointsPercent? HitpointsPercent { get; init; }
     public bool IsActiveTarget { get; init; }
+    /// <summary>Distance as displayed in the target readout (e.g. "12.4 km").</summary>
+    public string? DistanceText { get; init; }
     public double? DistanceInMeters { get; init; }
 }
 

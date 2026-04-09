@@ -48,27 +48,20 @@
     .state-pill.running { background: #0d2a1a; color: var(--green); border-color: var(--green); }
     .state-pill.paused  { background: #2a2000; color: var(--yellow); border-color: var(--yellow); }
 
-    .ai-badge { padding: 2px 9px; border-radius: 10px; font-size: .68rem; font-weight: 700; letter-spacing: .5px; white-space: nowrap; border: 1px solid; cursor: default; }
-    .ai-badge.anthropic { background: #1a0a2e; color: #ce93d8; border-color: #7c4dff; }
-    .ai-badge.ollama    { background: #002820; color: #80cbc4; border-color: #26a69a; }
-
-    #model-select { display: none; max-width: 140px; font-size: .76rem; padding: 3px 6px; }
-    #model-select.visible { display: inline-block; }
-
     .controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     select { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: .8rem; outline: none; cursor: pointer; }
     select:focus { border-color: var(--accent); }
 
     .btn { padding: 4px 12px; border-radius: 6px; border: 1px solid; font-size: .76rem; font-weight: 600; cursor: pointer; transition: all .15s; white-space: nowrap; background: transparent; }
-    .btn-primary { color: var(--accent); border-color: var(--accent); background: #0a2a3a; }
+    .btn-primary { color: var(--accent);    border-color: var(--accent);  background: #0a2a3a; }
     .btn-primary:hover { background: #143a4a; box-shadow: var(--glow); }
-    .btn-danger  { color: var(--red);    border-color: var(--red);    background: #2a0a0a; }
+    .btn-danger  { color: var(--red);       border-color: var(--red);     background: #2a0a0a; }
     .btn-danger:hover  { background: #3a1010; }
-    .btn-warn    { color: var(--yellow); border-color: var(--yellow); background: #2a1f00; }
+    .btn-warn    { color: var(--yellow);    border-color: var(--yellow);  background: #2a1f00; }
     .btn-warn:hover    { background: #3a2a00; }
-    .btn-muted   { color: var(--text-dim); border-color: var(--border); background: var(--bg3); }
+    .btn-muted   { color: var(--text-dim);  border-color: var(--border);  background: var(--bg3); }
     .btn-muted:hover   { border-color: var(--text-dim); color: var(--text); }
-    .btn-green   { color: var(--green); border-color: var(--green); background: #0a2a1a; }
+    .btn-green   { color: var(--green);     border-color: var(--green);   background: #0a2a1a; }
     .btn-green:hover   { background: #143a24; }
     .btn:disabled { opacity: .35; cursor: not-allowed; }
 
@@ -86,8 +79,8 @@
     #dpi-info { font-size: .7rem; color: var(--text-dim); white-space: nowrap; }
     #dpi-scale-input { width: 48px; font-size: .76rem; padding: 3px 5px; text-align: center; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 
-    /* ── Main layout ── */
-    main { display: grid; grid-template-columns: 300px 1fr 320px; overflow: hidden; }
+    /* ── Main 3-column layout ── */
+    main { display: grid; grid-template-columns: 300px 1fr 1fr; overflow: hidden; min-width: 0; }
 
     .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
     .panel:last-child { border-right: none; }
@@ -108,10 +101,8 @@
     .bar-fill.cargo  { background: var(--purple); } .bar-fill.low   { background: var(--red) !important; }
     .bar-pct { font-size: .7rem; color: var(--text-dim); width: 26px; text-align: right; }
 
-    /* ── Quick actions ── */
+    /* ── Quick actions / travel ── */
     .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 4px 0; }
-
-    /* ── Quick travel ── */
     .travel-grid { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
     .travel-btn { display: flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg3); color: var(--text); font-size: .75rem; cursor: pointer; transition: all .15s; }
     .travel-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -121,7 +112,7 @@
     .travel-add-row input { flex: 1; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; font-size: .76rem; outline: none; }
     .travel-add-row input:focus { border-color: var(--accent); }
 
-    /* ── Active modules ── */
+    /* ── Modules / cargo ── */
     .module-grid { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0; }
     .module-btn { width: 30px; height: 30px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg3); display: flex; align-items: center; justify-content: center; font-size: .62rem; font-weight: 600; color: var(--text-dim); transition: all .3s; position: relative; cursor: default; }
     .module-btn.active     { border-color: var(--green);  background: #0a2a1a; color: var(--green);  box-shadow: 0 0 6px rgba(76,175,125,.35); }
@@ -133,18 +124,18 @@
     .module-state-dot.ov   { background: var(--red); }
     .module-state-dot.busy { background: var(--yellow); }
 
-    /* ── Cargo items ── */
     .cargo-item { display: flex; justify-content: space-between; font-size: .75rem; padding: 2px 0; border-bottom: 1px solid #0d151e; }
     .cargo-item:last-child { border-bottom: none; }
     .cargo-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
     .cargo-qty  { color: var(--text-dim); flex-shrink: 0; }
 
-    /* ── Tags ── */
+    /* ── Tags / misc ── */
     .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: .66rem; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
     .tag.space  { background: #0a2a1a; color: var(--green); }
     .tag.docked { background: #0a1a2a; color: var(--accent); }
     .tag.warp   { background: #1a1a00; color: var(--yellow); }
-    .tag.menu   { background: #1a1000; color: var(--orange); }
+    .empty { color: var(--text-dim); font-style: italic; font-size: .78rem; padding: 6px 0; }
+    .context-entry { font-size: .73rem; color: var(--yellow); padding: 1px 0; }
 
     /* ── Centre panel ── */
     .center-panel { display: grid; grid-template-rows: 55% 45%; overflow: hidden; }
@@ -169,27 +160,121 @@
     .action-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
     .action-desc { color: var(--accent); }
 
-    /* ── Chat ── */
-    .chat-panel { display: flex; flex-direction: column; overflow: hidden; }
-    .chat-messages { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
-    .chat-bubble { max-width: 94%; padding: 7px 10px; border-radius: 10px; font-size: .8rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-    .chat-bubble.user      { align-self: flex-end; background: #0d2a3a; color: var(--accent); border: 1px solid var(--accent2); border-bottom-right-radius: 2px; }
-    .chat-bubble.ai        { align-self: flex-start; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
-    .chat-bubble.tool-call { align-self: flex-start; font-size: .72rem; background: #0a1a0a; color: #4caf50; border: 1px solid #1a3a1a; border-radius: 6px; font-family: monospace; }
-    .chat-bubble.tool-result { align-self: flex-start; font-size: .7rem; background: #0a0a1a; color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px; font-family: monospace; max-height: 80px; overflow-y: auto; }
-    .chat-bubble.error     { align-self: flex-start; background: #2a0808; color: var(--red); border: 1px solid var(--red); }
-    .chat-bubble.thinking  { align-self: flex-start; font-size: .72rem; color: var(--text-dim); font-style: italic; background: transparent; border: none; padding: 1px 3px; }
-    .chat-input-row { display: flex; gap: 5px; padding: 8px 10px; border-top: 1px solid var(--border); background: var(--bg2); }
-    .chat-input { flex: 1; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: .81rem; outline: none; resize: none; height: 38px; max-height: 110px; font-family: inherit; }
-    .chat-input:focus { border-color: var(--accent); }
-    .chat-send { padding: 0 12px; border-radius: 8px; background: var(--accent); color: var(--bg); border: none; font-weight: 700; cursor: pointer; font-size: .88rem; transition: opacity .15s; }
-    .chat-send:hover { opacity: .85; } .chat-send:disabled { opacity: .4; cursor: not-allowed; }
-
     /* ── Diag overlay ── */
     #diag-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.82); z-index:9999; overflow:auto; padding:24px; }
     .diag-box { max-width:860px; margin:auto; background:#0d1117; border:1px solid #1e3a52; border-radius:8px; padding:20px; }
-    .empty { color: var(--text-dim); font-style: italic; font-size: .78rem; padding: 6px 0; }
-    .context-entry { font-size: .73rem; color: var(--yellow); padding: 1px 0; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       CANVAS PANEL — Visual Bot Sequence Builder
+    ══════════════════════════════════════════════════════════════════ */
+    .canvas-panel { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+
+    /* Toolbar */
+    .canvas-toolbar {
+      display: flex; align-items: center; gap: 5px; padding: 6px 10px;
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      flex-shrink: 0; flex-wrap: wrap;
+    }
+    .seq-name-input {
+      background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+      border-radius: 5px; padding: 3px 8px; font-size: .8rem; width: 130px; outline: none;
+    }
+    .seq-name-input:focus { border-color: var(--accent); }
+    #seq-load-select { max-width: 160px; font-size: .75rem; }
+
+    /* Palette + canvas area */
+    .canvas-main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+    .node-palette {
+      width: 108px; flex-shrink: 0; background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; padding: 8px 6px; gap: 3px;
+      overflow-y: auto;
+    }
+    .palette-title { font-size: .6rem; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent2); padding: 2px 0 4px; opacity: .75; }
+    .palette-sep { height: 1px; background: var(--border); margin: 5px 0; }
+    .palette-hint { font-size: .6rem; color: var(--text-dim); opacity: .55; line-height: 1.4; padding: 1px 0; }
+    .palette-item {
+      padding: 5px 0; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--bg3); color: var(--text); font-size: .72rem; font-weight: 600;
+      cursor: grab; text-align: center; transition: all .15s; user-select: none;
+      letter-spacing: .5px;
+    }
+    .palette-item:hover { border-color: var(--accent); color: var(--accent); }
+    .palette-item:active { cursor: grabbing; opacity: .7; }
+
+    /* Canvas area */
+    .canvas-area {
+      flex: 1; position: relative; overflow: hidden;
+      background: var(--bg);
+      background-image: radial-gradient(circle, #1a3050 1px, transparent 1px);
+      background-size: 22px 22px;
+      cursor: default;
+    }
+    .canvas-area.connecting { cursor: crosshair; }
+
+    /* SVG overlay for edges */
+    #canvas-svg {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      overflow: visible; z-index: 1; pointer-events: none;
+    }
+    #canvas-svg path { pointer-events: stroke; cursor: pointer; }
+    #temp-edge { pointer-events: none; }
+    #nodes-layer { position: absolute; inset: 0; z-index: 2; }
+
+    /* ── Canvas nodes ── */
+    .canvas-node {
+      position: absolute; width: 158px;
+      border: 1px solid var(--border); border-radius: 7px;
+      background: var(--bg3); cursor: move;
+      user-select: none; min-height: 44px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+      transition: box-shadow .15s;
+    }
+    .canvas-node:hover { box-shadow: 0 2px 16px rgba(0,0,0,.6); }
+    .canvas-node.selected { box-shadow: 0 0 0 2px rgba(255,255,255,.25), 0 2px 16px rgba(0,0,0,.6); }
+    .canvas-node.multi-selected { box-shadow: 0 0 0 2px rgba(79,195,247,.5), 0 2px 16px rgba(0,0,0,.6); outline: none; }
+
+    .canvas-node-hdr {
+      padding: 5px 7px 4px; display: flex; align-items: center; gap: 4px;
+      font-size: .67rem; font-weight: 700; letter-spacing: 1px;
+      border-radius: 6px 6px 0 0; min-height: 24px;
+    }
+    .canvas-node-type { flex-shrink: 0; }
+    .canvas-node-sub  { flex: 1; font-weight: 400; font-size: .62rem; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .canvas-node-del  { margin-left: auto; background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: .9rem; line-height: 1; padding: 0 1px; flex-shrink: 0; }
+    .canvas-node-del:hover { color: var(--red); }
+
+    /* ── Ports ── */
+    .canvas-port {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 2px solid var(--border); background: var(--bg2);
+      cursor: crosshair; position: absolute; z-index: 4;
+      transition: background .12s, border-color .12s;
+    }
+    .canvas-port:hover, .canvas-port.hot { background: var(--accent); border-color: var(--accent); }
+    .port-in   { top: -6px; left: 50%; transform: translateX(-50%); border-color: #3a6a8a; cursor: default; }
+    .port-out  { bottom: -6px; left: 50%; transform: translateX(-50%); border-color: var(--accent2); }
+    .port-out-l { bottom: -6px; left: 28%; transform: translateX(-50%); border-color: var(--green); }
+    .port-out-r { bottom: -6px; left: 72%; transform: translateX(-50%); border-color: var(--red); }
+    .port-label {
+      position: absolute; font-size: .52rem; font-weight: 700; color: var(--text-dim);
+      white-space: nowrap; pointer-events: none; letter-spacing: .5px;
+      bottom: -18px; transform: translateX(-50%);
+    }
+
+    /* ── Properties panel ── */
+    .canvas-props {
+      height: 110px; flex-shrink: 0; border-top: 1px solid var(--border);
+      background: var(--bg2); padding: 5px 10px; overflow-y: auto;
+    }
+    .canvas-props-hdr { font-size: .6rem; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent2); margin-bottom: 6px; opacity: .75; }
+    .canvas-props-body { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-start; }
+    .prop-row { display: flex; flex-direction: column; gap: 2px; min-width: 110px; }
+    .prop-label { font-size: .6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
+    .prop-input { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font-size: .76rem; outline: none; max-width: 200px; }
+    .prop-input:focus { border-color: var(--accent); }
+    select.prop-input { cursor: pointer; }
   </style>
 </head>
 <body>
@@ -199,17 +284,15 @@
   <span class="logo">EBot<span> // C&amp;C</span></span>
   <div id="conn-dot" title="Disconnected"></div>
   <span id="state-pill" class="state-pill">Idle</span>
-  <span id="ai-badge" class="ai-badge" title="AI backend"></span>
-  <select id="model-select" title="Select Ollama model"></select>
 
   <div class="controls">
     <select id="bot-select"></select>
     <button class="btn btn-primary" id="btn-start">&#9654; Start</button>
     <button class="btn btn-warn"    id="btn-pause"  disabled>&#9646;&#9646; Pause</button>
     <button class="btn btn-muted"   id="btn-resume" disabled>&#9654; Resume</button>
-    <button class="btn btn-danger"  id="btn-stop"       disabled>&#9632; Stop</button>
-    <button class="btn btn-muted"   id="btn-save-frame" title="Save current UI JSON frame to logs/frames/">&#128190; Save Frame</button>
-    <button class="btn btn-danger"  id="btn-kill"       title="Shut down EBot server" style="opacity:.7;">&#9211; Kill</button>
+    <button class="btn btn-danger"  id="btn-stop"   disabled>&#9632; Stop</button>
+    <button class="btn btn-muted"   id="btn-save-frame" title="Save current UI JSON frame to logs/frames/">&#128190; Frame</button>
+    <button class="btn btn-danger"  id="btn-kill"   title="Shut down EBot server" style="opacity:.7;">&#9211; Kill</button>
   </div>
 
   <div class="toggle-group">
@@ -219,7 +302,7 @@
     <input type="number" id="dpi-scale-input" min="0.1" max="4" step="0.01" placeholder="1.0" title="Coordinate scale">
     <button class="btn btn-muted" id="btn-dpi-apply" style="font-size:.7rem;padding:2px 7px;">Scale</button>
     <button class="btn btn-muted" id="btn-diagnose"  style="font-size:.7rem;padding:2px 7px;margin-left:4px;">Diag</button>
-    <button class="btn btn-muted" id="btn-diag-input" style="font-size:.7rem;padding:2px 7px;">Input Test</button>
+    <button class="btn btn-muted" id="btn-diag-input" style="font-size:.7rem;padding:2px 7px;">Input</button>
   </div>
 </header>
 
@@ -241,35 +324,32 @@
 <!-- ═══════ MAIN ═══════════════════════════════════════════════════════════ -->
 <main>
 
-  <!-- ── Left: Controls (static) + Stats (tick-updated) ── -->
+  <!-- ── Col 1: Controls + Stats ── -->
   <div class="panel">
     <div class="panel-title">Status &amp; Controls</div>
-    <!-- Static controls — never wiped by tick updates -->
     <div style="flex-shrink:0;padding:8px 12px;border-bottom:1px solid var(--border);" id="left-controls">
       <div class="sec">Quick Actions</div>
       <div class="action-grid">
         <button class="btn btn-green" id="btn-undock" onclick="apiClick('/api/undock')" disabled>&#9650; Undock</button>
-        <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')">&#9660; Dock Nearest</button>
+        <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')">&#9660; Dock</button>
         <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/clear-destination')">&#10007; Clear Destination</button>
         <button class="btn btn-muted" onclick="apiClick('/api/open-cargo')">&#128230; Open Cargo</button>
         <button class="btn btn-muted" onclick="apiClick('/api/scan-holds')">&#128269; Scan Holds</button>
       </div>
-
       <div class="sec">Quick Travel</div>
       <div class="travel-grid" id="travel-grid"><span class="empty">Loading…</span></div>
       <div class="travel-add-row">
         <input type="text" id="travel-input" placeholder="System or alias…" maxlength="60"
                onkeydown="if(event.key==='Enter')addTravel()">
-        <button class="btn btn-muted" onclick="addTravel()" style="font-size:.72rem;padding:3px 8px;">+ Add</button>
+        <button class="btn btn-muted" onclick="addTravel()" style="font-size:.72rem;padding:3px 8px;">+</button>
       </div>
     </div>
-    <!-- Dynamic stats — updated every tick -->
     <div class="panel-body" id="left-stats">
       <div class="empty">Waiting for EVE client…</div>
     </div>
   </div>
 
-  <!-- ── Centre: Overview + Actions/Log ── -->
+  <!-- ── Col 2: Overview + Actions/Log ── -->
   <div class="center-panel">
     <div class="panel" style="border-right:none; border-bottom:1px solid var(--border);">
       <div class="panel-title">
@@ -296,15 +376,82 @@
     </div>
   </div>
 
-  <!-- ── Right: AI Chat ── -->
-  <div class="chat-panel">
-    <div class="panel-title" style="border-bottom:1px solid var(--border);">AI Command</div>
-    <div class="chat-messages" id="chat-messages">
-      <div class="chat-bubble ai">Hello, Capsuleer. I'm your C&amp;C AI.<br>Ask me to start a bot, check status, undock, dock, travel, or anything else.</div>
+  <!-- ── Col 3: Visual Bot Sequence Builder ── -->
+  <div class="canvas-panel">
+    <div class="panel-title" style="background:var(--bg2);">
+      Sequence Builder
+      <span id="seq-play-status" style="margin-left:8px;font-size:.65rem;color:var(--text-dim);font-weight:400;"></span>
     </div>
-    <div class="chat-input-row">
-      <textarea class="chat-input" id="chat-input" placeholder="Type a command… (Enter to send)" rows="1"></textarea>
-      <button class="chat-send" id="chat-send">&#10148;</button>
+
+    <!-- Toolbar -->
+    <div class="canvas-toolbar">
+      <input type="text" id="seq-name" class="seq-name-input" value="Untitled" placeholder="Sequence name…">
+      <button class="btn btn-muted"    onclick="newSequence()"    title="New sequence"   style="font-size:.72rem;padding:3px 8px;">+ New</button>
+      <button class="btn btn-primary"  onclick="saveSequence()"   title="Save sequence"  style="font-size:.72rem;padding:3px 8px;">&#128190; Save</button>
+      <select id="seq-load-select" onchange="if(this.value)loadSequence(this.value)" title="Load saved sequence">
+        <option value="">Load…</option>
+      </select>
+      <button class="btn btn-danger" id="btn-del-seq" onclick="deleteSequence()" disabled title="Delete sequence" style="font-size:.72rem;padding:3px 7px;">&#10007;</button>
+      <div style="flex:1;min-width:4px;"></div>
+      <button class="btn btn-green"  id="btn-play-seq" onclick="playSequence()"  title="Run sequence">&#9654; Play</button>
+      <button class="btn btn-danger" id="btn-stop-seq" onclick="stopSequence()"  title="Stop" disabled>&#9632;</button>
+    </div>
+
+    <!-- Palette + canvas -->
+    <div class="canvas-main">
+      <!-- Node palette -->
+      <div class="node-palette" id="node-palette">
+        <div class="palette-title">ACTIONS</div>
+        <div class="palette-item" draggable="true" data-type="left_click"  title="Left-click a UI element"  style="border-color:#f9a825;color:#f9a825;">L Click</div>
+        <div class="palette-item" draggable="true" data-type="right_click" title="Right-click a UI element" style="border-color:#ff7043;color:#ff7043;">R Click</div>
+        <div class="palette-item" draggable="true" data-type="key_press"   title="Press a keyboard key"     style="border-color:#ce93d8;color:#ce93d8;">Key Press</div>
+        <div class="palette-item" draggable="true" data-type="type_text"   title="Type text"                style="border-color:#4fc3f7;color:#4fc3f7;">Type Text</div>
+        <div class="palette-sep"></div>
+        <div class="palette-title">FLOW</div>
+        <div class="palette-item" draggable="true" data-type="condition" title="Branch on a condition" style="border-color:#ff7043;color:#ff7043;">Condition</div>
+        <div class="palette-item" draggable="true" data-type="loop"      title="Repeat N times"       style="border-color:#00bcd4;color:#00bcd4;">Loop</div>
+        <div class="palette-item" draggable="true" data-type="wait"      title="Wait N milliseconds"  style="border-color:#7c4dff;color:#b39ddb;">Wait</div>
+        <div class="palette-item" draggable="true" data-type="wait_until" title="Wait until condition" style="border-color:#7c4dff;color:#ce93d8;">Wait Until</div>
+        <div class="palette-item" draggable="true" data-type="end"        title="End sequence"         style="border-color:#ef5350;color:#ef5350;">End</div>
+        <div class="palette-item" draggable="true" data-type="stop_sequence" title="Stop sequence immediately" style="border-color:#ef5350;color:#ef5350;opacity:.7;">Stop</div>
+        <div class="palette-sep"></div>
+        <div class="palette-hint">Drag to canvas</div>
+        <div class="palette-hint">Del: remove/multi</div>
+        <div class="palette-hint">Box drag: select</div>
+        <div class="palette-hint">Port drag: connect</div>
+      </div>
+
+      <!-- Canvas area -->
+      <div class="canvas-area" id="canvas-area">
+        <svg id="canvas-svg" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#4fc3f7" opacity=".8"/>
+            </marker>
+            <marker id="arr-green" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#4caf7d" opacity=".8"/>
+            </marker>
+            <marker id="arr-red" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#ef5350" opacity=".8"/>
+            </marker>
+            <marker id="arr-white" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#ffffff" opacity=".6"/>
+            </marker>
+          </defs>
+          <g id="edges-g"></g>
+          <rect id="sel-box" fill="rgba(79,195,247,.05)" stroke="#4fc3f7" stroke-width="1" stroke-dasharray="4,2" opacity=".85" rx="2" style="display:none;pointer-events:none;"/>
+          <path id="temp-edge" fill="none" stroke="#4fc3f7" stroke-width="1.5" stroke-dasharray="6,3" opacity=".7" style="display:none"/>
+        </svg>
+        <div id="nodes-layer"></div>
+      </div>
+    </div>
+
+    <!-- Properties panel -->
+    <div class="canvas-props" id="canvas-props">
+      <div class="canvas-props-hdr">Properties</div>
+      <div class="canvas-props-body" id="canvas-props-body">
+        <span class="empty">Select a node to edit its properties</span>
+      </div>
     </div>
   </div>
 
@@ -316,9 +463,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
 
-let botState = 'Idle', botName = null, botDesc = null, chatBusy = false;
+let botState = 'Idle', botName = null, botDesc = null;
 let quickTravel = [];
-let stationAliases = {};  // alias → {system, bookmark}
+let stationAliases = {};
 
 // ── SignalR ────────────────────────────────────────────────────────────────
 const conn = new signalR.HubConnectionBuilder()
@@ -330,23 +477,17 @@ conn.onreconnecting(() => $('conn-dot').classList.remove('ok'));
 conn.onreconnected(() => { $('conn-dot').classList.add('ok'); loadInitialState(); });
 conn.on('StateChanged',    state => {
   botState = state;
-  // Refresh status to pick up new botName / botDesc
   fetch('/api/status').then(r => r.json()).then(s => {
-    botName = s.botName; botDesc = s.botDescription;
-    refreshUI();
+    botName = s.botName; botDesc = s.botDescription; refreshUI();
   }).catch(() => refreshUI());
 });
-conn.on('SurvivalChanged', en    => { $('toggle-survival').checked = en; });
-conn.on('TickUpdate',      gs    => {
+conn.on('SurvivalChanged', en  => { $('toggle-survival').checked = en; });
+conn.on('TickUpdate',      gs  => {
   renderGameState(gs);
   if (botName === 'Mining Bot') pollMiningStats();
 });
-conn.on('LogEntry',        e     => addLogEntry(e));
-conn.on('ChatToolCall',    d     => addBubble('🔧 ' + d.name + '(…)', 'tool-call'));
-conn.on('ChatToolResult',  d     => addBubble('↳ ' + (d.result || '').slice(0, 200), 'tool-result'));
-conn.on('ChatMessage',     d     => { removeThinker(); addBubble(d.text, 'ai'); setChatBusy(false); });
-conn.on('ChatError',       d     => { removeThinker(); addBubble('Error: ' + d.error, 'error'); setChatBusy(false); });
-conn.on('ActionLog',       e     => addActionEntry(e));
+conn.on('LogEntry',    e => addLogEntry(e));
+conn.on('ActionLog',   e => addActionEntry(e));
 conn.on('EmergencyStop', () => {
   addLogEntry({ time: new Date().toISOString(), level: 'Warn', message: '⛔ EMERGENCY STOP — input released (Pause/Break)' });
 });
@@ -365,16 +506,14 @@ async function loadInitialState() {
     if (s.gameState) renderGameState(s.gameState);
     refreshUI();
   } catch(e) {}
-
   try {
     const bots = await fetch('/api/bots').then(r => r.json());
     $('bot-select').innerHTML = bots.map(b => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join('');
   } catch(e) {}
-
   loadDpiInfo();
-  loadAiInfo();
   loadQuickTravel();
   loadStationAliases();
+  refreshSeqList();
 }
 
 // ── Game state rendering ───────────────────────────────────────────────────
@@ -404,25 +543,21 @@ function renderGameState(gs) {
     ? `<div class="stat-row"><span class="stat-key">Speed</span><span>${esc(gs.speedText)}</span></div>`
     : '';
 
-  // ── Active modules ──────────────────────────────────────────────────────
   const mods = gs.moduleButtons || [];
   const modHtml = mods.length ? mods.map((m, i) => {
-    // Determine primary visual class (priority: overloaded > active > busy > offline > idle)
-    let cls = '';
-    let stateLabel = 'Idle';
-    if (m.isOverloaded)      { cls = 'overloaded'; stateLabel = 'OVERLOADED'; }
-    else if (m.isActive)     { cls = 'active';     stateLabel = 'ACTIVE'; }
-    else if (m.isBusy)       { cls = 'busy';       stateLabel = 'ACTIVATING'; }
-    else if (m.isOffline)    { cls = 'offline';    stateLabel = 'OFFLINE'; }
-    if (m.isHiliteVisible)   cls += ' hilite';
+    let cls = '', stateLabel = 'Idle';
+    if (m.isOverloaded)   { cls = 'overloaded'; stateLabel = 'OVERLOADED'; }
+    else if (m.isActive)  { cls = 'active';     stateLabel = 'ACTIVE'; }
+    else if (m.isBusy)    { cls = 'busy';       stateLabel = 'ACTIVATING'; }
+    else if (m.isOffline) { cls = 'offline';    stateLabel = 'OFFLINE'; }
+    if (m.isHiliteVisible) cls += ' hilite';
     const dot = m.isOverloaded ? '<span class="module-state-dot ov"></span>'
               : m.isBusy       ? '<span class="module-state-dot busy"></span>'
               : '';
-    const tip = `Slot ${i+1} — ${stateLabel}${m.rampRotationMilli != null ? ' (ramp '+m.rampRotationMilli+'ms)' : ''}`;
+    const tip = `Slot ${i+1}${m.name ? ' — ' + m.name : ''} — ${stateLabel}`;
     return `<div class="module-btn ${cls.trim()}" title="${esc(tip)}">${i+1}${dot}</div>`;
   }).join('') : '<div class="empty">No modules detected</div>';
 
-  // ── Inventory holds ──────────────────────────────────────────────────────
   function holdHtml(hold) {
     const usedM3 = hold?.usedM3, maxM3 = hold?.maxM3, items = hold?.items || [];
     if (maxM3 == null || maxM3 <= 0) return '';
@@ -437,9 +572,9 @@ function renderGameState(gs) {
       </div></div>`;
     if (items.length) {
       html += items.slice(0, 20).map(it =>
-        `<div class="cargo-item"><span class="cargo-name">${esc(it.name || '—')}</span><span class="cargo-qty">${it.quantity != null ? 'x' + it.quantity : ''}</span></div>`
+        `<div class="cargo-item"><span class="cargo-name">${esc(it.name || '—')}</span><span class="cargo-qty">${it.quantity != null ? 'x'+it.quantity : ''}</span></div>`
       ).join('');
-      if (items.length > 20) html += `<div class="empty">…and ${items.length - 20} more</div>`;
+      if (items.length > 20) html += `<div class="empty">…and ${items.length-20} more</div>`;
     } else {
       html += '<div class="empty">Empty</div>';
     }
@@ -456,20 +591,16 @@ function renderGameState(gs) {
         ${holdHtml(h)}`).join('')
     : `<div class="sec">Inventory</div><div class="empty">Not open — click Open Cargo or Scan Holds</div>`;
 
-  // ── Update action button states (undock only when docked, dock only in space) ──
-  const undockBtn = $('btn-undock');
-  const dockBtn   = $('btn-dock');
+  const undockBtn = $('btn-undock'), dockBtn = $('btn-dock');
   if (undockBtn) undockBtn.disabled = !gs.isDocked;
   if (dockBtn)   dockBtn.disabled   = gs.isDocked;
 
-  // ── Dynamic stats panel ────────────────────────────────────────────────────
   $('left-stats').innerHTML = `
     <div class="sec">Navigation</div>
     <div class="stat-row"><span class="stat-key">System</span><span>${sys}${sec}</span></div>
     <div class="stat-row"><span class="stat-key">Status</span>${locTag}</div>
-    ${jumps > 0 ? `<div class="stat-row"><span class="stat-key">Route</span><span>${jumps} jump${jumps !== 1 ? 's' : ''}</span></div>` : ''}
+    ${jumps > 0 ? `<div class="stat-row"><span class="stat-key">Route</span><span>${jumps} jump${jumps!==1?'s':''}</span></div>` : ''}
     ${menuHtml}
-
     <div class="sec">Ship</div>
     <div class="stat-row"><span class="stat-key">Tick</span><span>${gs.tickCount}</span></div>
     <div class="stat-row"><span class="stat-key">Runtime</span><span>${gs.runtime}</span></div>
@@ -479,321 +610,1007 @@ function renderGameState(gs) {
     ${gs.armorPercent     != null ? bar('Armor',     gs.armorPercent,     'armor')  : ''}
     ${gs.structurePercent != null ? bar('Structure', gs.structurePercent, 'struct') : ''}
     ${gs.capacitorPercent != null ? bar('Cap',       gs.capacitorPercent, 'cap')    : ''}
-
-    <div class="sec">Modules — ${mods.filter(m=>m.isActive).length} active, ${mods.filter(m=>m.isOverloaded).length} hot, ${mods.filter(m=>m.isOffline).length} offline / ${mods.length} total</div>
+    <div class="sec">Modules — ${mods.filter(m=>m.isActive).length} active, ${mods.filter(m=>m.isOverloaded).length} hot / ${mods.length}</div>
     <div class="module-grid">${modHtml}</div>
-
     ${holdsHtml}
     ${renderMiningStats()}
   `;
 
-  // Overview
   const entries = gs.overview || [];
   $('overview-count').textContent = entries.length ? `(${entries.length})` : '';
   $('overview-body').innerHTML = entries.length
-    ? entries.map(e => `<tr class="${e.isAttackingMe ? 'attacking' : ''}">
-        <td>${esc(e.name || '—')}</td>
-        <td style="color:var(--text-dim)">${esc(e.objectType || '')}</td>
-        <td style="text-align:right;color:var(--text-dim)">${esc(e.distance || '')}</td>
+    ? entries.map(e => `<tr class="${e.isAttackingMe?'attacking':''}">
+        <td>${esc(e.name||'—')}</td>
+        <td style="color:var(--text-dim)">${esc(e.objectType||'')}</td>
+        <td style="text-align:right;color:var(--text-dim)">${esc(e.distance||'')}</td>
       </tr>`).join('')
     : '<tr><td colspan="3" class="empty" style="padding:8px">Empty</td></tr>';
 }
 
-// Mining-specific stats — shown only when Mining Bot is active
 let miningStats = { totalM3: 0, cycles: 0 };
 let _miningPollBusy = false;
 async function pollMiningStats() {
   if (_miningPollBusy) return;
   _miningPollBusy = true;
-  try {
-    const s = await fetch('/api/mining-stats').then(r => r.json());
-    miningStats = { totalM3: s.total_m3, cycles: s.cycles };
-  } catch(e) {}
+  try { const s = await fetch('/api/mining-stats').then(r=>r.json()); miningStats = {totalM3:s.total_m3,cycles:s.cycles}; }
+  catch(e) {}
   _miningPollBusy = false;
 }
 function renderMiningStats() {
   if (botName !== 'Mining Bot') return '';
-  const m3 = miningStats.totalM3 ?? 0;
-  const cy = miningStats.cycles ?? 0;
   return `
     <div class="sec">Mining Session</div>
-    <div class="stat-row"><span class="stat-key">Ore unloaded</span><span>${m3.toFixed(0)} m³</span></div>
-    <div class="stat-row"><span class="stat-key">Unload runs</span><span>${cy}</span></div>
+    <div class="stat-row"><span class="stat-key">Ore unloaded</span><span>${(miningStats.totalM3??0).toFixed(0)} m³</span></div>
+    <div class="stat-row"><span class="stat-key">Unload runs</span><span>${miningStats.cycles??0}</span></div>
   `;
 }
 
 function bar(label, pct, cls) {
   const w = Math.max(0, Math.min(100, pct));
-  return `<div class="stat-row">
-    <span class="stat-key">${label}</span>
+  return `<div class="stat-row"><span class="stat-key">${label}</span>
     <div class="bar-wrap">
-      <div class="bar-track"><div class="bar-fill ${cls}${w < 25 ? ' low' : ''}" style="width:${w}%"></div></div>
+      <div class="bar-track"><div class="bar-fill ${cls}${w<25?' low':''}" style="width:${w}%"></div></div>
       <span class="bar-pct">${pct}%</span>
     </div></div>`;
 }
 
 // ── Quick Travel ───────────────────────────────────────────────────────────
 async function loadQuickTravel() {
-  try { quickTravel = await fetch('/api/quick-travel').then(r => r.json()); }
-  catch(e) { quickTravel = []; }
+  try { quickTravel = await fetch('/api/quick-travel').then(r=>r.json()); } catch(e) { quickTravel = []; }
   refreshTravelGrid();
 }
-
 async function loadStationAliases() {
-  try { stationAliases = await fetch('/api/station-aliases').then(r => r.json()); }
-  catch(e) { stationAliases = {}; }
+  try { stationAliases = await fetch('/api/station-aliases').then(r=>r.json()); } catch(e) { stationAliases = {}; }
   refreshTravelGrid();
 }
-
 async function addTravel() {
   const inp = $('travel-input');
-  const name = (inp?.value || '').trim();
+  const name = (inp?.value||'').trim();
   if (!name) return;
   try {
-    quickTravel = await fetch('/api/quick-travel', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ station: name }),
-    }).then(r => r.json());
+    quickTravel = await fetch('/api/quick-travel', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({station:name}) }).then(r=>r.json());
     if (inp) inp.value = '';
     refreshTravelGrid();
   } catch(e) {}
 }
-
 async function removeTravel(name) {
-  try {
-    quickTravel = await fetch('/api/quick-travel/' + encodeURIComponent(name), { method: 'DELETE' }).then(r => r.json());
-    refreshTravelGrid();
-  } catch(e) {}
+  try { quickTravel = await fetch('/api/quick-travel/'+encodeURIComponent(name),{method:'DELETE'}).then(r=>r.json()); refreshTravelGrid(); } catch(e) {}
 }
-
 async function goTravel(name) {
   try {
-    const r = await fetch('/api/quick-travel/' + encodeURIComponent(name) + '/go', { method: 'POST' });
-    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.message || 'Travel failed'); }
+    const r = await fetch('/api/quick-travel/'+encodeURIComponent(name)+'/go',{method:'POST'});
+    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message||'Travel failed'); }
   } catch(e) {}
 }
-
 function refreshTravelGrid() {
   const g = $('travel-grid');
   if (!g) return;
-  // Show alias label if one exists
-  const travelBtns = quickTravel.map(s => {
+  const html = quickTravel.map(s => {
     const alias = stationAliases[s];
-    const tip = alias ? `${alias.system} → bookmark: ${alias.bookmark}` : '';
-    const badge = alias ? ` <span style="font-size:.6rem;color:var(--accent2);opacity:.8;">📍</span>` : '';
+    const tip = alias ? `${alias.system} → ${alias.bookmark}` : '';
+    const badge = alias ? ` <span style="font-size:.6rem;color:var(--accent2);">📍</span>` : '';
     return `<span class="travel-btn" onclick="goTravel('${esc(s)}')" title="${esc(tip)}">${esc(s)}${badge}<span class="del" onclick="event.stopPropagation();removeTravel('${esc(s)}')">✕</span></span>`;
   }).join('');
-  g.innerHTML = travelBtns || '<span class="empty">No stations saved</span>';
+  g.innerHTML = html || '<span class="empty">No stations saved</span>';
 }
 
-// ── apiClick — fire and forget POST ───────────────────────────────────────
 async function apiClick(url) {
-  try {
-    const r = await fetch(url, { method: 'POST' });
-    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed'); }
-  } catch(e) {}
+  try { const r = await fetch(url,{method:'POST'}); if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.message||'Failed');} } catch(e) {}
 }
-
 async function switchHold(holdType) {
-  try {
-    const r = await fetch('/api/switch-hold', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ holdType })
-    });
-    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed'); }
-  } catch(e) {}
+  try { const r = await fetch('/api/switch-hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdType})}); if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.message||'Failed');} } catch(e) {}
 }
 
 // ── Log ───────────────────────────────────────────────────────────────────
 function addLogEntry(e) {
-  const t = new Date(e.time).toLocaleTimeString('en-GB', { hour12: false });
-  const lvl = (e.level || '').slice(0, 4);
-  const el = document.createElement('div');
-  el.className = 'log-entry';
+  const t = new Date(e.time).toLocaleTimeString('en-GB',{hour12:false});
+  const lvl = (e.level||'').slice(0,4);
+  const el = document.createElement('div'); el.className = 'log-entry';
   el.innerHTML = `<span class="log-time">${t}</span><span class="log-level ${e.level}">${lvl}</span><span>${esc(e.message)}</span>`;
-  const body = $('log-body');
-  body.prepend(el);
+  const body = $('log-body'); body.prepend(el);
   while (body.children.length > 200) body.removeChild(body.lastChild);
 }
-
 function addActionEntry(e) {
-  const t = new Date(e.time).toLocaleTimeString('en-GB', { hour12: false, second: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const el = document.createElement('div');
-  el.className = 'action-entry';
+  const t = new Date(e.time).toLocaleTimeString('en-GB',{hour12:false});
+  const el = document.createElement('div'); el.className = 'action-entry';
   el.innerHTML = `<span class="action-time">${t}</span><span class="action-desc">${esc(e.description)}</span>`;
-  const body = $('action-body');
-  body.prepend(el);
+  const body = $('action-body'); body.prepend(el);
   while (body.children.length > 150) body.removeChild(body.lastChild);
 }
-
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ── UI state machine ───────────────────────────────────────────────────────
 function refreshUI() {
-  const running = botState === 'Running', paused = botState === 'Paused', idle = botState === 'Idle';
+  const running = botState==='Running', paused = botState==='Paused', idle = botState==='Idle';
   const pill = $('state-pill');
   pill.textContent = botState;
-  pill.className = 'state-pill' + (running ? ' running' : paused ? ' paused' : '');
+  pill.className = 'state-pill' + (running?' running':paused?' paused':'');
   $('btn-start').disabled  = !idle;
   $('btn-stop').disabled   = idle;
   $('btn-pause').disabled  = !running;
   $('btn-resume').disabled = !paused;
-  // Show bot description badge when active
   let descEl = $('bot-desc-badge');
   if (!descEl) {
-    descEl = document.createElement('span');
-    descEl.id = 'bot-desc-badge';
-    descEl.style.cssText = 'font-size:.7rem;color:var(--text-dim);margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;';
+    descEl = document.createElement('span'); descEl.id = 'bot-desc-badge';
+    descEl.style.cssText = 'font-size:.7rem;color:var(--text-dim);margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;';
     pill.insertAdjacentElement('afterend', descEl);
   }
   descEl.textContent = (!idle && botDesc) ? botDesc : '';
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────
-$('btn-start').addEventListener('click', () => api('POST', '/api/start', { botName: $('bot-select').value }));
-$('btn-stop').addEventListener('click', () => api('POST', '/api/stop'));
-$('btn-pause').addEventListener('click',  () => api('POST', '/api/pause'));
-$('btn-resume').addEventListener('click', () => api('POST', '/api/resume'));
+$('btn-start').addEventListener('click', () => api('POST','/api/start',{botName:$('bot-select').value}));
+$('btn-stop').addEventListener('click',  () => api('POST','/api/stop'));
+$('btn-pause').addEventListener('click', () => api('POST','/api/pause'));
+$('btn-resume').addEventListener('click',() => api('POST','/api/resume'));
 $('btn-save-frame').addEventListener('click', async () => {
   try {
-    const r = await fetch('/api/save-frame', { method: 'POST' });
-    const j = await r.json().catch(() => ({}));
-    if (r.ok) {
-      $('btn-save-frame').textContent = '✓ Saved';
-      setTimeout(() => { $('btn-save-frame').innerHTML = '&#128190; Save Frame'; }, 2000);
-    } else {
-      alert(j.message || 'Save frame failed');
-    }
-  } catch(e) { alert('Save frame error: ' + e.message); }
+    const r = await fetch('/api/save-frame',{method:'POST'});
+    const j = await r.json().catch(()=>({}));
+    if (r.ok) { $('btn-save-frame').textContent='✓ Saved'; setTimeout(()=>{$('btn-save-frame').innerHTML='&#128190; Frame';},2000); }
+    else alert(j.message||'Save frame failed');
+  } catch(e) { alert('Error: '+e.message); }
 });
-$('btn-kill').addEventListener('click', () => { if (confirm('Shut down the EBot server?')) api('POST', '/api/kill'); });
-$('toggle-survival').addEventListener('change', e => api('POST', '/api/survival', { enabled: e.target.checked }));
+$('btn-kill').addEventListener('click', () => { if(confirm('Shut down the EBot server?')) api('POST','/api/kill'); });
+$('toggle-survival').addEventListener('change', e => api('POST','/api/survival',{enabled:e.target.checked}));
 
 async function api(method, url, body) {
   try {
-    const res = await fetch(url, {
-      method,
-      headers: body ? { 'Content-Type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.message || 'Request failed: ' + res.status); }
+    const res = await fetch(url, { method, headers: body?{'Content-Type':'application/json'}:{}, body: body?JSON.stringify(body):undefined });
+    if (!res.ok) { const j = await res.json().catch(()=>({})); alert(j.message||'Request failed: '+res.status); }
   } catch(e) { console.error(e); }
 }
 
-// ── Chat ──────────────────────────────────────────────────────────────────
-function addBubble(text, role) {
-  const el = document.createElement('div');
-  el.className = 'chat-bubble ' + role;
-  el.textContent = text;
-  const box = $('chat-messages');
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
-  return el;
-}
-
-function removeThinker() { const t = document.querySelector('.chat-bubble.thinking'); if (t) t.remove(); }
-
-function setChatBusy(b) {
-  chatBusy = b;
-  $('chat-send').disabled = b;
-  $('chat-input').disabled = b;
-}
-
-async function sendChat() {
-  const inp = $('chat-input');
-  const msg = inp.value.trim();
-  if (!msg || chatBusy || conn.state !== 'Connected') return;
-  inp.value = ''; inp.style.height = '';
-  addBubble(msg, 'user');
-  addBubble('Thinking…', 'thinking');
-  setChatBusy(true);
-  try { await conn.invoke('SendChatMessage', msg); }
-  catch(e) { removeThinker(); addBubble('Connection error: ' + e.message, 'error'); setChatBusy(false); }
-}
-
-$('chat-send').addEventListener('click', sendChat);
-$('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
-$('chat-input').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 110) + 'px'; });
-
 // ── DPI ───────────────────────────────────────────────────────────────────
 async function loadDpiInfo() {
-  try {
-    const d = await fetch('/api/dpi').then(r => r.json());
-    $('dpi-info').textContent = `DPI ${d.system_dpi}`;
-    $('dpi-scale-input').value = d.coordinate_scale;
-  } catch(e) {}
+  try { const d = await fetch('/api/dpi').then(r=>r.json()); $('dpi-info').textContent=`DPI ${d.system_dpi}`; $('dpi-scale-input').value=d.coordinate_scale; } catch(e) {}
 }
-
 $('btn-dpi-apply').addEventListener('click', async () => {
   const scale = parseFloat($('dpi-scale-input').value);
-  if (isNaN(scale) || scale < 0.1 || scale > 4) { alert('Scale 0.1–4.0'); return; }
-  try {
-    await fetch('/api/dpi/scale', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ scale }) });
-    await loadDpiInfo();
-  } catch(e) {}
+  if (isNaN(scale)||scale<0.1||scale>4) { alert('Scale 0.1–4.0'); return; }
+  try { await fetch('/api/dpi/scale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scale})}); await loadDpiInfo(); } catch(e) {}
 });
 
 // ── Diagnostics ───────────────────────────────────────────────────────────
 $('btn-diagnose').addEventListener('click', async () => {
-  $('diag-report').textContent = 'Running…';
-  $('diag-json').textContent = '';
-  $('diag-overlay').style.display = 'block';
-  try {
-    const d = await fetch('/api/debug/reader').then(r => r.json());
-    $('diag-report').textContent = d.report || '(no report)';
-    $('diag-json').textContent   = d.json_preview || '(no JSON)';
-  } catch(e) { $('diag-report').textContent = 'Fetch error: ' + e.message; }
+  $('diag-report').textContent='Running…'; $('diag-json').textContent=''; $('diag-overlay').style.display='block';
+  try { const d=await fetch('/api/debug/reader').then(r=>r.json()); $('diag-report').textContent=d.report||'(no report)'; $('diag-json').textContent=d.json_preview||'(no JSON)'; }
+  catch(e) { $('diag-report').textContent='Fetch error: '+e.message; }
 });
-
 $('btn-diag-input').addEventListener('click', async () => {
-  $('diag-report').textContent = 'Testing SendInput — cursor will move to screen centre…';
-  $('diag-json').textContent = '';
-  $('diag-overlay').style.display = 'block';
-  try {
-    const d = await fetch('/api/debug/input').then(r => r.json());
-    $('diag-report').textContent = d.report || '(no report)';
-    $('diag-json').textContent   = d.passed ? '✓ SendInput working' : '✗ SendInput FAILED';
-  } catch(e) { $('diag-report').textContent = 'Fetch error: ' + e.message; }
+  $('diag-report').textContent='Testing SendInput…'; $('diag-json').textContent=''; $('diag-overlay').style.display='block';
+  try { const d=await fetch('/api/debug/input').then(r=>r.json()); $('diag-report').textContent=d.report||'(no report)'; $('diag-json').textContent=d.passed?'✓ SendInput working':'✗ SendInput FAILED'; }
+  catch(e) { $('diag-report').textContent='Fetch error: '+e.message; }
 });
 
-// ── AI backend info ────────────────────────────────────────────────────────
-async function loadAiInfo() {
-  try {
-    const ai = await fetch('/api/ai-info').then(r => r.json());
-    const badge = $('ai-badge');
-    if (ai.backend === 'ollama') {
-      badge.className = 'ai-badge ollama';
-      badge.textContent = 'Ollama';
-      badge.title = `Ollama at ${ai.url}`;
-      loadOllamaModels(ai.model);
-    } else {
-      badge.className = 'ai-badge anthropic';
-      badge.textContent = `Claude · ${ai.model}`;
-      $('model-select').classList.remove('visible');
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CANVAS — Visual Bot Sequence Builder
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── UI Target catalogue ────────────────────────────────────────────────────
+// Each entry: { group, id, label, param? { key, label, type, default } }
+// `param` is shown as a second input when that target is selected.
+const UI_TARGETS = [
+  // Ship UI
+  { group:'Ship UI',       id:'ship_ui.module_slot',      label:'Module Slot #',       param:{ key:'slot',  label:'Slot (1–9)',             type:'number', default:'1' }},
+  { group:'Ship UI',       id:'ship_ui.stop_button',      label:'Stop Button' },
+  { group:'Ship UI',       id:'ship_ui.max_speed_button', label:'Max Speed Button' },
+  { group:'Ship UI',       id:'ship_ui.capacitor',        label:'Capacitor' },
+  // Overview
+  { group:'Overview',      id:'overview.first_entry',     label:'First Entry' },
+  { group:'Overview',      id:'overview.entry_by_name',   label:'Entry by Name',        param:{ key:'name',  label:'Name (partial match)',   type:'text',   default:'' }},
+  { group:'Overview',      id:'overview.entry_by_index',  label:'Entry by Index',       param:{ key:'index', label:'Index (1-based)',        type:'number', default:'1' }},
+  { group:'Overview',      id:'overview.tab_by_name',     label:'Tab by Name',          param:{ key:'name',  label:'Tab name',              type:'text',   default:'' }},
+  // Context Menu
+  { group:'Context Menu',  id:'ctx.first_entry',          label:'First Entry' },
+  { group:'Context Menu',  id:'ctx.entry_by_text',        label:'Entry by Text',        param:{ key:'text',  label:'Entry text (partial)',   type:'text',   default:'' }},
+  { group:'Context Menu',  id:'ctx.entry_by_index',       label:'Entry by Index',       param:{ key:'index', label:'Index (1-based)',        type:'number', default:'1' }},
+  // Locked Targets
+  { group:'Locked Targets',id:'targets.first',            label:'First Target' },
+  { group:'Locked Targets',id:'targets.active',           label:'Active Target' },
+  { group:'Locked Targets',id:'targets.by_name',          label:'Target by Name',       param:{ key:'name',  label:'Name (partial)',         type:'text',   default:'' }},
+  // Message Box
+  { group:'Message Box',   id:'msgbox.first_button',      label:'First Button' },
+  { group:'Message Box',   id:'msgbox.button_by_text',    label:'Button by Text',       param:{ key:'text',  label:'Button text',           type:'text',   default:'OK' }},
+  // Inventory
+  { group:'Inventory',     id:'inv.nav_entry_by_name',    label:'Nav Entry by Name',    param:{ key:'name',  label:'Hold name (partial)',    type:'text',   default:'' }},
+  { group:'Inventory',     id:'inv.stack_all_button',     label:'Stack All Button' },
+  // Selected Item
+  { group:'Selected Item', id:'sel.first_button',         label:'First Action Button' },
+  { group:'Selected Item', id:'sel.button_by_index',      label:'Action Button #',      param:{ key:'index', label:'Index (1-based)',        type:'number', default:'1' }},
+  // Station / Info Panel
+  { group:'Station',       id:'station.undock_button',    label:'Undock Button' },
+  { group:'Info Panel',    id:'infopanel.route_marker',   label:'First Route Marker' },
+  // Neocom
+  { group:'Neocom',        id:'neocom.self',              label:'Neocom' },
+];
+
+// ── Keyboard key catalogue ─────────────────────────────────────────────────
+const KEY_GROUPS = [
+  { group:'Function',   keys:['F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'] },
+  { group:'Control',    keys:['Escape','Enter','Space','Tab','Backspace','Delete'] },
+  { group:'Navigation', keys:['Left','Right','Up','Down','Home','End','PageUp','PageDown'] },
+  { group:'Letters',    keys:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('') },
+  { group:'Numbers',    keys:'0123456789'.split('') },
+];
+
+// ── Node type definitions ──────────────────────────────────────────────────
+const NODE_DEFS = {
+  start: {
+    label: 'START', bg: '#0a2a1a', border: '#4caf7d', textColor: '#4caf7d',
+    portsIn: false,
+    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
+    params: [],
+  },
+  left_click: {
+    label: 'L CLICK', bg: '#1e1400', border: '#f9a825', textColor: '#f9a825',
+    portsIn: true,
+    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
+    params: [{ key: 'target', type: 'target', label: 'Target UI Element' }],
+  },
+  right_click: {
+    label: 'R CLICK', bg: '#1e0e00', border: '#ff7043', textColor: '#ff7043',
+    portsIn: true,
+    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
+    params: [{ key: 'target', type: 'target', label: 'Target UI Element' }],
+  },
+  key_press: {
+    label: 'KEY PRESS', bg: '#120018', border: '#ce93d8', textColor: '#ce93d8',
+    portsIn: true,
+    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
+    params: [
+      { key: 'key',   type: 'key',  label: 'Key' },
+      { key: 'ctrl',  type: 'bool', label: 'Ctrl',  default: 'false' },
+      { key: 'shift', type: 'bool', label: 'Shift', default: 'false' },
+      { key: 'alt',   type: 'bool', label: 'Alt',   default: 'false' },
+    ],
+  },
+  type_text: {
+    label: 'TYPE TEXT', bg: '#001820', border: '#4fc3f7', textColor: '#4fc3f7',
+    portsIn: true,
+    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
+    params: [
+      { key: 'text',   type: 'text',            label: 'Text to type' },
+      { key: 'target', type: 'target_optional', label: 'Click target first (optional)' },
+    ],
+  },
+  condition: {
+    label: 'CONDITION', bg: '#1e0a00', border: '#ff7043', textColor: '#ff7043',
+    portsIn: true,
+    portsOut: [{ id: 'true', cls: 'port-out-l', label: 'T' }, { id: 'false', cls: 'port-out-r', label: 'F' }],
+    params: [
+      { key: 'check', type: 'select', label: 'Check', options: [
+        'shield_below','armor_below','structure_below','cap_below',
+        'is_docked','is_in_space','is_warping',
+        'has_target','target_count_above',
+        'cargo_full','cargo_below_percent',
+        'module_active','module_inactive',
+        'overview_has_entry','context_menu_open','message_box_visible',
+        'route_jumps_remaining_above','route_jumps_remaining_below',
+      ]},
+      { key: 'value', type: 'text', label: 'Value (%, slot, name…)', default: '30' },
+    ],
+  },
+  loop: {
+    label: 'LOOP', bg: '#001a1e', border: '#00bcd4', textColor: '#00bcd4',
+    portsIn: true,
+    portsOut: [{ id: 'body', cls: 'port-out-l', label: '▶' }, { id: 'done', cls: 'port-out-r', label: '✓' }],
+    params: [
+      { key: 'iterations', type: 'number', label: 'Iterations (0 = infinite)', default: '0' },
+    ],
+  },
+  wait: {
+    label: 'WAIT', bg: '#10102a', border: '#7c4dff', textColor: '#b39ddb',
+    portsIn: true,
+    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
+    params: [
+      { key: 'ms', type: 'number', label: 'Milliseconds', default: '2000' },
+    ],
+  },
+  wait_until: {
+    label: 'WAIT UNTIL', bg: '#120a28', border: '#7c4dff', textColor: '#ce93d8',
+    portsIn: true,
+    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
+    params: [
+      { key: 'check', type: 'select', label: 'Condition', options: [
+        'is_in_space','is_docked','is_warping',
+        'shield_below','armor_below','structure_below','cap_below',
+        'has_target','target_count_above',
+        'context_menu_open','message_box_visible',
+        'overview_has_entry','cargo_full','cargo_below_percent',
+        'module_active','module_inactive',
+        'route_jumps_remaining_above','route_jumps_remaining_below',
+      ]},
+      { key: 'value',      type: 'text',   label: 'Value',            default: '0' },
+      { key: 'timeout_ms', type: 'number', label: 'Timeout (ms)',     default: '30000' },
+      { key: 'poll_ms',    type: 'number', label: 'Poll interval (ms)',default: '500' },
+    ],
+  },
+  end: {
+    label: 'END', bg: '#1e0808', border: '#ef5350', textColor: '#ef5350',
+    portsIn: true,
+    portsOut: [],
+    params: [],
+  },
+  stop_sequence: {
+    label: 'STOP', bg: '#2a0808', border: '#ef5350', textColor: '#ef5350',
+    portsIn: true,
+    portsOut: [],
+    params: [],
+  },
+};
+
+// ── Canvas state ───────────────────────────────────────────────────────────
+let cnvNodes    = [];         // {id, type, params:{}, x, y}
+let cnvEdges    = [];         // {id, from, fromPort, to, toPort}
+let cnvSel      = null;       // single-selected node id or edge id
+let cnvMultiSel = new Set();  // multi-selected node ids (box select)
+let cnvDrag     = null;       // {nodeId, ox, oy, isMulti, startPositions, startMX, startMY}
+let cnvBoxSel   = null;       // {x0, y0, x1, y1} — box-select in progress
+let cnvConn     = null;       // {nodeId, port} — connection in progress
+let cnvIdSeq    = 2;
+let seqId       = null;
+let seqPlaying  = false;
+
+const NODE_W = 158;
+const NODE_H = 54; // approx height for port calc
+
+function cnvInit() {
+  cnvNodes = [{ id: 'n1', type: 'start', params: {}, x: 60, y: 90 }];
+  cnvEdges = [];
+  cnvSel   = null;
+  cnvIdSeq = 2;
+  cnvRender();
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function cnvRender() {
+  cnvRenderNodes();
+  // Render edges after layout pass so port positions are available
+  requestAnimationFrame(cnvRenderEdges);
+  cnvRenderProps();
+}
+
+function cnvRenderNodes() {
+  const layer = $('nodes-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  for (const n of cnvNodes) layer.appendChild(cnvMakeNodeEl(n));
+}
+
+function cnvRenderEdges() {
+  const g = $('edges-g');
+  if (!g) return;
+  g.innerHTML = '';
+  for (const e of cnvEdges) {
+    const path = cnvMakeEdgePath(e);
+    if (path) g.appendChild(path);
+  }
+}
+
+function cnvMakeNodeEl(node) {
+  const def = NODE_DEFS[node.type] || NODE_DEFS.end;
+  const isSel   = cnvSel === node.id;
+  const isMulti = cnvMultiSel.has(node.id);
+
+  const div = document.createElement('div');
+  div.className = 'canvas-node' + (isSel ? ' selected' : '') + (isMulti ? ' multi-selected' : '');
+  div.dataset.id = node.id;
+  div.style.left   = node.x + 'px';
+  div.style.top    = node.y + 'px';
+  div.style.borderColor = sel ? 'rgba(255,255,255,.5)' : def.border;
+  div.style.background  = def.bg;
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = 'canvas-node-hdr';
+  hdr.style.cssText = `color:${def.textColor};border-bottom:1px solid ${def.border}33;`;
+
+  const typeSpan = document.createElement('span');
+  typeSpan.className = 'canvas-node-type';
+  typeSpan.textContent = def.label;
+  hdr.appendChild(typeSpan);
+
+  // Show primary param as subtitle
+  if (def.params.length > 0) {
+    const fp = def.params[0];
+    const val = node.params[fp.key] ?? fp.default ?? '';
+    const subSpan = document.createElement('span');
+    subSpan.className = 'canvas-node-sub';
+    subSpan.id = `nsub-${node.id}`;
+    subSpan.textContent = String(val).replace(/_/g,' ').slice(0, 20);
+    hdr.appendChild(subSpan);
+  }
+
+  if (node.type !== 'start') {
+    const del = document.createElement('button');
+    del.className = 'canvas-node-del'; del.textContent = '×';
+    del.title = 'Delete node';
+    del.onmousedown = e => e.stopPropagation();
+    del.onclick = e => { e.stopPropagation(); cnvDeleteNode(node.id); };
+    hdr.appendChild(del);
+  }
+  div.appendChild(hdr);
+
+  // Input port
+  if (def.portsIn) {
+    const p = document.createElement('div');
+    p.className = 'canvas-port port-in';
+    p.dataset.nodeId = node.id; p.dataset.port = 'in';
+    div.appendChild(p);
+  }
+
+  // Output ports
+  for (const op of def.portsOut) {
+    const p = document.createElement('div');
+    p.className = 'canvas-port ' + op.cls;
+    p.dataset.nodeId = node.id; p.dataset.port = op.id;
+    p.title = op.label || op.id;
+
+    if (op.label) {
+      const lbl = document.createElement('span');
+      lbl.className = 'port-label';
+      lbl.textContent = op.label;
+      p.appendChild(lbl);
     }
-  } catch(e) {}
+    div.appendChild(p);
+  }
+
+  // Drag handling
+  div.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('canvas-port')) return;
+    if (e.target.classList.contains('canvas-node-del')) return;
+    e.preventDefault(); e.stopPropagation();
+    const areaRect = $('canvas-area').getBoundingClientRect();
+    const mx = e.clientX - areaRect.left, my = e.clientY - areaRect.top;
+    const inMulti = cnvMultiSel.has(node.id);
+    if (!inMulti || e.shiftKey) {
+      // Not part of multi-sel: switch to single selection
+      cnvMultiSel.clear();
+      cnvSel = node.id;
+    }
+    const isMultiDrag = cnvMultiSel.size > 0;
+    cnvDrag = {
+      nodeId: node.id,
+      ox: mx - node.x, oy: my - node.y,
+      isMulti: isMultiDrag,
+      startPositions: isMultiDrag
+        ? Object.fromEntries([...cnvMultiSel].map(id => {
+            const n = cnvNodes.find(n => n.id === id);
+            return [id, { x: n.x, y: n.y }];
+          }))
+        : null,
+      startMX: mx, startMY: my,
+    };
+    cnvRenderNodes();
+    requestAnimationFrame(cnvRenderEdges);
+    cnvRenderProps();
+  });
+
+  return div;
 }
 
-async function loadOllamaModels(currentModel) {
-  const sel = $('model-select');
-  try {
-    const res = await fetch('/api/ollama/models').then(r => r.json());
-    const models = res.models || [];
-    const active = res.current || currentModel;
-    if (!models.length) { sel.classList.remove('visible'); return; }
-    sel.innerHTML = models.map(m => `<option value="${esc(m)}"${m===active?' selected':''}>${esc(m)}</option>`).join('');
-    sel.classList.add('visible');
-  } catch(e) { sel.classList.remove('visible'); }
+// Get port center in canvas-area coordinates
+function cnvPortPos(nodeId, port) {
+  // Try DOM measurement first
+  const nodeEl = document.querySelector(`.canvas-node[data-id="${nodeId}"]`);
+  if (nodeEl) {
+    const portEl = nodeEl.querySelector(`[data-port="${port}"]`);
+    if (portEl) {
+      const areaRect = $('canvas-area').getBoundingClientRect();
+      const pRect = portEl.getBoundingClientRect();
+      return { x: pRect.left + pRect.width/2 - areaRect.left, y: pRect.top + pRect.height/2 - areaRect.top };
+    }
+  }
+  // Fallback: approximate
+  const node = cnvNodes.find(n => n.id === nodeId);
+  if (!node) return { x: 0, y: 0 };
+  const def = NODE_DEFS[node.type] || NODE_DEFS.action;
+  if (port === 'in') return { x: node.x + NODE_W/2, y: node.y };
+  const ops = def.portsOut || [];
+  if (ops.length === 1) return { x: node.x + NODE_W/2, y: node.y + NODE_H };
+  const idx = ops.findIndex(p => p.id === port);
+  return { x: node.x + (idx===0 ? NODE_W*0.28 : NODE_W*0.72), y: node.y + NODE_H };
 }
 
-$('model-select').addEventListener('change', async function() {
-  if (!this.value) return;
-  try {
-    await fetch('/api/ollama/model', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ model: this.value }) });
-  } catch(e) {}
+function cnvMakeEdgePath(edge) {
+  const from = cnvPortPos(edge.from, edge.fromPort);
+  const to   = cnvPortPos(edge.to,   edge.toPort);
+  if (!from || !to) return null;
+
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const cy = Math.max(40, Math.abs(dy) * 0.55);
+  const d = `M ${from.x.toFixed(1)} ${from.y.toFixed(1)} C ${from.x.toFixed(1)} ${(from.y+cy).toFixed(1)}, ${to.x.toFixed(1)} ${(to.y-cy).toFixed(1)}, ${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
+
+  const isSel = cnvSel === edge.id;
+  const color = isSel ? '#ffffff'
+    : edge.fromPort === 'false' ? '#ef5350'
+    : edge.fromPort === 'true'  ? '#4caf7d'
+    : edge.fromPort === 'body'  ? '#00bcd4'
+    : edge.fromPort === 'done'  ? '#4caf7d'
+    : '#4fc3f7';
+  const marker = isSel ? 'arr-white'
+    : edge.fromPort === 'false' ? 'arr-red'
+    : (edge.fromPort === 'true' || edge.fromPort === 'done') ? 'arr-green'
+    : 'arr-blue';
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', color);
+  path.setAttribute('stroke-width', isSel ? '2.5' : '1.8');
+  path.setAttribute('marker-end', `url(#${marker})`);
+  path.setAttribute('opacity', isSel ? '1' : '0.75');
+  path.dataset.edgeId = edge.id;
+  path.style.cursor = 'pointer';
+  path.style.pointerEvents = 'stroke';
+  path.addEventListener('click', ev => {
+    ev.stopPropagation();
+    cnvSel = edge.id;
+    cnvRenderEdges();
+    cnvRenderProps();
+  });
+  return path;
+}
+
+// ── Properties panel ────────────────────────────────────────────────────────
+
+// Build an <optgroup>-based target select element
+function buildTargetSelect(nodeId, key, currentVal, optional) {
+  const sel = document.createElement('select');
+  sel.className = 'prop-input';
+  sel.dataset.nodeId = nodeId; sel.dataset.key = key;
+  if (optional) {
+    const opt = document.createElement('option'); opt.value = ''; opt.textContent = '— none —';
+    if (!currentVal) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  // Group targets by group name
+  const groups = {};
+  for (const t of UI_TARGETS) {
+    (groups[t.group] = groups[t.group] || []).push(t);
+  }
+  for (const [grpName, targets] of Object.entries(groups)) {
+    const grp = document.createElement('optgroup'); grp.label = grpName;
+    for (const t of targets) {
+      const opt = document.createElement('option'); opt.value = t.id;
+      opt.textContent = t.label;
+      if (t.id === currentVal) opt.selected = true;
+      grp.appendChild(opt);
+    }
+    sel.appendChild(grp);
+  }
+  return sel;
+}
+
+// Build an <optgroup>-based key select element
+function buildKeySelect(nodeId, key, currentVal) {
+  const sel = document.createElement('select');
+  sel.className = 'prop-input';
+  sel.dataset.nodeId = nodeId; sel.dataset.key = key;
+  for (const { group, keys } of KEY_GROUPS) {
+    const grp = document.createElement('optgroup'); grp.label = group;
+    for (const k of keys) {
+      const opt = document.createElement('option'); opt.value = k; opt.textContent = k;
+      if (k === currentVal) opt.selected = true;
+      grp.appendChild(opt);
+    }
+    sel.appendChild(grp);
+  }
+  return sel;
+}
+
+// Returns a label string for the node subtitle from its first meaningful param
+function cnvNodeSubtitle(node) {
+  const def = NODE_DEFS[node.type];
+  if (!def || def.params.length === 0) return '';
+  const fp = def.params[0];
+  const val = node.params[fp.key] ?? fp.default ?? '';
+  if (fp.type === 'target' || fp.type === 'target_optional') {
+    const t = UI_TARGETS.find(t => t.id === val);
+    return t ? t.label : (val ? val.replace(/[._]/g, ' ') : '');
+  }
+  if (fp.type === 'key') return val;
+  return String(val).slice(0, 20);
+}
+
+function cnvRenderProps() {
+  const body = $('canvas-props-body');
+  if (!body) return;
+
+  if (!cnvSel) { body.innerHTML = '<span class="empty">Select a node to edit properties</span>'; return; }
+
+  // Edge selected?
+  const edge = cnvEdges.find(e => e.id === cnvSel);
+  if (edge) {
+    body.innerHTML = `
+      <span style="color:var(--text-dim);font-size:.75rem">Edge: <b>${edge.from}</b>.${edge.fromPort} → <b>${edge.to}</b>.${edge.toPort}</span>
+      <button class="btn btn-danger" style="margin-left:8px;font-size:.7rem;padding:2px 8px;"
+        onclick="cnvEdges=cnvEdges.filter(e=>e.id!=='${edge.id}');cnvSel=null;cnvRenderEdges();cnvRenderProps()">Delete Edge</button>`;
+    return;
+  }
+
+  // Node selected?
+  const node = cnvNodes.find(n => n.id === cnvSel);
+  if (!node) { body.innerHTML = '<span class="empty">Select a node to edit properties</span>'; return; }
+
+  const def = NODE_DEFS[node.type];
+  if (!def || def.params.length === 0) {
+    body.innerHTML = `<span class="empty">${def?.label || node.type} — no parameters</span>`;
+    return;
+  }
+
+  body.innerHTML = '';
+
+  for (const param of def.params) {
+    const val = node.params[param.key] ?? param.default ?? '';
+
+    // ── target / target_optional ─────────────────────────────────────────
+    if (param.type === 'target' || param.type === 'target_optional') {
+      const row = document.createElement('div'); row.className = 'prop-row';
+      const lbl = document.createElement('label'); lbl.className = 'prop-label'; lbl.textContent = param.label;
+      row.appendChild(lbl);
+
+      const sel = buildTargetSelect(node.id, param.key, val, param.type === 'target_optional');
+      sel.addEventListener('change', e => {
+        node.params[e.target.dataset.key] = e.target.value;
+        // Clear stale target_param when target type changes
+        node.params.target_param = '';
+        cnvUpdateSubtitle(node);
+        cnvRenderProps(); // re-render to show/hide target_param input
+      });
+      row.appendChild(sel);
+      body.appendChild(row);
+
+      // Conditional target_param input
+      const selTarget = UI_TARGETS.find(t => t.id === (node.params[param.key] || ''));
+      if (selTarget?.param) {
+        const p = selTarget.param;
+        const pRow = document.createElement('div'); pRow.className = 'prop-row';
+        const pLbl = document.createElement('label'); pLbl.className = 'prop-label'; pLbl.textContent = p.label;
+        pRow.appendChild(pLbl);
+        const pInp = document.createElement('input');
+        pInp.type = p.type === 'number' ? 'number' : 'text';
+        pInp.className = 'prop-input';
+        pInp.value = node.params.target_param ?? p.default ?? '';
+        pInp.dataset.nodeId = node.id; pInp.dataset.key = 'target_param';
+        pInp.addEventListener('input', cnvSetParam);
+        pRow.appendChild(pInp);
+        body.appendChild(pRow);
+      }
+      continue;
+    }
+
+    // ── key select ────────────────────────────────────────────────────────
+    if (param.type === 'key') {
+      const row = document.createElement('div'); row.className = 'prop-row';
+      const lbl = document.createElement('label'); lbl.className = 'prop-label'; lbl.textContent = param.label;
+      row.appendChild(lbl);
+      const sel = buildKeySelect(node.id, param.key, val);
+      sel.addEventListener('change', e => { node.params[e.target.dataset.key] = e.target.value; cnvUpdateSubtitle(node); });
+      row.appendChild(sel);
+      body.appendChild(row);
+      continue;
+    }
+
+    // ── bool (checkbox) ───────────────────────────────────────────────────
+    if (param.type === 'bool') {
+      const row = document.createElement('div'); row.className = 'prop-row';
+      row.style.flexDirection = 'row'; row.style.alignItems = 'center'; row.style.gap = '6px';
+      const cb = document.createElement('input'); cb.type = 'checkbox';
+      cb.checked = (val === 'true' || val === true);
+      cb.style.cursor = 'pointer'; cb.style.accentColor = 'var(--accent)';
+      cb.dataset.nodeId = node.id; cb.dataset.key = param.key;
+      cb.addEventListener('change', e => { node.params[e.target.dataset.key] = e.target.checked ? 'true' : 'false'; });
+      const lbl = document.createElement('label'); lbl.className = 'prop-label';
+      lbl.textContent = param.label; lbl.style.marginBottom = '0';
+      lbl.style.cursor = 'pointer';
+      row.appendChild(cb); row.appendChild(lbl);
+      body.appendChild(row);
+      continue;
+    }
+
+    // ── text / number ─────────────────────────────────────────────────────
+    const row = document.createElement('div'); row.className = 'prop-row';
+    const lbl = document.createElement('label'); lbl.className = 'prop-label'; lbl.textContent = param.label;
+    row.appendChild(lbl);
+    const inp = document.createElement('input');
+    inp.type = param.type === 'number' ? 'number' : 'text';
+    inp.className = 'prop-input'; inp.value = val;
+    inp.dataset.nodeId = node.id; inp.dataset.key = param.key;
+    inp.addEventListener('input', cnvSetParam);
+    row.appendChild(inp);
+    body.appendChild(row);
+  }
+}
+
+function cnvUpdateSubtitle(node) {
+  const subEl = document.getElementById(`nsub-${node.id}`);
+  if (subEl) subEl.textContent = cnvNodeSubtitle(node);
+}
+
+function cnvSetParam(e) {
+  const nodeId = e.target.dataset.nodeId;
+  const key    = e.target.dataset.key;
+  const node   = cnvNodes.find(n => n.id === nodeId);
+  if (!node) return;
+  node.params[key] = e.target.value;
+  // Update header subtitle without full re-render (preserves focus)
+  const subEl = document.getElementById(`nsub-${nodeId}`);
+  if (subEl) {
+    const def = NODE_DEFS[node.type];
+    if (def?.params?.length > 0) {
+      const fp = def.params[0];
+      subEl.textContent = String(node.params[fp.key] ?? fp.default ?? '').replace(/_/g,' ').slice(0, 20);
+    }
+  }
+}
+
+// ── Mouse events ────────────────────────────────────────────────────────────
+document.addEventListener('mousemove', e => {
+  // Node dragging
+  if (cnvDrag) {
+    const areaRect = $('canvas-area').getBoundingClientRect();
+    const mx = e.clientX - areaRect.left, my = e.clientY - areaRect.top;
+    if (cnvDrag.isMulti && cnvDrag.startPositions) {
+      const dx = mx - cnvDrag.startMX, dy = my - cnvDrag.startMY;
+      for (const [id, pos] of Object.entries(cnvDrag.startPositions)) {
+        const n = cnvNodes.find(n => n.id === id);
+        if (n) {
+          n.x = Math.max(0, pos.x + dx); n.y = Math.max(0, pos.y + dy);
+          const el = document.querySelector(`.canvas-node[data-id="${id}"]`);
+          if (el) { el.style.left = n.x+'px'; el.style.top = n.y+'px'; }
+        }
+      }
+    } else {
+      const node = cnvNodes.find(n => n.id === cnvDrag.nodeId);
+      if (node) {
+        node.x = Math.max(0, mx - cnvDrag.ox);
+        node.y = Math.max(0, my - cnvDrag.oy);
+        const el = document.querySelector(`.canvas-node[data-id="${cnvDrag.nodeId}"]`);
+        if (el) { el.style.left = node.x+'px'; el.style.top = node.y+'px'; }
+      }
+    }
+    requestAnimationFrame(cnvRenderEdges);
+  }
+  // Box selection
+  if (cnvBoxSel) {
+    const areaRect = $('canvas-area').getBoundingClientRect();
+    cnvBoxSel.x1 = e.clientX - areaRect.left;
+    cnvBoxSel.y1 = e.clientY - areaRect.top;
+    cnvRenderBoxSel();
+  }
+  // Connection dragging
+  if (cnvConn) {
+    const areaRect = $('canvas-area').getBoundingClientRect();
+    const mx = e.clientX - areaRect.left;
+    const my = e.clientY - areaRect.top;
+    const te = $('temp-edge');
+    const sp = cnvPortPos(cnvConn.nodeId, cnvConn.port);
+    if (te && sp) {
+      const cy = Math.max(30, Math.abs(my - sp.y) * 0.5);
+      te.setAttribute('d', `M ${sp.x.toFixed(1)} ${sp.y.toFixed(1)} C ${sp.x.toFixed(1)} ${(sp.y+cy).toFixed(1)}, ${mx.toFixed(1)} ${(my-cy).toFixed(1)}, ${mx.toFixed(1)} ${my.toFixed(1)}`);
+      te.style.display = '';
+    }
+    // Highlight hovered input port
+    document.querySelectorAll('.canvas-port.hot').forEach(p => p.classList.remove('hot'));
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (el?.classList.contains('canvas-port') && el.dataset.port === 'in') el.classList.add('hot');
+  }
 });
 
+document.addEventListener('mouseup', e => {
+  cnvDrag = null;
+  if (cnvBoxSel) {
+    // Finalize box selection
+    if (cnvMultiSel.size === 1 && !e.shiftKey) {
+      cnvSel = [...cnvMultiSel][0]; cnvMultiSel.clear();
+    }
+    cnvBoxSel = null;
+    const r = $('sel-box'); if (r) r.style.display = 'none';
+    cnvRenderNodes();
+    requestAnimationFrame(cnvRenderEdges);
+    cnvRenderProps();
+  }
+  if (cnvConn) {
+    const target = e.target;
+    if (target.classList.contains('canvas-port') && target.dataset.port === 'in') {
+      const toNodeId = target.dataset.nodeId;
+      if (toNodeId !== cnvConn.nodeId) {
+        // Remove any existing edge to this input port
+        cnvEdges = cnvEdges.filter(ed => !(ed.to === toNodeId && ed.toPort === 'in'));
+        cnvEdges.push({ id: 'e'+(cnvIdSeq++), from: cnvConn.nodeId, fromPort: cnvConn.port, to: toNodeId, toPort: 'in' });
+      }
+    }
+    cnvConn = null;
+    const te = $('temp-edge'); if (te) te.style.display = 'none';
+    document.querySelectorAll('.canvas-port.hot').forEach(p => p.classList.remove('hot'));
+    $('canvas-area').classList.remove('connecting');
+    cnvRenderEdges();
+  }
+});
+
+// Port mousedown → begin connecting
+document.addEventListener('mousedown', e => {
+  if (e.target.classList.contains('canvas-port') && e.target.dataset.port !== 'in') {
+    e.preventDefault(); e.stopPropagation();
+    cnvConn = { nodeId: e.target.dataset.nodeId, port: e.target.dataset.port };
+    $('canvas-area').classList.add('connecting');
+  }
+});
+
+// Canvas background click → deselect
+$('canvas-area').addEventListener('click', e => {
+  if (e.target === $('canvas-area') || e.target === $('canvas-svg') || e.target.id === 'nodes-layer') {
+    cnvSel = null; cnvMultiSel.clear(); cnvRenderEdges(); cnvRenderProps();
+  }
+});
+
+// Canvas background mousedown → start box selection
+$('canvas-area').addEventListener('mousedown', e => {
+  if (e.target.closest('.canvas-node') || e.target.closest('[data-edge-id]')) return;
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const rect = $('canvas-area').getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  if (!e.shiftKey) { cnvMultiSel.clear(); cnvSel = null; }
+  cnvBoxSel = { x0: x, y0: y, x1: x, y1: y };
+});
+
+// Box selection render helper
+function cnvRenderBoxSel() {
+  const r = $('sel-box');
+  if (!r || !cnvBoxSel) { if (r) r.style.display = 'none'; return; }
+  const bx = Math.min(cnvBoxSel.x0, cnvBoxSel.x1), by = Math.min(cnvBoxSel.y0, cnvBoxSel.y1);
+  const bw = Math.abs(cnvBoxSel.x1 - cnvBoxSel.x0), bh = Math.abs(cnvBoxSel.y1 - cnvBoxSel.y0);
+  if (bw < 4 && bh < 4) { r.style.display = 'none'; return; }
+  r.setAttribute('x', bx); r.setAttribute('y', by);
+  r.setAttribute('width', bw); r.setAttribute('height', bh);
+  r.style.display = '';
+  cnvMultiSel.clear();
+  for (const n of cnvNodes) {
+    if (n.x + NODE_W > bx && n.x < bx + bw && n.y + NODE_H > by && n.y < by + bh)
+      cnvMultiSel.add(n.id);
+  }
+  document.querySelectorAll('.canvas-node').forEach(el => {
+    el.classList.toggle('multi-selected', cnvMultiSel.has(el.dataset.id));
+  });
+}
+
+// Keyboard: Delete/Backspace removes selected
+document.addEventListener('keydown', e => {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+    // Multi-selection delete
+    if (cnvMultiSel.size > 0) {
+      for (const id of cnvMultiSel) {
+        if (cnvNodes.find(n => n.id === id)?.type === 'start') continue;
+        cnvNodes = cnvNodes.filter(n => n.id !== id);
+        cnvEdges = cnvEdges.filter(ed => ed.from !== id && ed.to !== id);
+      }
+      cnvMultiSel.clear(); cnvSel = null; cnvRender(); return;
+    }
+    if (!cnvSel) return;
+    const nodeIdx = cnvNodes.findIndex(n => n.id === cnvSel);
+    if (nodeIdx >= 0) {
+      if (cnvNodes[nodeIdx].type === 'start') return;
+      cnvDeleteNode(cnvSel);
+    } else {
+      cnvEdges = cnvEdges.filter(ed => ed.id !== cnvSel);
+      cnvSel = null; cnvRenderEdges(); cnvRenderProps();
+    }
+  }
+});
+
+function cnvDeleteNode(nodeId) {
+  if (cnvNodes.find(n => n.id === nodeId)?.type === 'start') return;
+  cnvNodes = cnvNodes.filter(n => n.id !== nodeId);
+  cnvEdges = cnvEdges.filter(ed => ed.from !== nodeId && ed.to !== nodeId);
+  if (cnvSel === nodeId) cnvSel = null;
+  cnvRender();
+}
+
+// ── Drag from palette ──────────────────────────────────────────────────────
+document.querySelectorAll('.palette-item').forEach(item => {
+  item.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.dataset.type); });
+});
+$('canvas-area').addEventListener('dragover', e => e.preventDefault());
+$('canvas-area').addEventListener('drop', e => {
+  e.preventDefault();
+  const type = e.dataTransfer.getData('text/plain');
+  if (!NODE_DEFS[type]) return;
+  const rect = $('canvas-area').getBoundingClientRect();
+  const x = Math.max(4, e.clientX - rect.left - NODE_W/2);
+  const y = Math.max(4, e.clientY - rect.top  - NODE_H/2);
+  cnvNodes.push({ id: 'n'+(cnvIdSeq++), type, params: {}, x, y });
+  cnvRender();
+});
+
+// ── Sequence CRUD ──────────────────────────────────────────────────────────
+function newSequence() {
+  if (cnvNodes.length > 1 && !confirm('Discard current sequence?')) return;
+  seqId = null;
+  $('seq-name').value = 'Untitled';
+  $('btn-del-seq').disabled = true;
+  cnvInit();
+  const sel = $('seq-load-select'); if (sel) sel.value = '';
+}
+
+async function saveSequence() {
+  const name = ($('seq-name').value || '').trim() || 'Untitled';
+  const graph = { id: seqId, name, nodes: cnvNodes, edges: cnvEdges };
+  try {
+    const r = await fetch('/api/sequences', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(graph),
+    });
+    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message||'Save failed'); return; }
+    const j = await r.json();
+    seqId = j.id;
+    $('btn-del-seq').disabled = false;
+    await refreshSeqList();
+    const sel = $('seq-load-select'); if (sel) sel.value = seqId;
+  } catch(ex) { alert('Save error: '+ex.message); }
+}
+
+async function refreshSeqList() {
+  try {
+    const list = await fetch('/api/sequences').then(r => r.json());
+    const sel = $('seq-load-select');
+    const prev = sel?.value;
+    if (sel) sel.innerHTML = '<option value="">Load saved…</option>' +
+      list.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+    if (prev && list.find(s => s.id === prev) && sel) sel.value = prev;
+  } catch(ex) {}
+}
+
+async function loadSequence(id) {
+  if (!id) return;
+  try {
+    const seq = await fetch('/api/sequences/'+encodeURIComponent(id)).then(r => r.json());
+    seqId = seq.id; $('seq-name').value = seq.name || 'Untitled';
+    cnvNodes = seq.nodes || []; cnvEdges = seq.edges || []; cnvSel = null;
+    cnvIdSeq = Math.max(2, ...cnvNodes.map(n => { const m = n.id.match(/\d+$/); return m ? parseInt(m[0])+1 : 1; }), ...cnvEdges.map(e => { const m = e.id.match(/\d+$/); return m ? parseInt(m[0])+1 : 1; }));
+    $('btn-del-seq').disabled = false;
+    cnvRender();
+  } catch(ex) { alert('Load error: '+ex.message); }
+}
+
+async function deleteSequence() {
+  if (!seqId || !confirm('Delete this sequence?')) return;
+  try {
+    await fetch('/api/sequences/'+encodeURIComponent(seqId), { method: 'DELETE' });
+    seqId = null; $('btn-del-seq').disabled = true; $('seq-name').value = 'Untitled';
+    cnvInit(); await refreshSeqList();
+  } catch(ex) { alert('Delete error: '+ex.message); }
+}
+
+async function playSequence() {
+  if (!seqId) { alert('Save the sequence first, then play it.'); return; }
+  try {
+    const r = await fetch('/api/sequences/'+encodeURIComponent(seqId)+'/run', { method: 'POST' });
+    if (r.ok) {
+      seqPlaying = true;
+      $('btn-play-seq').disabled = true; $('btn-stop-seq').disabled = false;
+      $('seq-play-status').textContent = '▶ Running';
+      $('seq-play-status').style.color = 'var(--green)';
+    } else {
+      const j = await r.json().catch(()=>({})); alert(j.message||'Play failed');
+    }
+  } catch(ex) { alert('Play error: '+ex.message); }
+}
+
+async function stopSequence() {
+  try {
+    await fetch('/api/sequences/stop', { method: 'POST' });
+    seqPlaying = false;
+    $('btn-play-seq').disabled = false; $('btn-stop-seq').disabled = true;
+    $('seq-play-status').textContent = '';
+  } catch(ex) {}
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+cnvInit();
 startConnection();
 </script>
 </body>

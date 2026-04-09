@@ -177,14 +177,40 @@ public sealed partial class UITreeParser
 
         if (pmarks.Count > 0)
         {
-            // In EVE's capacitor ring the glowing (filled) cells render with low alpha;
-            // dark (empty) cells have high alpha. Count cells with APercent > 25 as unlit.
-            var unlit = pmarks.Count(p =>
+            // EVE's capacitor ring: filled (lit) cells have LOW _color alpha; empty (dark) cells have HIGH alpha.
+            // Strategy 1 — use alpha of the _color dict entry (most reliable).
+            var withColor = pmarks.Where(p => p.Node.GetDictColor("_color") != null).ToList();
+            if (withColor.Count > 0)
             {
-                var color = p.Node.GetDictColor("_color");
-                return color != null && color.APercent > 25;
-            });
-            levelPercent = (int)((double)(pmarks.Count - unlit) / pmarks.Count * 100);
+                var unlit = withColor.Count(p => p.Node.GetDictColor("_color")!.APercent > 30);
+                levelPercent = (int)Math.Round((double)(withColor.Count - unlit) / withColor.Count * 100);
+            }
+            else
+            {
+                // Strategy 2 — use opacity/_opacity attribute (some EVE client versions)
+                var withOpacity = pmarks
+                    .Select(p => p.Node.GetDictDouble("_opacity") ?? p.Node.GetDictDouble("opacity"))
+                    .Where(o => o.HasValue)
+                    .ToList();
+                if (withOpacity.Count > 0)
+                {
+                    // Low opacity = empty, high opacity = lit
+                    var lit = withOpacity.Count(o => o!.Value > 0.5);
+                    levelPercent = (int)Math.Round((double)lit / withOpacity.Count * 100);
+                }
+                else
+                {
+                    // Strategy 3 — display text fallback ("75%" or "75 %")
+                    var pct = capNode.GetAllContainedDisplayTexts()
+                        .Select(t => t.Replace(" ", "").Replace("%", ""))
+                        .FirstOrDefault(t => int.TryParse(t, out _));
+                    if (pct != null && int.TryParse(pct, out var parsed))
+                        levelPercent = Math.Clamp(parsed, 0, 100);
+                    else
+                        // Last resort: count pmarks and assume full
+                        levelPercent = pmarks.Count > 0 ? 100 : null;
+                }
+            }
         }
 
         return new ShipUICapacitor { UINode = capNode, LevelPercent = levelPercent };
@@ -318,12 +344,26 @@ public sealed partial class UITreeParser
     private List<Target> FindTargets(UITreeNodeWithDisplayRegion root)
     {
         return root.FindAll(n => IsType(n, "TargetInBar", "Target"))
-            .Select(n => new Target
+            .Select(n =>
             {
-                UINode = n,
-                TextLabel = n.GetAllContainedDisplayTexts().FirstOrDefault(),
-                HitpointsPercent = FindHitpoints(n),
-                IsActiveTarget = n.Node.GetDictString("isActiveTarget") is "True" or "1",
+                var allTexts = n.GetAllContainedDisplayTexts().ToList();
+
+                // The target label is the first non-distance, non-percentage text
+                var label = allTexts.FirstOrDefault(t =>
+                    !DistanceRegex().IsMatch(t) && !t.EndsWith('%'));
+
+                // Distance text is the first text that looks like a distance
+                var distText = allTexts.FirstOrDefault(t => DistanceRegex().IsMatch(t));
+
+                return new Target
+                {
+                    UINode           = n,
+                    TextLabel        = label ?? allTexts.FirstOrDefault(),
+                    DistanceText     = distText,
+                    DistanceInMeters = distText != null ? ParseDistanceText(distText) : null,
+                    HitpointsPercent = FindHitpoints(n),
+                    IsActiveTarget   = n.Node.GetDictString("isActiveTarget") is "True" or "1",
+                };
             })
             .ToList();
     }
@@ -359,26 +399,51 @@ public sealed partial class UITreeParser
         var node = container.FindFirst(n => IsType(n, "InfoPanelLocationInfo"));
         if (node == null) return null;
 
-        // System name: node is named "headerLabelSystemName" (contains "SystemName" or "labelsystemname")
-        var sysNode = node.FindFirst(n =>
-            (n.Node.GetDictString("_name") ?? "").Contains("SystemName", StringComparison.OrdinalIgnoreCase)
-            || (n.Node.GetDictString("_name") ?? "").Contains("labelsystemname", StringComparison.OrdinalIgnoreCase));
-        var systemName = sysNode?.GetAllContainedDisplayTexts().FirstOrDefault()
-            ?? node.GetAllContainedDisplayTexts().FirstOrDefault();
+        // System name — try several known _name patterns from EVE client versions
+        static bool IsSystemNameLabel(UITreeNodeWithDisplayRegion n)
+        {
+            var name = n.Node.GetDictString("_name") ?? "";
+            return name.Contains("SystemName",   StringComparison.OrdinalIgnoreCase)
+                || name.Contains("systemname",   StringComparison.OrdinalIgnoreCase)
+                || name.Contains("solarSystem",  StringComparison.OrdinalIgnoreCase)
+                || name.Equals("labelSystemName", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("currentSolarSystemName", StringComparison.OrdinalIgnoreCase);
+        }
 
-        // Security status: node is named "headerLabelSecStatus" (contains "SecStatus")
-        var secNode = node.FindFirst(n =>
-            (n.Node.GetDictString("_name") ?? "").Contains("SecStatus", StringComparison.OrdinalIgnoreCase)
-            || (n.Node.GetDictString("_name") ?? "").Contains("security", StringComparison.OrdinalIgnoreCase));
+        var sysNode = node.FindFirst(IsSystemNameLabel);
+        var systemName = sysNode != null
+            ? (EveTextUtil.StripTags(sysNode.Node.GetDictString("_setText"))
+               ?? EveTextUtil.StripTags(sysNode.Node.GetDictString("_text"))
+               ?? sysNode.GetAllContainedDisplayTexts().FirstOrDefault())
+            : null;
+
+        // If not found by name, take the first non-numeric, non-security-status text in the panel
+        systemName ??= node.GetAllContainedDisplayTexts()
+            .FirstOrDefault(t => t.Length > 1
+                && !double.TryParse(t.Replace(",", "."), out _)
+                && !t.Contains("sec", StringComparison.OrdinalIgnoreCase));
+
+        // Security status
+        static bool IsSecurityLabel(UITreeNodeWithDisplayRegion n)
+        {
+            var name = n.Node.GetDictString("_name") ?? "";
+            return name.Contains("SecStatus",  StringComparison.OrdinalIgnoreCase)
+                || name.Contains("security",   StringComparison.OrdinalIgnoreCase)
+                || name.Contains("secStatus",  StringComparison.OrdinalIgnoreCase)
+                || name.Equals("labelSecurity", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var secNode = node.FindFirst(IsSecurityLabel);
         var secText = secNode != null
             ? (EveTextUtil.StripTags(secNode.Node.GetDictString("_setText"))
-               ?? EveTextUtil.StripTags(secNode.Node.GetDictString("_text")))
+               ?? EveTextUtil.StripTags(secNode.Node.GetDictString("_text"))
+               ?? secNode.GetAllContainedDisplayTexts().FirstOrDefault())
             : null;
 
         return new InfoPanelLocationInfo
         {
-            UINode = node,
-            SystemName = systemName,
+            UINode             = node,
+            SystemName         = systemName,
             SecurityStatusText = secText,
         };
     }

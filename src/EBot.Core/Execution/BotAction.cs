@@ -22,6 +22,10 @@ public enum VirtualKey : ushort
     Space = 0x20,
     Backspace = 0x08,
     Delete = 0x2E,
+    Home = 0x24,
+    End = 0x23,
+    PageUp = 0x21,
+    PageDown = 0x22,
 
     // Arrows
     Left = 0x25,

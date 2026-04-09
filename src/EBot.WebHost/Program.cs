@@ -594,6 +594,156 @@ api.MapGet("/debug/infopanel", (BotOrchestrator orch, ILoggerFactory lf) =>
     return Results.Ok(sb.ToString());
 });
 
+// ─── Visual Sequence Builder API ──────────────────────────────────────────
+
+var seqDir = Path.Combine(AppContext.BaseDirectory, "data", "sequences");
+SequenceRunner? activeSeqRunner = null;
+
+// Seed built-in sequences (only if file doesn't exist yet)
+SeedDefaultSequences(seqDir);
+
+static void SeedDefaultSequences(string dir)
+{
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "autotravel.json");
+    if (File.Exists(path)) return;
+    File.WriteAllText(path, """
+{
+  "id": "autotravel",
+  "name": "Auto Travel",
+  "nodes": [
+    {"id":"n_start",      "type":"start",         "params":{},                                                              "x":60,   "y":80},
+    {"id":"n_loop",       "type":"loop",           "params":{"iterations":"0"},                                              "x":240,  "y":80},
+    {"id":"n_has_route",  "type":"condition",      "params":{"check":"route_jumps_remaining_above","value":"0"},              "x":420,  "y":80},
+    {"id":"n_is_docked",  "type":"condition",      "params":{"check":"is_docked"},                                           "x":620,  "y":80},
+    {"id":"n_undock",     "type":"left_click",     "params":{"target":"station.undock_button"},                              "x":820,  "y":80},
+    {"id":"n_wait_space", "type":"wait_until",     "params":{"check":"is_in_space","timeout_ms":"20000"},                    "x":1000, "y":80},
+    {"id":"n_is_warping", "type":"condition",      "params":{"check":"is_warping"},                                         "x":620,  "y":240},
+    {"id":"n_wait_warp",  "type":"wait",           "params":{"ms":"2500"},                                                  "x":820,  "y":240},
+    {"id":"n_msgbox",     "type":"condition",      "params":{"check":"message_box_visible"},                                "x":620,  "y":400},
+    {"id":"n_click_ok",   "type":"left_click",     "params":{"target":"msgbox.first_button"},                               "x":820,  "y":400},
+    {"id":"n_wait_ok",    "type":"wait",           "params":{"ms":"1000"},                                                  "x":1000, "y":400},
+    {"id":"n_ctx_open",   "type":"condition",      "params":{"check":"context_menu_open"},                                  "x":620,  "y":560},
+    {"id":"n_click_jump", "type":"left_click",     "params":{"target":"ctx.entry_by_text","target_param":"Jump"},           "x":820,  "y":560},
+    {"id":"n_wait_jump",  "type":"wait",           "params":{"ms":"3500"},                                                  "x":1000, "y":560},
+    {"id":"n_rclick_gate","type":"right_click",    "params":{"target":"infopanel.route_marker"},                            "x":820,  "y":720},
+    {"id":"n_wait_rclick","type":"wait",           "params":{"ms":"800"},                                                   "x":1000, "y":720},
+    {"id":"n_stop",       "type":"stop_sequence",  "params":{},                                                             "x":420,  "y":240},
+    {"id":"n_end",        "type":"end",            "params":{},                                                             "x":240,  "y":240}
+  ],
+  "edges": [
+    {"id":"e1",  "from":"n_start",      "fromPort":"next",  "to":"n_loop",        "toPort":"in"},
+    {"id":"e2",  "from":"n_loop",       "fromPort":"body",  "to":"n_has_route",   "toPort":"in"},
+    {"id":"e3",  "from":"n_loop",       "fromPort":"done",  "to":"n_end",         "toPort":"in"},
+    {"id":"e4",  "from":"n_has_route",  "fromPort":"true",  "to":"n_is_docked",   "toPort":"in"},
+    {"id":"e5",  "from":"n_has_route",  "fromPort":"false", "to":"n_stop",        "toPort":"in"},
+    {"id":"e6",  "from":"n_is_docked",  "fromPort":"true",  "to":"n_undock",      "toPort":"in"},
+    {"id":"e7",  "from":"n_undock",     "fromPort":"next",  "to":"n_wait_space",  "toPort":"in"},
+    {"id":"e8",  "from":"n_is_docked",  "fromPort":"false", "to":"n_is_warping",  "toPort":"in"},
+    {"id":"e9",  "from":"n_is_warping", "fromPort":"true",  "to":"n_wait_warp",   "toPort":"in"},
+    {"id":"e10", "from":"n_is_warping", "fromPort":"false", "to":"n_msgbox",      "toPort":"in"},
+    {"id":"e11", "from":"n_msgbox",     "fromPort":"true",  "to":"n_click_ok",    "toPort":"in"},
+    {"id":"e12", "from":"n_click_ok",   "fromPort":"next",  "to":"n_wait_ok",     "toPort":"in"},
+    {"id":"e13", "from":"n_msgbox",     "fromPort":"false", "to":"n_ctx_open",    "toPort":"in"},
+    {"id":"e14", "from":"n_ctx_open",   "fromPort":"true",  "to":"n_click_jump",  "toPort":"in"},
+    {"id":"e15", "from":"n_click_jump", "fromPort":"next",  "to":"n_wait_jump",   "toPort":"in"},
+    {"id":"e16", "from":"n_ctx_open",   "fromPort":"false", "to":"n_rclick_gate", "toPort":"in"},
+    {"id":"e17", "from":"n_rclick_gate","fromPort":"next",  "to":"n_wait_rclick", "toPort":"in"}
+  ]
+}
+""");
+}
+
+static string SeqSafeName(string id) =>
+    new(id.Where(c => char.IsLetterOrDigit(c) || c == '-' || c == '_').ToArray());
+
+// GET /api/sequences — list all saved sequences
+api.MapGet("/sequences", () =>
+{
+    Directory.CreateDirectory(seqDir);
+    var items = Directory.GetFiles(seqDir, "*.json")
+        .Select(f =>
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(f));
+                var root = doc.RootElement;
+                var id   = root.TryGetProperty("id",   out var idp)   ? idp.GetString()   : Path.GetFileNameWithoutExtension(f);
+                var name = root.TryGetProperty("name", out var namep) ? namep.GetString() : "Untitled";
+                return (SequenceListItem?)new SequenceListItem(id ?? "", name ?? "Untitled");
+            }
+            catch { return null; }
+        })
+        .Where(x => x != null)
+        .ToList();
+    return Results.Ok(items);
+});
+
+// GET /api/sequences/{id}
+api.MapGet("/sequences/{id}", (string id) =>
+{
+    var path = Path.Combine(seqDir, SeqSafeName(id) + ".json");
+    return File.Exists(path)
+        ? Results.Text(File.ReadAllText(path), "application/json")
+        : Results.NotFound(new { message = "Sequence not found" });
+});
+
+// POST /api/sequences — create or update (body is SequenceGraph JSON)
+api.MapPost("/sequences", async (HttpRequest request) =>
+{
+    Directory.CreateDirectory(seqDir);
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync();
+
+    using var doc = JsonDocument.Parse(body);
+    var existingId = doc.RootElement.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+    var safeId = string.IsNullOrWhiteSpace(existingId) ? Guid.NewGuid().ToString("N")[..8] : SeqSafeName(existingId!);
+    if (string.IsNullOrEmpty(safeId)) safeId = Guid.NewGuid().ToString("N")[..8];
+
+    // Inject the resolved id back into the JSON before saving
+    var node = System.Text.Json.Nodes.JsonNode.Parse(body)!.AsObject();
+    node["id"] = safeId;
+    var saved = node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+
+    await File.WriteAllTextAsync(Path.Combine(seqDir, safeId + ".json"), saved);
+    return Results.Ok(new { id = safeId });
+});
+
+// DELETE /api/sequences/{id}
+api.MapDelete("/sequences/{id}", (string id) =>
+{
+    var path = Path.Combine(seqDir, SeqSafeName(id) + ".json");
+    if (File.Exists(path)) File.Delete(path);
+    return Results.Ok(new { success = true });
+});
+
+// POST /api/sequences/{id}/run — execute a saved sequence
+api.MapPost("/sequences/{id}/run", async (string id, BotOrchestrator orch, ILoggerFactory lf) =>
+{
+    var path = Path.Combine(seqDir, SeqSafeName(id) + ".json");
+    if (!File.Exists(path))
+        return Results.NotFound(new { message = "Sequence not found" });
+
+    var body  = await File.ReadAllTextAsync(path);
+    var graph = JsonSerializer.Deserialize<SequenceGraph>(body,
+        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    if (graph == null)
+        return Results.BadRequest(new { message = "Could not parse sequence file" });
+
+    activeSeqRunner?.Stop();
+    activeSeqRunner = new SequenceRunner(orch, lf.CreateLogger<SequenceRunner>());
+    _ = activeSeqRunner.RunAsync(graph); // fire-and-forget; logs via ILogger
+    return Results.Ok(new { success = true, message = $"Running '{graph.Name}'" });
+});
+
+// POST /api/sequences/stop — stop any running sequence
+api.MapPost("/sequences/stop", () =>
+{
+    activeSeqRunner?.Stop();
+    activeSeqRunner = null;
+    return Results.Ok(new { success = true });
+});
+
 // ─── Auto-start monitor ────────────────────────────────────────────────────
 
 // Monitor starts automatically; it always runs when no bot is active.
