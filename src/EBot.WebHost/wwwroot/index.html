@@ -169,9 +169,6 @@
     .action-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
     .action-desc { color: var(--accent); }
 
-    @keyframes nuke-flash { 0% { outline: 3px solid var(--red); } 50% { outline: 3px solid #ff7043; } 100% { outline: none; } }
-    .nuke-active { animation: nuke-flash 1s ease-out 3; }
-
     /* ── Chat ── */
     .chat-panel { display: flex; flex-direction: column; overflow: hidden; }
     .chat-messages { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
@@ -210,9 +207,9 @@
     <button class="btn btn-primary" id="btn-start">&#9654; Start</button>
     <button class="btn btn-warn"    id="btn-pause"  disabled>&#9646;&#9646; Pause</button>
     <button class="btn btn-muted"   id="btn-resume" disabled>&#9654; Resume</button>
-    <button class="btn btn-danger"  id="btn-stop"   disabled>&#9632; Stop</button>
-    <button class="btn btn-danger"  id="btn-nuke"   title="Emergency stop (Pause/Break)" style="letter-spacing:.8px;border-width:2px;">&#9762; NUKE</button>
-    <button class="btn btn-danger"  id="btn-kill"   title="Shut down EBot server" style="opacity:.7;">&#9211; Kill</button>
+    <button class="btn btn-danger"  id="btn-stop"       disabled>&#9632; Stop</button>
+    <button class="btn btn-muted"   id="btn-save-frame" title="Save current UI JSON frame to logs/frames/">&#128190; Save Frame</button>
+    <button class="btn btn-danger"  id="btn-kill"       title="Shut down EBot server" style="opacity:.7;">&#9211; Kill</button>
   </div>
 
   <div class="toggle-group">
@@ -351,9 +348,7 @@ conn.on('ChatMessage',     d     => { removeThinker(); addBubble(d.text, 'ai'); 
 conn.on('ChatError',       d     => { removeThinker(); addBubble('Error: ' + d.error, 'error'); setChatBusy(false); });
 conn.on('ActionLog',       e     => addActionEntry(e));
 conn.on('EmergencyStop', () => {
-  document.body.classList.add('nuke-active');
-  setTimeout(() => document.body.classList.remove('nuke-active'), 3000);
-  addLogEntry({ time: new Date().toISOString(), level: 'Warn', message: '⛔ EMERGENCY STOP — input released' });
+  addLogEntry({ time: new Date().toISOString(), level: 'Warn', message: '⛔ EMERGENCY STOP — input released (Pause/Break)' });
 });
 
 async function startConnection() {
@@ -660,7 +655,18 @@ $('btn-start').addEventListener('click', () => api('POST', '/api/start', { botNa
 $('btn-stop').addEventListener('click', () => api('POST', '/api/stop'));
 $('btn-pause').addEventListener('click',  () => api('POST', '/api/pause'));
 $('btn-resume').addEventListener('click', () => api('POST', '/api/resume'));
-$('btn-nuke').addEventListener('click', () => api('POST', '/api/emergency-stop'));
+$('btn-save-frame').addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/save-frame', { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) {
+      $('btn-save-frame').textContent = '✓ Saved';
+      setTimeout(() => { $('btn-save-frame').innerHTML = '&#128190; Save Frame'; }, 2000);
+    } else {
+      alert(j.message || 'Save frame failed');
+    }
+  } catch(e) { alert('Save frame error: ' + e.message); }
+});
 $('btn-kill').addEventListener('click', () => { if (confirm('Shut down the EBot server?')) api('POST', '/api/kill'); });
 $('toggle-survival').addEventListener('change', e => api('POST', '/api/survival', { enabled: e.target.checked }));
 

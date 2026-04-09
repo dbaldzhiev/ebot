@@ -713,6 +713,9 @@ public sealed class BotOrchestrator : IDisposable
     public string? GetLastRawJsonSample(int maxChars = 2000) =>
         _runner?.LastRawJson is { } j ? j[..Math.Min(maxChars, j.Length)] : null;
 
+    /// <summary>Returns the full last raw JSON read (may be several MB). Used for frame saving.</summary>
+    public string? GetLastRawJson() => _runner?.LastRawJson;
+
     public void Dispose() => _runner?.Dispose();
 
     // ─── Survival wrapper ────────────────────────────────────────────────────

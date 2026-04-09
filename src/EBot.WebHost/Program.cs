@@ -78,6 +78,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TerminalDashboard>
 // Global Pause/Break hotkey — emergency stop even when EVE has keyboard focus
 builder.Services.AddHostedService<GlobalHotKeyService>();
 
+// Session file logger — writes all log entries to ebot/logs/session_YYYYMMDD_HHmmss.log
+builder.Services.AddHostedService<SessionFileLogger>();
+
 // ─── App ───────────────────────────────────────────────────────────────────
 
 var app = builder.Build();
@@ -141,6 +144,24 @@ api.MapPost("/emergency-stop", async (BotOrchestrator o) =>
 {
     await o.EmergencyStopAsync();
     return Results.Ok(new { success = true });
+});
+
+// POST /api/save-frame  — saves the current raw UI JSON to ebot/logs/frames/
+api.MapPost("/save-frame", (BotOrchestrator orch) =>
+{
+    var json = orch.GetLastRawJson();
+    if (json == null)
+        return Results.BadRequest(new { success = false, message = "No frame available yet — wait for the first tick" });
+
+    var framesDir = Path.Combine(SessionFileLogger.GetLogsDirectory(), "frames");
+    Directory.CreateDirectory(framesDir);
+
+    var ts       = DateTimeOffset.Now.ToString("yyyyMMdd_HHmmss_fff");
+    var fileName = $"frame_{ts}.json";
+    var filePath = Path.Combine(framesDir, fileName);
+    File.WriteAllText(filePath, json);
+
+    return Results.Ok(new { success = true, file = filePath, size_bytes = json.Length, file_name = fileName });
 });
 
 // POST /api/kill  — gracefully shut down the EBot server process

@@ -41,7 +41,7 @@ internal sealed class LogSinkLogger(LogSink sink, string category) : ILogger
 {
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
-    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Debug;
 
     public void Log<TState>(
         LogLevel logLevel,
@@ -52,26 +52,29 @@ internal sealed class LogSinkLogger(LogSink sink, string category) : ILogger
     {
         if (!IsEnabled(logLevel)) return;
 
+        // Suppress noisy infrastructure namespaces below Warning
+        if (logLevel < LogLevel.Warning)
+        {
+            if (category.StartsWith("Microsoft.AspNetCore")) return;
+            if (category.StartsWith("Microsoft.Hosting"))    return;
+            if (category.StartsWith("Microsoft.Extensions")) return;
+            if (category.StartsWith("System.Net"))           return;
+        }
+
         var level = logLevel switch
         {
-            LogLevel.Trace => "Trace",
-            LogLevel.Debug => "Debug",
+            LogLevel.Trace       => "Trace",
+            LogLevel.Debug       => "Debug",
             LogLevel.Information => "Info",
-            LogLevel.Warning => "Warn",
-            LogLevel.Error => "Error",
-            LogLevel.Critical => "Crit",
-            _ => "Log",
+            LogLevel.Warning     => "Warn",
+            LogLevel.Error       => "Error",
+            LogLevel.Critical    => "Crit",
+            _                    => "Log",
         };
 
         var msg = formatter(state, exception);
         if (exception != null)
             msg += $" | {exception.Message}";
-
-        // Filter noisy ASP.NET internals
-        if (category.StartsWith("Microsoft.AspNetCore") && logLevel < LogLevel.Warning)
-            return;
-        if (category.StartsWith("Microsoft.Hosting") && logLevel < LogLevel.Warning)
-            return;
 
         sink.Add(level, ShortCategory(category), msg);
     }
