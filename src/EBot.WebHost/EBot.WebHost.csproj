@@ -17,6 +17,7 @@
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.9.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.1.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
     <PackageReference Include="Spectre.Console" Version="0.49.1" />
   </ItemGroup>

@@ -354,7 +354,7 @@ public sealed class ChatService(
                 var destination = Str(input, "destination");
                 if (string.IsNullOrWhiteSpace(destination))
                     return "Error: destination is required.";
-                await orchestrator.TravelToAsync(destination);
+                await orchestrator.StartAsync("Travel Bot", destination: destination);
                 return $"Travel started to '{destination}'.";
             }
 
@@ -400,48 +400,12 @@ public sealed class ChatService(
                 });
             }
 
-            case "add_quick_travel":
+            case "get_destinations":
             {
-                var station = Str(input, "station");
-                if (string.IsNullOrWhiteSpace(station)) return "station name required.";
-                var path = Path.Combine(AppContext.BaseDirectory, "data", "quick-travel.json");
-                List<string> list = [];
-                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path)) ?? []; } catch { }
-                if (!list.Contains(station, StringComparer.OrdinalIgnoreCase)) { list.Add(station); Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(list)); }
-                return $"'{station}' added to quick travel list.";
-            }
-
-            case "get_quick_travel":
-            {
-                var path = Path.Combine(AppContext.BaseDirectory, "data", "quick-travel.json");
-                List<string> list = [];
-                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path)) ?? []; } catch { }
-                return list.Count == 0 ? "No quick travel destinations saved." : Serialize(list);
-            }
-
-            case "get_station_aliases":
-            {
-                var path = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
-                List<StationAlias> list = [];
-                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<StationAlias>>(File.ReadAllText(path), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []; } catch { }
-                return list.Count == 0 ? "No station aliases configured." : Serialize(list.Select(a => new { alias = a.Alias, system = a.System, bookmark = a.Bookmark }));
-            }
-
-            case "add_station_alias":
-            {
-                var alias    = Str(input, "alias");
-                var system   = Str(input, "system");
-                var bookmark = Str(input, "bookmark");
-                if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(system))
-                    return "Error: alias and system are required.";
-                var path = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
-                List<StationAlias> list = [];
-                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<StationAlias>>(File.ReadAllText(path), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []; } catch { }
-                list.RemoveAll(a => a.Alias.Equals(alias, StringComparison.OrdinalIgnoreCase));
-                list.Add(new StationAlias(alias, system, bookmark));
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(list));
-                return $"Alias '{alias}' → {system}{(bookmark != null ? $" (bookmark: {bookmark})" : "")} saved.";
+                var path = Path.Combine(AppContext.BaseDirectory, "data", "destinations.json");
+                List<TravelDestination> list = [];
+                try { if (File.Exists(path)) list = System.Text.Json.JsonSerializer.Deserialize<List<TravelDestination>>(File.ReadAllText(path), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? []; } catch { }
+                return list.Count == 0 ? "No saved destinations." : Serialize(list.Select(d => new { d.Id, d.Name, d.SystemName }));
             }
 
             default:

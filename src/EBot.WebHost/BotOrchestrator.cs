@@ -7,6 +7,7 @@ using EBot.Core.MemoryReading;
 using EBot.ExampleBots;
 using EBot.ExampleBots.AutopilotBot;
 using EBot.ExampleBots.MiningBot;
+using System.Text.Json;
 using EBot.WebHost.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
@@ -59,7 +60,7 @@ public sealed class BotOrchestrator : IDisposable
     public static readonly IReadOnlyList<IBot> AvailableBots =
     [
         new MiningBot(),
-        new AutopilotBot(),
+        new TravelBot(),   // shown in dropdown; destination set at start time
     ];
 
     // ─── State ──────────────────────────────────────────────────────────────
@@ -153,12 +154,16 @@ public sealed class BotOrchestrator : IDisposable
 
     /// <summary>
     /// Swaps in a named bot. Monitoring continues uninterrupted.
+    /// For "Travel Bot", an optional destination may be supplied; when provided the bot
+    /// sets the in-game route automatically before navigating.
     /// </summary>
     public async Task StartAsync(
         string botName,
         int pid = 0,
         string? exePath = null,
-        int tickMs = 0)
+        int tickMs = 0,
+        string? destination = null,
+        MiningBotConfig? mining = null)
     {
         if (_runner == null)
             await EnsureMonitorAsync(exePath);
@@ -166,10 +171,31 @@ public sealed class BotOrchestrator : IDisposable
         if (!_isMonitorMode)
             throw new InvalidOperationException("A bot is already running. Stop it first.");
 
-        var bot = AvailableBots.FirstOrDefault(b =>
-            b.Name.Equals(botName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new ArgumentException(
-                $"Unknown bot: '{botName}'. Available: {string.Join(", ", AvailableBots.Select(b => b.Name))}");
+        IBot bot;
+        if (botName.Equals("Travel Bot", StringComparison.OrdinalIgnoreCase))
+        {
+            bot = new TravelBot { Destination = string.IsNullOrWhiteSpace(destination) ? null : destination };
+        }
+        else if (botName.Equals("Mining Bot", StringComparison.OrdinalIgnoreCase))
+        {
+            var cfg = mining ?? new MiningBotConfig();
+            bot = new MiningBot
+            {
+                HomeStationOverride = string.IsNullOrWhiteSpace(cfg.HomeStation) ? null : cfg.HomeStation,
+                OreHoldFullPercent  = cfg.OreHoldFull,
+                ShieldEscapePercent = cfg.ShieldEscape,
+                MaxLockedAsteroids  = cfg.MaxLocks,
+                MinCapPercent       = cfg.MinCap,
+                LaserRangeM         = cfg.LaserRangeM,
+            };
+        }
+        else
+        {
+            bot = AvailableBots.FirstOrDefault(b =>
+                b.Name.Equals(botName, StringComparison.OrdinalIgnoreCase))
+                ?? throw new ArgumentException(
+                    $"Unknown bot: '{botName}'. Available: {string.Join(", ", AvailableBots.Select(b => b.Name))}");
+        }
 
         _activeBot = bot;
         _isMonitorMode = false;
@@ -178,79 +204,6 @@ public sealed class BotOrchestrator : IDisposable
         _runner!.SwapBot(effectiveBot, isMonitorMode: false);
 
         _logSink.Add("Info", "Orchestrator", $"Bot started: {bot.Name}");
-        await _hub.Clients.All.SendAsync("StateChanged", BotRunnerState.Running.ToString());
-    }
-
-    /// <summary>
-    /// Swaps in a travel bot for the given destination.
-    /// If the destination matches a station alias with a bookmark, uses BookmarkDockBot.
-    /// Otherwise uses AutopilotBot with the system name (or alias-resolved system).
-    /// Monitoring continues uninterrupted.
-    /// </summary>
-    public async Task TravelToAsync(string destination, string? exePath = null)
-    {
-        if (string.IsNullOrWhiteSpace(destination))
-            throw new ArgumentException("Destination cannot be empty.", nameof(destination));
-
-        if (_runner == null)
-            await EnsureMonitorAsync(exePath);
-
-        // Stop any running bot first — quick travel must never mix with mining or other bots
-        if (!_isMonitorMode)
-        {
-            _logSink.Add("Info", "Orchestrator", "Stopping current bot before starting quick travel");
-            await StopAsync();
-        }
-
-        // Resolve alias → {system, bookmark}
-        StationAlias? alias = null;
-        try
-        {
-            var aliasPath = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
-            if (File.Exists(aliasPath))
-            {
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<StationAlias>>(
-                    File.ReadAllText(aliasPath),
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-                alias = list.FirstOrDefault(a =>
-                    a.Alias.Equals(destination, StringComparison.OrdinalIgnoreCase));
-            }
-        }
-        catch { /* alias resolution is best-effort */ }
-
-        IBot bot;
-        string logDest;
-        if (alias != null && !string.IsNullOrWhiteSpace(alias.Bookmark))
-        {
-            // Known station with bookmark — warp to bookmark then dock
-            bot = new BookmarkDockBot
-            {
-                Destination  = destination,
-                SystemName   = alias.System,
-                BookmarkName = alias.Bookmark
-            };
-            logDest = $"{destination} (→ {alias.System} via bookmark '{alias.Bookmark}')";
-        }
-        else
-        {
-            // No bookmark — travel to system then dock at nearest station via overview
-            var system = alias?.System ?? destination;
-            bot = new BookmarkDockBot
-            {
-                Destination  = destination,
-                SystemName   = system,
-                BookmarkName = ""     // triggers overview-based docking
-            };
-            logDest = $"{system} (dock via overview)";
-        }
-
-        _activeBot = bot;
-        _isMonitorMode = false;
-
-        IBot effectiveBot = SurvivalEnabled ? new SurvivalWrappedBot(bot) : bot;
-        _runner!.SwapBot(effectiveBot, isMonitorMode: false);
-
-        _logSink.Add("Info", "Orchestrator", $"Travel started → {logDest}");
         await _hub.Clients.All.SendAsync("StateChanged", BotRunnerState.Running.ToString());
     }
 

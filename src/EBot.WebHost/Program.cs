@@ -8,6 +8,7 @@ using EBot.WebHost.Mcp;
 using EBot.WebHost.Services;
 using EBot.WebHost.Terminal;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 
 // ─── DPI Awareness ─────────────────────────────────────────────────────────
 // Must be called before any Win32 calls so SetCursorPos uses physical pixels,
@@ -81,6 +82,10 @@ builder.Services.AddHostedService<GlobalHotKeyService>();
 // Session file logger — writes all log entries to ebot/logs/session_YYYYMMDD_HHmmss.log
 builder.Services.AddHostedService<SessionFileLogger>();
 
+// SDE (Static Data Export) — downloads CCP's station data once per patch
+builder.Services.AddSingleton<EBot.WebHost.Services.SdeService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EBot.WebHost.Services.SdeService>());
+
 // ─── App ───────────────────────────────────────────────────────────────────
 
 var app = builder.Build();
@@ -123,7 +128,7 @@ api.MapPost("/start", async ([FromBody] StartRequest req, BotOrchestrator o) =>
 {
     try
     {
-        await o.StartAsync(req.BotName, req.Pid, req.ExePath, req.TickMs);
+        await o.StartAsync(req.BotName, req.Pid, req.ExePath, req.TickMs, req.Destination, req.Mining);
         return Results.Ok(new { success = true, message = $"Bot '{req.BotName}' started." });
     }
     catch (Exception ex)
@@ -338,132 +343,98 @@ api.MapPost("/dock", async (BotOrchestrator o) =>
     }
 });
 
-// ─── Quick Travel config ───────────────────────────────────────────────────
+// ─── SDE station search (local, no external API calls) ────────────────────
 
-var quickTravelPath = Path.Combine(AppContext.BaseDirectory, "data", "quick-travel.json");
+// GET /api/stations/search?q=jita  — instant local search using cached SDE
+api.MapGet("/stations/search", ([FromQuery] string q, EBot.WebHost.Services.SdeService sde) =>
+{
+    if (string.IsNullOrWhiteSpace(q) || q.Length < 3)
+        return Results.BadRequest(new { error = "Query must be at least 3 characters" });
+    if (!sde.IsReady)
+        return Results.Ok(new { results = Array.Empty<object>(), status = sde.StatusMessage, ready = false });
 
-List<string> LoadQuickTravel()
+    var hits = sde.Search(q, limit: 10);
+    return Results.Ok(new { results = hits, status = sde.StatusMessage, ready = true });
+});
+
+// GET /api/stations/sde-status  — SDE download progress and readiness
+api.MapGet("/stations/sde-status", (EBot.WebHost.Services.SdeService sde) =>
+    Results.Ok(new
+    {
+        ready       = sde.IsReady,
+        downloading = sde.IsDownloading,
+        progress    = sde.DownloadProgress,
+        status      = sde.StatusMessage,
+    }));
+
+// POST /api/stations/sde-refresh  — delete local checksum and force re-download
+api.MapPost("/stations/sde-refresh", (EBot.WebHost.Services.SdeService sde) =>
+{
+    _ = Task.Run(() => sde.ForceRefreshAsync());
+    return Results.Ok(new { success = true, message = "SDE re-download started" });
+});
+
+// GET /api/stations/sde-debug  — database info for diagnostics
+api.MapGet("/stations/sde-debug", (EBot.WebHost.Services.SdeService sde) =>
+{
+    var dbPath = Path.Combine(AppContext.BaseDirectory, "data", "eve_sde.db");
+    return Results.Ok(new
+    {
+        status   = sde.StatusMessage,
+        ready    = sde.IsReady,
+        dbExists = File.Exists(dbPath),
+        dbBytes  = File.Exists(dbPath) ? new FileInfo(dbPath).Length : 0,
+        dbPath,
+        hint     = "Run: python src/EBot.WebHost/setup_sde.py",
+    });
+});
+
+// ─── Saved destinations ────────────────────────────────────────────────────
+
+var destPath = Path.Combine(AppContext.BaseDirectory, "data", "destinations.json");
+
+List<TravelDestination> LoadDestinations()
 {
     try
     {
-        if (File.Exists(quickTravelPath))
-            return JsonSerializer.Deserialize<List<string>>(File.ReadAllText(quickTravelPath)) ?? [];
-    }
-    catch { }
-    // Seed defaults on first run
-    var defaults = new List<string> { "Jita 4-4" };
-    SaveQuickTravel(defaults);
-    return defaults;
-}
-
-void SaveQuickTravel(List<string> stations)
-{
-    Directory.CreateDirectory(Path.GetDirectoryName(quickTravelPath)!);
-    File.WriteAllText(quickTravelPath, JsonSerializer.Serialize(stations, new JsonSerializerOptions { WriteIndented = true }));
-}
-
-// GET /api/quick-travel  — list saved stations
-api.MapGet("/quick-travel", () => Results.Ok(LoadQuickTravel()));
-
-// ─── Station aliases ───────────────────────────────────────────────────────
-
-var aliasPath = Path.Combine(AppContext.BaseDirectory, "data", "station-aliases.json");
-
-// Default aliases shipped with the bot
-var defaultAliases = new List<StationAlias>
-{
-    new("Jita 4-4", "Jita", "Jita IV - Moon 4 - Caldari Navy Assembly Plant"),
-};
-
-Dictionary<string, StationAlias> LoadAliases()
-{
-    try
-    {
-        if (File.Exists(aliasPath))
-        {
-            var list = JsonSerializer.Deserialize<List<StationAlias>>(
-                File.ReadAllText(aliasPath),
+        if (File.Exists(destPath))
+            return JsonSerializer.Deserialize<List<TravelDestination>>(
+                File.ReadAllText(destPath),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-            return list.ToDictionary(a => a.Alias, StringComparer.OrdinalIgnoreCase);
-        }
     }
     catch { }
-    // First run: seed defaults
-    SaveAliases(defaultAliases);
-    return defaultAliases.ToDictionary(a => a.Alias, StringComparer.OrdinalIgnoreCase);
+    return [];
 }
 
-void SaveAliases(IEnumerable<StationAlias> aliases)
+void SaveDestinations(List<TravelDestination> dests)
 {
-    Directory.CreateDirectory(Path.GetDirectoryName(aliasPath)!);
-    File.WriteAllText(aliasPath, JsonSerializer.Serialize(aliases.ToList(),
+    Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+    File.WriteAllText(destPath, JsonSerializer.Serialize(dests,
         new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
 }
 
-// GET /api/station-aliases  — returns {alias: {alias, system, bookmark}, …}
-api.MapGet("/station-aliases", () =>
-{
-    var d = LoadAliases();
-    // Return as a plain object keyed by alias for easy JS lookup
-    return Results.Ok(d.ToDictionary(kv => kv.Key, kv => new { kv.Value.System, kv.Value.Bookmark }));
-});
+// GET /api/destinations
+api.MapGet("/destinations", () => Results.Ok(LoadDestinations()));
 
-// POST /api/station-aliases  { "alias": "Jita 4-4", "system": "Jita", "bookmark": "Jita IV - Moon 4 - Caldari Navy Assembly Plant" }
-api.MapPost("/station-aliases", ([FromBody] StationAliasRequest req) =>
+// POST /api/destinations  { id, name, systemName, typeId, iconUrl }
+api.MapPost("/destinations", ([FromBody] TravelDestination dest) =>
 {
-    if (string.IsNullOrWhiteSpace(req.Alias) || string.IsNullOrWhiteSpace(req.System))
-        return Results.BadRequest(new { error = "alias and system are required" });
-    var d = LoadAliases();
-    d[req.Alias] = new StationAlias(req.Alias, req.System, req.Bookmark);
-    SaveAliases(d.Values);
-    return Results.Ok(d.ToDictionary(kv => kv.Key, kv => new { kv.Value.System, kv.Value.Bookmark }));
-});
-
-// DELETE /api/station-aliases/{alias}
-api.MapDelete("/station-aliases/{alias}", (string alias) =>
-{
-    var d = LoadAliases();
-    d.Remove(alias);
-    SaveAliases(d.Values);
-    return Results.Ok(d.ToDictionary(kv => kv.Key, kv => new { kv.Value.System, kv.Value.Bookmark }));
-});
-
-// POST /api/quick-travel  { "station": "Jita" }
-api.MapPost("/quick-travel", ([FromBody] QuickTravelRequest req) =>
-{
-    if (string.IsNullOrWhiteSpace(req.Station))
-        return Results.BadRequest(new { error = "station name required" });
-    var list = LoadQuickTravel();
-    var name = req.Station.Trim();
-    if (!list.Contains(name, StringComparer.OrdinalIgnoreCase))
-    {
-        list.Add(name);
-        SaveQuickTravel(list);
-    }
+    if (string.IsNullOrWhiteSpace(dest.Id) || string.IsNullOrWhiteSpace(dest.Name))
+        return Results.BadRequest(new { error = "id and name are required" });
+    var list = LoadDestinations();
+    list.RemoveAll(d => d.Id == dest.Id);
+    list.Add(dest);
+    SaveDestinations(list);
     return Results.Ok(list);
 });
 
-// DELETE /api/quick-travel/{station}
-api.MapDelete("/quick-travel/{station}", (string station) =>
+// DELETE /api/destinations/{id}
+api.MapDelete("/destinations/{id}", (string id) =>
 {
-    var list = LoadQuickTravel();
-    var removed = list.RemoveAll(s => s.Equals(station, StringComparison.OrdinalIgnoreCase));
-    if (removed > 0) SaveQuickTravel(list);
+    var list = LoadDestinations();
+    list.RemoveAll(d => d.Id == id);
+    SaveDestinations(list);
     return Results.Ok(list);
-});
-
-// POST /api/quick-travel/{station}/go  — start autopilot to that station
-api.MapPost("/quick-travel/{station}/go", async (string station, BotOrchestrator o) =>
-{
-    try
-    {
-        await o.TravelToAsync(station);
-        return Results.Ok(new { success = true, destination = station });
-    }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { success = false, message = ex.Message });
-    }
 });
 
 // GET /api/mining-stats  — current session mining statistics from the blackboard
@@ -594,155 +565,6 @@ api.MapGet("/debug/infopanel", (BotOrchestrator orch, ILoggerFactory lf) =>
     return Results.Ok(sb.ToString());
 });
 
-// ─── Visual Sequence Builder API ──────────────────────────────────────────
-
-var seqDir = Path.Combine(AppContext.BaseDirectory, "data", "sequences");
-SequenceRunner? activeSeqRunner = null;
-
-// Seed built-in sequences (only if file doesn't exist yet)
-SeedDefaultSequences(seqDir);
-
-static void SeedDefaultSequences(string dir)
-{
-    Directory.CreateDirectory(dir);
-    var path = Path.Combine(dir, "autotravel.json");
-    if (File.Exists(path)) return;
-    File.WriteAllText(path, """
-{
-  "id": "autotravel",
-  "name": "Auto Travel",
-  "nodes": [
-    {"id":"n_start",      "type":"start",         "params":{},                                                              "x":60,   "y":80},
-    {"id":"n_loop",       "type":"loop",           "params":{"iterations":"0"},                                              "x":240,  "y":80},
-    {"id":"n_has_route",  "type":"condition",      "params":{"check":"route_jumps_remaining_above","value":"0"},              "x":420,  "y":80},
-    {"id":"n_is_docked",  "type":"condition",      "params":{"check":"is_docked"},                                           "x":620,  "y":80},
-    {"id":"n_undock",     "type":"left_click",     "params":{"target":"station.undock_button"},                              "x":820,  "y":80},
-    {"id":"n_wait_space", "type":"wait_until",     "params":{"check":"is_in_space","timeout_ms":"20000"},                    "x":1000, "y":80},
-    {"id":"n_is_warping", "type":"condition",      "params":{"check":"is_warping"},                                         "x":620,  "y":240},
-    {"id":"n_wait_warp",  "type":"wait",           "params":{"ms":"2500"},                                                  "x":820,  "y":240},
-    {"id":"n_msgbox",     "type":"condition",      "params":{"check":"message_box_visible"},                                "x":620,  "y":400},
-    {"id":"n_click_ok",   "type":"left_click",     "params":{"target":"msgbox.first_button"},                               "x":820,  "y":400},
-    {"id":"n_wait_ok",    "type":"wait",           "params":{"ms":"1000"},                                                  "x":1000, "y":400},
-    {"id":"n_ctx_open",   "type":"condition",      "params":{"check":"context_menu_open"},                                  "x":620,  "y":560},
-    {"id":"n_click_jump", "type":"left_click",     "params":{"target":"ctx.entry_by_text","target_param":"Jump"},           "x":820,  "y":560},
-    {"id":"n_wait_jump",  "type":"wait",           "params":{"ms":"3500"},                                                  "x":1000, "y":560},
-    {"id":"n_rclick_gate","type":"right_click",    "params":{"target":"infopanel.route_marker"},                            "x":820,  "y":720},
-    {"id":"n_wait_rclick","type":"wait",           "params":{"ms":"800"},                                                   "x":1000, "y":720},
-    {"id":"n_stop",       "type":"stop_sequence",  "params":{},                                                             "x":420,  "y":240},
-    {"id":"n_end",        "type":"end",            "params":{},                                                             "x":240,  "y":240}
-  ],
-  "edges": [
-    {"id":"e1",  "from":"n_start",      "fromPort":"next",  "to":"n_loop",        "toPort":"in"},
-    {"id":"e2",  "from":"n_loop",       "fromPort":"body",  "to":"n_has_route",   "toPort":"in"},
-    {"id":"e3",  "from":"n_loop",       "fromPort":"done",  "to":"n_end",         "toPort":"in"},
-    {"id":"e4",  "from":"n_has_route",  "fromPort":"true",  "to":"n_is_docked",   "toPort":"in"},
-    {"id":"e5",  "from":"n_has_route",  "fromPort":"false", "to":"n_stop",        "toPort":"in"},
-    {"id":"e6",  "from":"n_is_docked",  "fromPort":"true",  "to":"n_undock",      "toPort":"in"},
-    {"id":"e7",  "from":"n_undock",     "fromPort":"next",  "to":"n_wait_space",  "toPort":"in"},
-    {"id":"e8",  "from":"n_is_docked",  "fromPort":"false", "to":"n_is_warping",  "toPort":"in"},
-    {"id":"e9",  "from":"n_is_warping", "fromPort":"true",  "to":"n_wait_warp",   "toPort":"in"},
-    {"id":"e10", "from":"n_is_warping", "fromPort":"false", "to":"n_msgbox",      "toPort":"in"},
-    {"id":"e11", "from":"n_msgbox",     "fromPort":"true",  "to":"n_click_ok",    "toPort":"in"},
-    {"id":"e12", "from":"n_click_ok",   "fromPort":"next",  "to":"n_wait_ok",     "toPort":"in"},
-    {"id":"e13", "from":"n_msgbox",     "fromPort":"false", "to":"n_ctx_open",    "toPort":"in"},
-    {"id":"e14", "from":"n_ctx_open",   "fromPort":"true",  "to":"n_click_jump",  "toPort":"in"},
-    {"id":"e15", "from":"n_click_jump", "fromPort":"next",  "to":"n_wait_jump",   "toPort":"in"},
-    {"id":"e16", "from":"n_ctx_open",   "fromPort":"false", "to":"n_rclick_gate", "toPort":"in"},
-    {"id":"e17", "from":"n_rclick_gate","fromPort":"next",  "to":"n_wait_rclick", "toPort":"in"}
-  ]
-}
-""");
-}
-
-static string SeqSafeName(string id) =>
-    new(id.Where(c => char.IsLetterOrDigit(c) || c == '-' || c == '_').ToArray());
-
-// GET /api/sequences — list all saved sequences
-api.MapGet("/sequences", () =>
-{
-    Directory.CreateDirectory(seqDir);
-    var items = Directory.GetFiles(seqDir, "*.json")
-        .Select(f =>
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(f));
-                var root = doc.RootElement;
-                var id   = root.TryGetProperty("id",   out var idp)   ? idp.GetString()   : Path.GetFileNameWithoutExtension(f);
-                var name = root.TryGetProperty("name", out var namep) ? namep.GetString() : "Untitled";
-                return (SequenceListItem?)new SequenceListItem(id ?? "", name ?? "Untitled");
-            }
-            catch { return null; }
-        })
-        .Where(x => x != null)
-        .ToList();
-    return Results.Ok(items);
-});
-
-// GET /api/sequences/{id}
-api.MapGet("/sequences/{id}", (string id) =>
-{
-    var path = Path.Combine(seqDir, SeqSafeName(id) + ".json");
-    return File.Exists(path)
-        ? Results.Text(File.ReadAllText(path), "application/json")
-        : Results.NotFound(new { message = "Sequence not found" });
-});
-
-// POST /api/sequences — create or update (body is SequenceGraph JSON)
-api.MapPost("/sequences", async (HttpRequest request) =>
-{
-    Directory.CreateDirectory(seqDir);
-    using var reader = new StreamReader(request.Body);
-    var body = await reader.ReadToEndAsync();
-
-    using var doc = JsonDocument.Parse(body);
-    var existingId = doc.RootElement.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-    var safeId = string.IsNullOrWhiteSpace(existingId) ? Guid.NewGuid().ToString("N")[..8] : SeqSafeName(existingId!);
-    if (string.IsNullOrEmpty(safeId)) safeId = Guid.NewGuid().ToString("N")[..8];
-
-    // Inject the resolved id back into the JSON before saving
-    var node = System.Text.Json.Nodes.JsonNode.Parse(body)!.AsObject();
-    node["id"] = safeId;
-    var saved = node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-
-    await File.WriteAllTextAsync(Path.Combine(seqDir, safeId + ".json"), saved);
-    return Results.Ok(new { id = safeId });
-});
-
-// DELETE /api/sequences/{id}
-api.MapDelete("/sequences/{id}", (string id) =>
-{
-    var path = Path.Combine(seqDir, SeqSafeName(id) + ".json");
-    if (File.Exists(path)) File.Delete(path);
-    return Results.Ok(new { success = true });
-});
-
-// POST /api/sequences/{id}/run — execute a saved sequence
-api.MapPost("/sequences/{id}/run", async (string id, BotOrchestrator orch, ILoggerFactory lf) =>
-{
-    var path = Path.Combine(seqDir, SeqSafeName(id) + ".json");
-    if (!File.Exists(path))
-        return Results.NotFound(new { message = "Sequence not found" });
-
-    var body  = await File.ReadAllTextAsync(path);
-    var graph = JsonSerializer.Deserialize<SequenceGraph>(body,
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-    if (graph == null)
-        return Results.BadRequest(new { message = "Could not parse sequence file" });
-
-    activeSeqRunner?.Stop();
-    activeSeqRunner = new SequenceRunner(orch, lf.CreateLogger<SequenceRunner>());
-    _ = activeSeqRunner.RunAsync(graph); // fire-and-forget; logs via ILogger
-    return Results.Ok(new { success = true, message = $"Running '{graph.Name}'" });
-});
-
-// POST /api/sequences/stop — stop any running sequence
-api.MapPost("/sequences/stop", () =>
-{
-    activeSeqRunner?.Stop();
-    activeSeqRunner = null;
-    return Results.Ok(new { success = true });
-});
 
 // ─── Auto-start monitor ────────────────────────────────────────────────────
 

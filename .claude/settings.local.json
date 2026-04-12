@@ -24,7 +24,10 @@
       "Bash(find c:/Users/Dimitar/sanderling-ref -name *.elm)",
       "Bash(find c:/Users/Dimitar/ebot/sanderling-ref -name *.elm)",
       "Bash(ls -lh c:UsersDimitarebotsrcEBot.WebHost/*.json)",
-      "Bash(ls c:/Users/dbaldzhiev/ebot/*.bat)"
+      "Bash(ls c:/Users/dbaldzhiev/ebot/*.bat)",
+      "Bash(grep -n \"Each entry: { group, id, label\\\\|cnvInit\\(\\);\" /c/Users/dbaldzhiev/ebot/src/EBot.WebHost/wwwroot/index.html)",
+      "Bash(node -e ':*)",
+      "Bash(powershell -Command ':*)"
     ]
   }
 }

@@ -89,7 +89,18 @@ public sealed record StartRequest(
     string BotName,
     int Pid = 0,
     string? ExePath = null,
-    int TickMs = 0);
+    int TickMs = 0,
+    string? Destination = null,
+    MiningBotConfig? Mining = null);
+
+/// <summary>Settings for the Mining Bot, passed from the UI at start time.</summary>
+public sealed record MiningBotConfig(
+    string? HomeStation       = null,
+    int     OreHoldFull       = 95,
+    int     ShieldEscape      = 25,
+    int     MaxLocks          = 2,
+    int     MinCap            = 15,
+    int     LaserRangeM       = 14500);
 
 public sealed record BotInfo(string Name, string Description);
 
@@ -101,20 +112,15 @@ public sealed record OllamaModelRequest(string Model);
 
 public sealed record DpiScaleRequest(float Scale);
 
-public sealed record QuickTravelRequest(string Station);
-
-/// <summary>
-/// Maps a user-facing alias (e.g. "Jita 4-4") to:
-///   System   — the solar system name for the autopilot route (e.g. "Jita")
-///   Bookmark — the exact in-game bookmark name to use for the final warp+dock
-///              (e.g. "Jita IV - Moon 4 - Caldari Navy Assembly Plant")
-/// When Bookmark is null the bot docks via the overview instead.
-/// </summary>
-public sealed record StationAlias(string Alias, string System, string? Bookmark);
-
-public sealed record StationAliasRequest(string Alias, string System, string? Bookmark);
-
 public sealed record SwitchHoldRequest(string HoldType);
+
+/// <summary>A saved autopilot destination (loaded from or stored via ESI).</summary>
+public sealed record TravelDestination(
+    string Id,
+    string Name,
+    string? SystemName,
+    int? TypeId,
+    string? IconUrl);
 
 // ─── Builder helpers ────────────────────────────────────────────────────────
 
@@ -229,37 +235,3 @@ public static class DtoMapper
     }
 }
 
-// ─── Visual Sequence Builder models ───────────────────────────────────────
-
-/// <summary>A visual bot sequence graph — the serialized form of the canvas.</summary>
-public sealed class SequenceGraph
-{
-    public string? Id   { get; set; }
-    public string  Name { get; set; } = "Untitled";
-    public List<SequenceNode> Nodes { get; set; } = [];
-    public List<SequenceEdge> Edges { get; set; } = [];
-}
-
-/// <summary>A single node in the visual sequence graph.</summary>
-public sealed class SequenceNode
-{
-    public string Id   { get; set; } = "";
-    public string Type { get; set; } = "";
-    /// <summary>Node parameters — keys match the palette definition (action, check, value, ms, iterations, param1, …).</summary>
-    public Dictionary<string, string?> Params { get; set; } = [];
-    public double X { get; set; }
-    public double Y { get; set; }
-}
-
-/// <summary>A directed edge connecting two nodes in the visual graph.</summary>
-public sealed class SequenceEdge
-{
-    public string Id       { get; set; } = "";
-    public string From     { get; set; } = "";
-    public string FromPort { get; set; } = "next";
-    public string To       { get; set; } = "";
-    public string ToPort   { get; set; } = "in";
-}
-
-/// <summary>Sequence list entry returned by GET /api/sequences.</summary>
-public sealed record SequenceListItem(string Id, string Name);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EBot — EVE Command &amp; Control</title>
+  <title>EBot – EVE Command &amp; Control</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -49,9 +49,6 @@
     .state-pill.paused  { background: #2a2000; color: var(--yellow); border-color: var(--yellow); }
 
     .controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    select { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: .8rem; outline: none; cursor: pointer; }
-    select:focus { border-color: var(--accent); }
-
     .btn { padding: 4px 12px; border-radius: 6px; border: 1px solid; font-size: .76rem; font-weight: 600; cursor: pointer; transition: all .15s; white-space: nowrap; background: transparent; }
     .btn-primary { color: var(--accent);    border-color: var(--accent);  background: #0a2a3a; }
     .btn-primary:hover { background: #143a4a; box-shadow: var(--glow); }
@@ -80,7 +77,7 @@
     #dpi-scale-input { width: 48px; font-size: .76rem; padding: 3px 5px; text-align: center; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 
     /* ── Main 3-column layout ── */
-    main { display: grid; grid-template-columns: 300px 1fr 1fr; overflow: hidden; min-width: 0; }
+    main { display: grid; grid-template-columns: 300px 1fr 310px; overflow: hidden; min-width: 0; }
 
     .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
     .panel:last-child { border-right: none; }
@@ -101,16 +98,8 @@
     .bar-fill.cargo  { background: var(--purple); } .bar-fill.low   { background: var(--red) !important; }
     .bar-pct { font-size: .7rem; color: var(--text-dim); width: 26px; text-align: right; }
 
-    /* ── Quick actions / travel ── */
+    /* ── Quick actions ── */
     .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 4px 0; }
-    .travel-grid { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
-    .travel-btn { display: flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg3); color: var(--text); font-size: .75rem; cursor: pointer; transition: all .15s; }
-    .travel-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .travel-btn .del { color: var(--text-dim); font-size: .65rem; margin-left: 2px; cursor: pointer; }
-    .travel-btn .del:hover { color: var(--red); }
-    .travel-add-row { display: flex; gap: 4px; margin-top: 5px; }
-    .travel-add-row input { flex: 1; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; font-size: .76rem; outline: none; }
-    .travel-add-row input:focus { border-color: var(--accent); }
 
     /* ── Modules / cargo ── */
     .module-grid { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0; }
@@ -164,130 +153,63 @@
     #diag-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.82); z-index:9999; overflow:auto; padding:24px; }
     .diag-box { max-width:860px; margin:auto; background:#0d1117; border:1px solid #1e3a52; border-radius:8px; padding:20px; }
 
-    /* ══════════════════════════════════════════════════════════════════
-       CANVAS PANEL — Visual Bot Sequence Builder
-    ══════════════════════════════════════════════════════════════════ */
-    .canvas-panel { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+    /* ── Autopilot panel ── */
+    .ap-search-row { display: flex; gap: 6px; margin: 6px 0; }
+    .ap-search-row input { flex: 1; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: .82rem; outline: none; }
+    .ap-search-row input:focus { border-color: var(--accent); }
+    .ap-search-row button { flex-shrink: 0; }
 
-    /* Toolbar */
-    .canvas-toolbar {
-      display: flex; align-items: center; gap: 5px; padding: 6px 10px;
-      background: var(--bg2); border-bottom: 1px solid var(--border);
-      flex-shrink: 0; flex-wrap: wrap;
-    }
-    .seq-name-input {
-      background: var(--bg3); color: var(--text); border: 1px solid var(--border);
-      border-radius: 5px; padding: 3px 8px; font-size: .8rem; width: 130px; outline: none;
-    }
-    .seq-name-input:focus { border-color: var(--accent); }
-    #seq-load-select { max-width: 160px; font-size: .75rem; }
+    .ap-result-list { margin: 4px 0 2px; }
+    .ap-result-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; transition: all .12s; }
+    .ap-result-item:hover { background: #0d1e2c; border-color: var(--border); }
+    .ap-result-item.selected { background: #0a2035; border-color: var(--accent2); }
+    .ap-result-item input[type=radio] { accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+    .ap-result-icon { width: 24px; height: 24px; border-radius: 3px; object-fit: contain; flex-shrink: 0; background: #111; }
+    .ap-result-icon-placeholder { width: 24px; height: 24px; border-radius: 3px; background: #1a2a3a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: .55rem; color: var(--text-dim); }
+    .ap-result-info { flex: 1; min-width: 0; }
+    .ap-result-name { font-size: .78rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ap-result-sys  { font-size: .67rem; color: var(--text-dim); }
+    .ap-result-save { font-size: .65rem; padding: 1px 6px; flex-shrink: 0; }
 
-    /* Palette + canvas area */
-    .canvas-main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+    .ap-dest-list { margin: 2px 0; }
+    .ap-dest-item { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; transition: all .12s; }
+    .ap-dest-item:hover { background: #0d1e2c; border-color: var(--border); }
+    .ap-dest-item.selected { background: #0a2035; border-color: var(--accent2); }
+    .ap-dest-item input[type=radio] { accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+    .ap-dest-icon { width: 22px; height: 22px; border-radius: 3px; object-fit: contain; flex-shrink: 0; background: #111; }
+    .ap-dest-icon-placeholder { width: 22px; height: 22px; border-radius: 3px; background: #1a2a3a; flex-shrink: 0; }
+    .ap-dest-info { flex: 1; min-width: 0; }
+    .ap-dest-name { font-size: .77rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ap-dest-sys  { font-size: .66rem; color: var(--text-dim); }
+    .ap-dest-del  { font-size: .65rem; color: var(--text-dim); cursor: pointer; padding: 1px 5px; border-radius: 3px; }
+    .ap-dest-del:hover { color: var(--red); background: #2a0808; }
 
-    .node-palette {
-      width: 108px; flex-shrink: 0; background: var(--bg2);
-      border-right: 1px solid var(--border);
-      display: flex; flex-direction: column; padding: 8px 6px; gap: 3px;
-      overflow-y: auto;
-    }
-    .palette-title { font-size: .6rem; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent2); padding: 2px 0 4px; opacity: .75; }
-    .palette-sep { height: 1px; background: var(--border); margin: 5px 0; }
-    .palette-hint { font-size: .6rem; color: var(--text-dim); opacity: .55; line-height: 1.4; padding: 1px 0; }
-    .palette-item {
-      padding: 5px 0; border-radius: 5px; border: 1px solid var(--border);
-      background: var(--bg3); color: var(--text); font-size: .72rem; font-weight: 600;
-      cursor: grab; text-align: center; transition: all .15s; user-select: none;
-      letter-spacing: .5px;
-    }
-    .palette-item:hover { border-color: var(--accent); color: var(--accent); }
-    .palette-item:active { cursor: grabbing; opacity: .7; }
+    .ap-dock-group { display: flex; flex-direction: column; gap: 5px; margin: 4px 0; }
+    .ap-radio-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; cursor: pointer; }
+    .ap-radio-row:hover { background: #0d1e2c; }
+    .ap-radio-row input[type=radio] { accent-color: var(--accent); cursor: pointer; }
+    .ap-radio-label { font-size: .8rem; }
+    .ap-radio-row.disabled { opacity: .4; cursor: not-allowed; }
+    .ap-radio-badge { font-size: .6rem; padding: 1px 5px; border-radius: 10px; background: #1a2a3a; color: var(--text-dim); letter-spacing: .5px; }
 
-    /* Canvas area */
-    .canvas-area {
-      flex: 1; position: relative; overflow: hidden;
-      background: var(--bg);
-      background-image: radial-gradient(circle, #1a3050 1px, transparent 1px);
-      background-size: 22px 22px;
-      cursor: default;
-    }
-    .canvas-area.connecting { cursor: crosshair; }
+    .ap-launch-row { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .ap-launch-row button { flex: 1; padding: 7px; font-size: .82rem; }
 
-    /* SVG overlay for edges */
-    #canvas-svg {
-      position: absolute; inset: 0; width: 100%; height: 100%;
-      overflow: visible; z-index: 1; pointer-events: none;
-    }
-    #canvas-svg path { pointer-events: stroke; cursor: pointer; }
-    #temp-edge { pointer-events: none; }
-    #nodes-layer { position: absolute; inset: 0; z-index: 2; }
+    .search-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-left: 4px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Canvas nodes ── */
-    .canvas-node {
-      position: absolute; width: 158px;
-      border: 1px solid var(--border); border-radius: 7px;
-      background: var(--bg3); cursor: move;
-      user-select: none; min-height: 44px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.4);
-      transition: box-shadow .15s;
-    }
-    .canvas-node:hover { box-shadow: 0 2px 16px rgba(0,0,0,.6); }
-    .canvas-node.selected { box-shadow: 0 0 0 2px rgba(255,255,255,.25), 0 2px 16px rgba(0,0,0,.6); }
-    .canvas-node.multi-selected { box-shadow: 0 0 0 2px rgba(79,195,247,.5), 0 2px 16px rgba(0,0,0,.6); outline: none; }
-
-    .canvas-node-hdr {
-      padding: 5px 7px 4px; display: flex; align-items: center; gap: 4px;
-      font-size: .67rem; font-weight: 700; letter-spacing: 1px;
-      border-radius: 6px 6px 0 0; min-height: 24px;
-    }
-    .canvas-node-type { flex-shrink: 0; }
-    .canvas-node-sub  { flex: 1; font-weight: 400; font-size: .62rem; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .canvas-node-del  { margin-left: auto; background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: .9rem; line-height: 1; padding: 0 1px; flex-shrink: 0; }
-    .canvas-node-del:hover { color: var(--red); }
-
-    /* ── Ports ── */
-    .canvas-port {
-      width: 12px; height: 12px; border-radius: 50%;
-      border: 2px solid var(--border); background: var(--bg2);
-      cursor: crosshair; position: absolute; z-index: 4;
-      transition: background .12s, border-color .12s;
-    }
-    .canvas-port:hover, .canvas-port.hot { background: var(--accent); border-color: var(--accent); }
-    .port-in   { top: -6px; left: 50%; transform: translateX(-50%); border-color: #3a6a8a; cursor: default; }
-    .port-out  { bottom: -6px; left: 50%; transform: translateX(-50%); border-color: var(--accent2); }
-    .port-out-l { bottom: -6px; left: 28%; transform: translateX(-50%); border-color: var(--green); }
-    .port-out-r { bottom: -6px; left: 72%; transform: translateX(-50%); border-color: var(--red); }
-    .port-label {
-      position: absolute; font-size: .52rem; font-weight: 700; color: var(--text-dim);
-      white-space: nowrap; pointer-events: none; letter-spacing: .5px;
-      bottom: -18px; transform: translateX(-50%);
-    }
-
-    /* ── Properties panel ── */
-    .canvas-props {
-      height: 110px; flex-shrink: 0; border-top: 1px solid var(--border);
-      background: var(--bg2); padding: 5px 10px; overflow-y: auto;
-    }
-    .canvas-props-hdr { font-size: .6rem; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent2); margin-bottom: 6px; opacity: .75; }
-    .canvas-props-body { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-start; }
-    .prop-row { display: flex; flex-direction: column; gap: 2px; min-width: 110px; }
-    .prop-label { font-size: .6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
-    .prop-input { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font-size: .76rem; outline: none; max-width: 200px; }
-    .prop-input:focus { border-color: var(--accent); }
-    select.prop-input { cursor: pointer; }
   </style>
 </head>
 <body>
 
-<!-- ═══════ HEADER ═════════════════════════════════════════════════════════ -->
+<!-- ═══════ HEADER ════════════════════════════════════════════════════════ -->
 <header>
   <span class="logo">EBot<span> // C&amp;C</span></span>
   <div id="conn-dot" title="Disconnected"></div>
   <span id="state-pill" class="state-pill">Idle</span>
+  <span id="bot-desc-badge" style="font-size:.7rem;color:var(--text-dim);margin-left:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;"></span>
 
   <div class="controls">
-    <select id="bot-select"></select>
-    <button class="btn btn-primary" id="btn-start">&#9654; Start</button>
     <button class="btn btn-warn"    id="btn-pause"  disabled>&#9646;&#9646; Pause</button>
     <button class="btn btn-muted"   id="btn-resume" disabled>&#9654; Resume</button>
     <button class="btn btn-danger"  id="btn-stop"   disabled>&#9632; Stop</button>
@@ -306,7 +228,7 @@
   </div>
 </header>
 
-<!-- ═══ Diag overlay ═══════════════════════════════════════════════════════ -->
+<!-- ═══ Diag overlay ════════════════════════════════════════════════════════ -->
 <div id="diag-overlay">
   <div class="diag-box">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -332,16 +254,9 @@
       <div class="action-grid">
         <button class="btn btn-green" id="btn-undock" onclick="apiClick('/api/undock')" disabled>&#9650; Undock</button>
         <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')">&#9660; Dock</button>
-        <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/clear-destination')">&#10007; Clear Destination</button>
+        <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/clear-destination')">&#10007; Clear Route</button>
         <button class="btn btn-muted" onclick="apiClick('/api/open-cargo')">&#128230; Open Cargo</button>
         <button class="btn btn-muted" onclick="apiClick('/api/scan-holds')">&#128269; Scan Holds</button>
-      </div>
-      <div class="sec">Quick Travel</div>
-      <div class="travel-grid" id="travel-grid"><span class="empty">Loading…</span></div>
-      <div class="travel-add-row">
-        <input type="text" id="travel-input" placeholder="System or alias…" maxlength="60"
-               onkeydown="if(event.key==='Enter')addTravel()">
-        <button class="btn btn-muted" onclick="addTravel()" style="font-size:.72rem;padding:3px 8px;">+</button>
       </div>
     </div>
     <div class="panel-body" id="left-stats">
@@ -376,98 +291,161 @@
     </div>
   </div>
 
-  <!-- ── Col 3: Visual Bot Sequence Builder ── -->
-  <div class="canvas-panel">
-    <div class="panel-title" style="background:var(--bg2);">
-      Sequence Builder
-      <span id="seq-play-status" style="margin-left:8px;font-size:.65rem;color:var(--text-dim);font-weight:400;"></span>
-    </div>
+  <!-- ── Col 3: Autopilot ── -->
+  <div class="panel" style="border-right:none;">
+    <div class="panel-title">Autopilot</div>
+    <div class="panel-body" id="autopilot-body">
 
-    <!-- Toolbar -->
-    <div class="canvas-toolbar">
-      <input type="text" id="seq-name" class="seq-name-input" value="Untitled" placeholder="Sequence name…">
-      <button class="btn btn-muted"    onclick="newSequence()"    title="New sequence"   style="font-size:.72rem;padding:3px 8px;">+ New</button>
-      <button class="btn btn-primary"  onclick="saveSequence()"   title="Save sequence"  style="font-size:.72rem;padding:3px 8px;">&#128190; Save</button>
-      <select id="seq-load-select" onchange="if(this.value)loadSequence(this.value)" title="Load saved sequence">
-        <option value="">Load…</option>
-      </select>
-      <button class="btn btn-danger" id="btn-del-seq" onclick="deleteSequence()" disabled title="Delete sequence" style="font-size:.72rem;padding:3px 7px;">&#10007;</button>
-      <div style="flex:1;min-width:4px;"></div>
-      <button class="btn btn-green"  id="btn-play-seq" onclick="playSequence()"  title="Run sequence">&#9654; Play</button>
-      <button class="btn btn-danger" id="btn-stop-seq" onclick="stopSequence()"  title="Stop" disabled>&#9632;</button>
-    </div>
+      <!-- Station Search -->
+      <div class="sec" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Station Search</span>
+        <span id="ap-sde-badge" style="font-size:.6rem;padding:1px 6px;border-radius:10px;background:#1a2a3a;color:var(--text-dim);">Loading SDE…</span>
+      </div>
+      <div class="ap-search-row">
+        <input type="text" id="ap-search-input" placeholder="Station or system name…" maxlength="80"
+               oninput="onSdeInput(this.value)"
+               onkeydown="if(event.key==='Enter')doSdeSearch()">
+        <button class="btn btn-muted" id="ap-search-btn"
+                onclick="doSdeSearch()" style="padding:5px 10px;font-size:.76rem;">&#128269;</button>
+      </div>
+      <div id="ap-sde-progress" style="display:none;margin:4px 0;">
+        <div style="height:3px;background:#1a2a3a;border-radius:2px;overflow:hidden;">
+          <div id="ap-sde-bar" style="height:100%;background:var(--accent);width:0%;transition:width .4s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+          <span id="ap-sde-msg" style="font-size:.66rem;color:var(--text-dim);"></span>
+          <button class="btn btn-muted" onclick="sdeRefresh()" style="font-size:.6rem;padding:1px 6px;" title="Force re-download SDE">&#8635; Re-download</button>
+        </div>
+      </div>
+      <div id="ap-sde-error" style="display:none;font-size:.68rem;color:var(--red);padding:3px 0 0;">
+        <span id="ap-sde-error-msg"></span>
+        <span style="color:var(--text-dim)"> — run <code>python setup_sde.py</code></span>
+      </div>
+      <div id="ap-search-results" class="ap-result-list"></div>
 
-    <!-- Palette + canvas -->
-    <div class="canvas-main">
-      <!-- Node palette -->
-      <div class="node-palette" id="node-palette">
-        <div class="palette-title">ACTIONS</div>
-        <div class="palette-item" draggable="true" data-type="left_click"  title="Left-click a UI element"  style="border-color:#f9a825;color:#f9a825;">L Click</div>
-        <div class="palette-item" draggable="true" data-type="right_click" title="Right-click a UI element" style="border-color:#ff7043;color:#ff7043;">R Click</div>
-        <div class="palette-item" draggable="true" data-type="key_press"   title="Press a keyboard key"     style="border-color:#ce93d8;color:#ce93d8;">Key Press</div>
-        <div class="palette-item" draggable="true" data-type="type_text"   title="Type text"                style="border-color:#4fc3f7;color:#4fc3f7;">Type Text</div>
-        <div class="palette-sep"></div>
-        <div class="palette-title">FLOW</div>
-        <div class="palette-item" draggable="true" data-type="condition" title="Branch on a condition" style="border-color:#ff7043;color:#ff7043;">Condition</div>
-        <div class="palette-item" draggable="true" data-type="loop"      title="Repeat N times"       style="border-color:#00bcd4;color:#00bcd4;">Loop</div>
-        <div class="palette-item" draggable="true" data-type="wait"      title="Wait N milliseconds"  style="border-color:#7c4dff;color:#b39ddb;">Wait</div>
-        <div class="palette-item" draggable="true" data-type="wait_until" title="Wait until condition" style="border-color:#7c4dff;color:#ce93d8;">Wait Until</div>
-        <div class="palette-item" draggable="true" data-type="end"        title="End sequence"         style="border-color:#ef5350;color:#ef5350;">End</div>
-        <div class="palette-item" draggable="true" data-type="stop_sequence" title="Stop sequence immediately" style="border-color:#ef5350;color:#ef5350;opacity:.7;">Stop</div>
-        <div class="palette-sep"></div>
-        <div class="palette-hint">Drag to canvas</div>
-        <div class="palette-hint">Del: remove/multi</div>
-        <div class="palette-hint">Box drag: select</div>
-        <div class="palette-hint">Port drag: connect</div>
+      <!-- Saved Destinations -->
+      <div class="sec" style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+        <span>Saved Destinations</span>
+        <button class="btn btn-muted" id="ap-save-btn" onclick="saveSelectedDest()"
+                style="font-size:.65rem;padding:2px 7px;" disabled title="Select a search result to save">+ Save</button>
+      </div>
+      <div id="ap-dest-list" class="ap-dest-list">
+        <div class="empty">No saved destinations</div>
       </div>
 
-      <!-- Canvas area -->
-      <div class="canvas-area" id="canvas-area">
-        <svg id="canvas-svg" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L8,3 z" fill="#4fc3f7" opacity=".8"/>
-            </marker>
-            <marker id="arr-green" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L8,3 z" fill="#4caf7d" opacity=".8"/>
-            </marker>
-            <marker id="arr-red" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L8,3 z" fill="#ef5350" opacity=".8"/>
-            </marker>
-            <marker id="arr-white" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L8,3 z" fill="#ffffff" opacity=".6"/>
-            </marker>
-          </defs>
-          <g id="edges-g"></g>
-          <rect id="sel-box" fill="rgba(79,195,247,.05)" stroke="#4fc3f7" stroke-width="1" stroke-dasharray="4,2" opacity=".85" rx="2" style="display:none;pointer-events:none;"/>
-          <path id="temp-edge" fill="none" stroke="#4fc3f7" stroke-width="1.5" stroke-dasharray="6,3" opacity=".7" style="display:none"/>
-        </svg>
-        <div id="nodes-layer"></div>
+      <!-- Docking Method -->
+      <div class="sec" style="margin-top:4px;">Docking Method</div>
+      <div class="ap-dock-group">
+        <label class="ap-radio-row">
+          <input type="radio" name="dock-method" value="auto" checked>
+          <span class="ap-radio-label">Route Marker <span class="ap-radio-badge">auto</span></span>
+        </label>
+        <label class="ap-radio-row disabled" title="Coming soon">
+          <input type="radio" name="dock-method" value="bookmark" disabled>
+          <span class="ap-radio-label">Bookmark <span class="ap-radio-badge">soon</span></span>
+        </label>
       </div>
-    </div>
 
-    <!-- Properties panel -->
-    <div class="canvas-props" id="canvas-props">
-      <div class="canvas-props-hdr">Properties</div>
-      <div class="canvas-props-body" id="canvas-props-body">
-        <span class="empty">Select a node to edit its properties</span>
+      <!-- Launch -->
+      <div class="ap-launch-row">
+        <button class="btn btn-primary" id="ap-start-btn" onclick="startAutopilot()">&#9654; Start Autopilot</button>
+        <button class="btn btn-danger"  id="ap-stop-btn"  onclick="api('POST','/api/stop')" disabled style="flex:0 0 auto;padding:7px 14px;">&#9632;</button>
       </div>
+      <div id="ap-status-line" style="font-size:.71rem;color:var(--text-dim);padding:4px 0;min-height:18px;"></div>
+
+    </div>
+  </div>
+
+  <!-- ── Col 4: Mining Bot ── -->
+  <div class="panel" style="border-right:none;">
+    <div class="panel-title">Mining Bot</div>
+    <div class="panel-body" id="mining-body">
+
+      <!-- Live stats -->
+      <div class="sec">Session Stats</div>
+      <div id="mb-stats" style="font-size:.72rem;color:var(--text-dim);padding:2px 0 6px;">
+        Idle
+      </div>
+
+      <!-- Home station -->
+      <div class="sec">Home Station</div>
+      <input type="text" id="mb-home" placeholder="Auto-detect from docked station" maxlength="120"
+             style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);
+                    border-radius:4px;padding:5px 8px;font-size:.76rem;margin-bottom:6px;">
+
+      <!-- Thresholds -->
+      <div class="sec">Thresholds</div>
+
+      <div style="display:flex;flex-direction:column;gap:6px;padding-bottom:4px;">
+
+        <div class="stat-row" style="align-items:center;gap:8px;">
+          <span class="stat-key" style="flex:0 0 130px;">Ore hold return %</span>
+          <input type="range" id="mb-ore-pct" min="50" max="99" value="95"
+                 oninput="$('mb-ore-val').textContent=this.value+'%'"
+                 style="flex:1;">
+          <span id="mb-ore-val" style="font-size:.72rem;color:var(--accent);width:36px;text-align:right;">95%</span>
+        </div>
+
+        <div class="stat-row" style="align-items:center;gap:8px;">
+          <span class="stat-key" style="flex:0 0 130px;">Shield escape %</span>
+          <input type="range" id="mb-shield-pct" min="0" max="50" value="25"
+                 oninput="$('mb-shield-val').textContent=this.value+'%'"
+                 style="flex:1;">
+          <span id="mb-shield-val" style="font-size:.72rem;color:var(--red);width:36px;text-align:right;">25%</span>
+        </div>
+
+        <div class="stat-row" style="align-items:center;gap:8px;">
+          <span class="stat-key" style="flex:0 0 130px;">Min cap %</span>
+          <input type="range" id="mb-cap-pct" min="0" max="30" value="15"
+                 oninput="$('mb-cap-val').textContent=this.value+'%'"
+                 style="flex:1;">
+          <span id="mb-cap-val" style="font-size:.72rem;color:var(--yellow);width:36px;text-align:right;">15%</span>
+        </div>
+
+        <div class="stat-row" style="align-items:center;gap:8px;">
+          <span class="stat-key" style="flex:0 0 130px;">Max locked</span>
+          <input type="range" id="mb-locks" min="1" max="5" value="2"
+                 oninput="$('mb-locks-val').textContent=this.value"
+                 style="flex:1;">
+          <span id="mb-locks-val" style="font-size:.72rem;color:var(--text);width:36px;text-align:right;">2</span>
+        </div>
+
+        <div class="stat-row" style="align-items:center;gap:8px;">
+          <span class="stat-key" style="flex:0 0 130px;">Approach range m</span>
+          <input type="number" id="mb-range" value="14500" min="1000" max="30000" step="500"
+                 style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);
+                        border-radius:4px;padding:3px 6px;font-size:.76rem;">
+        </div>
+      </div>
+
+      <!-- Launch -->
+      <div class="ap-launch-row" style="margin-top:8px;">
+        <button class="btn btn-primary" id="mb-start-btn" onclick="startMining()">&#9654; Start Mining</button>
+        <button class="btn btn-danger"  id="mb-stop-btn"  onclick="api('POST','/api/stop')" disabled style="flex:0 0 auto;padding:7px 14px;">&#9632;</button>
+      </div>
+      <div id="mb-status-line" style="font-size:.71rem;color:var(--text-dim);padding:4px 0;min-height:18px;"></div>
+
     </div>
   </div>
 
 </main>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════════
-//  EBot C&C — frontend
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+//  EBot C&C – frontend
+// ════════════════════════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
 
 let botState = 'Idle', botName = null, botDesc = null;
-let quickTravel = [];
-let stationAliases = {};
 
-// ── SignalR ────────────────────────────────────────────────────────────────
+// Autopilot state
+let apSearchResults  = [];   // [{id,name,systemName,typeId,iconUrl}, ...]
+let apDestinations   = [];   // saved destinations from /api/destinations
+let apSelectedSearch = null; // currently selected search result (object)
+let apSelectedDest   = null; // currently selected saved destination (object)
+let apSearchBusy     = false;
+
+// ── SignalR ───────────────────────────────────────────────────────────────
 const conn = new signalR.HubConnectionBuilder()
   .withUrl('/botHub')
   .withAutomaticReconnect()
@@ -475,21 +453,21 @@ const conn = new signalR.HubConnectionBuilder()
 
 conn.onreconnecting(() => $('conn-dot').classList.remove('ok'));
 conn.onreconnected(() => { $('conn-dot').classList.add('ok'); loadInitialState(); });
-conn.on('StateChanged',    state => {
+conn.on('StateChanged', state => {
   botState = state;
   fetch('/api/status').then(r => r.json()).then(s => {
     botName = s.botName; botDesc = s.botDescription; refreshUI();
   }).catch(() => refreshUI());
 });
-conn.on('SurvivalChanged', en  => { $('toggle-survival').checked = en; });
-conn.on('TickUpdate',      gs  => {
+conn.on('SurvivalChanged', en => { $('toggle-survival').checked = en; });
+conn.on('TickUpdate', gs => {
   renderGameState(gs);
   if (botName === 'Mining Bot') pollMiningStats();
 });
 conn.on('LogEntry',    e => addLogEntry(e));
 conn.on('ActionLog',   e => addActionEntry(e));
 conn.on('EmergencyStop', () => {
-  addLogEntry({ time: new Date().toISOString(), level: 'Warn', message: '⛔ EMERGENCY STOP — input released (Pause/Break)' });
+  addLogEntry({ time: new Date().toISOString(), level: 'Warn', message: '⛔ EMERGENCY STOP – input released (Pause/Break)' });
 });
 
 async function startConnection() {
@@ -497,7 +475,7 @@ async function startConnection() {
   catch(e) { setTimeout(startConnection, 3000); }
 }
 
-// ── Init ───────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────
 async function loadInitialState() {
   try {
     const s = await fetch('/api/status').then(r => r.json());
@@ -506,17 +484,11 @@ async function loadInitialState() {
     if (s.gameState) renderGameState(s.gameState);
     refreshUI();
   } catch(e) {}
-  try {
-    const bots = await fetch('/api/bots').then(r => r.json());
-    $('bot-select').innerHTML = bots.map(b => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join('');
-  } catch(e) {}
   loadDpiInfo();
-  loadQuickTravel();
-  loadStationAliases();
-  refreshSeqList();
+  loadDestinations();
 }
 
-// ── Game state rendering ───────────────────────────────────────────────────
+// ── Game state rendering ──────────────────────────────────────────────────
 function renderGameState(gs) {
   if (!gs) return;
 
@@ -531,7 +503,7 @@ function renderGameState(gs) {
     return n >= 0.5 ? 'var(--green)' : n >= 0.1 ? 'var(--yellow)' : 'var(--red)';
   };
 
-  const sys   = gs.systemName     ? esc(gs.systemName) : '—';
+  const sys   = gs.systemName     ? esc(gs.systemName) : '–';
   const sec   = gs.securityStatus ? `<span style="color:${secColor(gs.securityStatus)};margin-left:5px;font-size:.73rem">${esc(gs.securityStatus)}</span>` : '';
   const jumps = gs.routeJumpsRemaining ?? 0;
 
@@ -554,7 +526,7 @@ function renderGameState(gs) {
     const dot = m.isOverloaded ? '<span class="module-state-dot ov"></span>'
               : m.isBusy       ? '<span class="module-state-dot busy"></span>'
               : '';
-    const tip = `Slot ${i+1}${m.name ? ' — ' + m.name : ''} — ${stateLabel}`;
+    const tip = `Slot ${i+1}${m.name ? ' – ' + m.name : ''} – ${stateLabel}`;
     return `<div class="module-btn ${cls.trim()}" title="${esc(tip)}">${i+1}${dot}</div>`;
   }).join('') : '<div class="empty">No modules detected</div>';
 
@@ -562,7 +534,7 @@ function renderGameState(gs) {
     const usedM3 = hold?.usedM3, maxM3 = hold?.maxM3, items = hold?.items || [];
     if (maxM3 == null || maxM3 <= 0) return '';
     const pct  = Math.min(100, (usedM3 / maxM3) * 100);
-    const used = usedM3 != null ? usedM3.toFixed(1) : '—';
+    const used = usedM3 != null ? usedM3.toFixed(1) : '–';
     const max  = maxM3.toFixed(1);
     let html = `<div class="stat-row" style="margin-bottom:4px;">
       <span class="stat-key">Volume</span>
@@ -572,7 +544,7 @@ function renderGameState(gs) {
       </div></div>`;
     if (items.length) {
       html += items.slice(0, 20).map(it =>
-        `<div class="cargo-item"><span class="cargo-name">${esc(it.name || '—')}</span><span class="cargo-qty">${it.quantity != null ? 'x'+it.quantity : ''}</span></div>`
+        `<div class="cargo-item"><span class="cargo-name">${esc(it.name || '–')}</span><span class="cargo-qty">${it.quantity != null ? 'x'+it.quantity : ''}</span></div>`
       ).join('');
       if (items.length > 20) html += `<div class="empty">…and ${items.length-20} more</div>`;
     } else {
@@ -589,7 +561,7 @@ function renderGameState(gs) {
           <button class="btn" style="padding:1px 7px;font-size:.68rem;" onclick="switchHold('${esc(h.holdType)}')">View</button>
         </div>
         ${holdHtml(h)}`).join('')
-    : `<div class="sec">Inventory</div><div class="empty">Not open — click Open Cargo or Scan Holds</div>`;
+    : `<div class="sec">Inventory</div><div class="empty">Not open – click Open Cargo or Scan Holds</div>`;
 
   const undockBtn = $('btn-undock'), dockBtn = $('btn-dock');
   if (undockBtn) undockBtn.disabled = !gs.isDocked;
@@ -610,17 +582,16 @@ function renderGameState(gs) {
     ${gs.armorPercent     != null ? bar('Armor',     gs.armorPercent,     'armor')  : ''}
     ${gs.structurePercent != null ? bar('Structure', gs.structurePercent, 'struct') : ''}
     ${gs.capacitorPercent != null ? bar('Cap',       gs.capacitorPercent, 'cap')    : ''}
-    <div class="sec">Modules — ${mods.filter(m=>m.isActive).length} active, ${mods.filter(m=>m.isOverloaded).length} hot / ${mods.length}</div>
+    <div class="sec">Modules – ${mods.filter(m=>m.isActive).length} active, ${mods.filter(m=>m.isOverloaded).length} hot / ${mods.length}</div>
     <div class="module-grid">${modHtml}</div>
     ${holdsHtml}
-    ${renderMiningStats()}
   `;
 
   const entries = gs.overview || [];
   $('overview-count').textContent = entries.length ? `(${entries.length})` : '';
   $('overview-body').innerHTML = entries.length
     ? entries.map(e => `<tr class="${e.isAttackingMe?'attacking':''}">
-        <td>${esc(e.name||'—')}</td>
+        <td>${esc(e.name||'–')}</td>
         <td style="color:var(--text-dim)">${esc(e.objectType||'')}</td>
         <td style="text-align:right;color:var(--text-dim)">${esc(e.distance||'')}</td>
       </tr>`).join('')
@@ -632,17 +603,9 @@ let _miningPollBusy = false;
 async function pollMiningStats() {
   if (_miningPollBusy) return;
   _miningPollBusy = true;
-  try { const s = await fetch('/api/mining-stats').then(r=>r.json()); miningStats = {totalM3:s.total_m3,cycles:s.cycles}; }
+  try { const s = await fetch('/api/mining-stats').then(r=>r.json()); miningStats = {totalM3:s.total_m3,cycles:s.cycles}; updateMbStats(); }
   catch(e) {}
   _miningPollBusy = false;
-}
-function renderMiningStats() {
-  if (botName !== 'Mining Bot') return '';
-  return `
-    <div class="sec">Mining Session</div>
-    <div class="stat-row"><span class="stat-key">Ore unloaded</span><span>${(miningStats.totalM3??0).toFixed(0)} m³</span></div>
-    <div class="stat-row"><span class="stat-key">Unload runs</span><span>${miningStats.cycles??0}</span></div>
-  `;
 }
 
 function bar(label, pct, cls) {
@@ -654,45 +617,267 @@ function bar(label, pct, cls) {
     </div></div>`;
 }
 
-// ── Quick Travel ───────────────────────────────────────────────────────────
-async function loadQuickTravel() {
-  try { quickTravel = await fetch('/api/quick-travel').then(r=>r.json()); } catch(e) { quickTravel = []; }
-  refreshTravelGrid();
+// ── Autopilot panel ───────────────────────────────────────────────────────
+
+let sdeReady = false;
+let _sdeInputTimer = null;
+
+function onSdeInput(q) {
+  if (_sdeInputTimer) clearTimeout(_sdeInputTimer);
+  q = q.trim();
+  if (q.length < 2) { $('ap-search-results').innerHTML = ''; return; }
+  _sdeInputTimer = setTimeout(() => doSdeSearch(), 300);
 }
-async function loadStationAliases() {
-  try { stationAliases = await fetch('/api/station-aliases').then(r=>r.json()); } catch(e) { stationAliases = {}; }
-  refreshTravelGrid();
-}
-async function addTravel() {
-  const inp = $('travel-input');
-  const name = (inp?.value||'').trim();
-  if (!name) return;
+
+// Poll SDE status until ready, then stop polling
+async function pollSdeStatus() {
   try {
-    quickTravel = await fetch('/api/quick-travel', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({station:name}) }).then(r=>r.json());
-    if (inp) inp.value = '';
-    refreshTravelGrid();
+    const s = await fetch('/api/stations/sde-status').then(r => r.json());
+    const badge    = $('ap-sde-badge');
+    const prog     = $('ap-sde-progress');
+    const bar      = $('ap-sde-bar');
+    const msg      = $('ap-sde-msg');
+    const errPanel = $('ap-sde-error');
+    const errMsg   = $('ap-sde-error-msg');
+
+    sdeReady = s.ready;
+
+    const failed = !s.ready && !s.downloading && s.status &&
+      (s.status.includes('not found') || s.status.includes('error') ||
+       s.status.includes('failed') || s.status.includes('empty'));
+
+    if (badge) {
+      badge.textContent = s.status || '…';
+      badge.style.color = s.ready ? 'var(--green)' : failed ? 'var(--red)' : s.downloading ? 'var(--yellow)' : 'var(--text-dim)';
+      badge.style.background = s.ready ? '#0a2a1a' : failed ? '#2a0808' : '#1a2a3a';
+    }
+    if (prog) {
+      prog.style.display = s.downloading ? 'block' : 'none';
+      if (s.downloading && s.progress >= 0 && bar && msg) {
+        bar.style.width = s.progress.toFixed(1) + '%';
+        msg.textContent = `Downloading SDE… ${s.progress.toFixed(0)}%`;
+      }
+    }
+    if (errPanel && errMsg) {
+      errPanel.style.display = failed ? 'block' : 'none';
+      if (failed) errMsg.textContent = s.status;
+    }
+
+    // Keep polling while downloading or not yet ready
+    if (!s.ready || s.downloading) setTimeout(pollSdeStatus, s.downloading ? 1500 : 5000);
+  } catch(e) {
+    setTimeout(pollSdeStatus, 10000);
+  }
+}
+
+async function sdeRefresh() {
+  try {
+    await fetch('/api/stations/sde-refresh', { method: 'POST' });
+    const errPanel = $('ap-sde-error');
+    if (errPanel) errPanel.style.display = 'none';
+    const badge = $('ap-sde-badge');
+    if (badge) { badge.textContent = 'Re-downloading…'; badge.style.color = 'var(--yellow)'; badge.style.background = '#1a2a3a'; }
+    setTimeout(pollSdeStatus, 2000);
   } catch(e) {}
 }
-async function removeTravel(name) {
-  try { quickTravel = await fetch('/api/quick-travel/'+encodeURIComponent(name),{method:'DELETE'}).then(r=>r.json()); refreshTravelGrid(); } catch(e) {}
-}
-async function goTravel(name) {
+
+async function doSdeSearch() {
+  const q = ($('ap-search-input').value || '').trim();
+  if (q.length < 3) { $('ap-search-results').innerHTML = '<div class="empty">Type at least 3 characters</div>'; return; }
+  if (apSearchBusy) return;
+  apSearchBusy = true;
+  const btn = $('ap-search-btn');
+  btn.innerHTML = '<span class="search-spinner"></span>';
+  btn.disabled = true;
+  $('ap-search-results').innerHTML = '<div class="empty">Searching…</div>';
   try {
-    const r = await fetch('/api/quick-travel/'+encodeURIComponent(name)+'/go',{method:'POST'});
-    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message||'Travel failed'); }
-  } catch(e) {}
+    const resp = await fetch('/api/stations/search?q=' + encodeURIComponent(q)).then(r => r.json());
+    if (resp.ready === false) {
+      $('ap-search-results').innerHTML = `<div class="empty">${esc(resp.status || 'SDE not ready yet')}</div>`;
+    } else {
+      apSearchResults = Array.isArray(resp.results) ? resp.results : [];
+      renderSearchResults();
+    }
+  } catch(e) {
+    $('ap-search-results').innerHTML = '<div class="empty" style="color:var(--red)">Search failed</div>';
+  }
+  btn.innerHTML = '&#128269;';
+  btn.disabled = false;
+  apSearchBusy = false;
 }
-function refreshTravelGrid() {
-  const g = $('travel-grid');
-  if (!g) return;
-  const html = quickTravel.map(s => {
-    const alias = stationAliases[s];
-    const tip = alias ? `${alias.system} → ${alias.bookmark}` : '';
-    const badge = alias ? ` <span style="font-size:.6rem;color:var(--accent2);">📍</span>` : '';
-    return `<span class="travel-btn" onclick="goTravel('${esc(s)}')" title="${esc(tip)}">${esc(s)}${badge}<span class="del" onclick="event.stopPropagation();removeTravel('${esc(s)}')">✕</span></span>`;
+
+function secColor(s) {
+  if (s == null) return 'var(--text-dim)';
+  if (s >= 0.5)  return 'var(--green)';
+  if (s >= 0.1)  return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function renderSearchResults() {
+  const el = $('ap-search-results');
+  if (!apSearchResults.length) { el.innerHTML = '<div class="empty">No results</div>'; return; }
+  el.innerHTML = apSearchResults.map((r, i) => {
+    const sel     = apSelectedSearch && apSelectedSearch.id === r.id ? ' selected' : '';
+    const typeTag = r.isStation ? '&#x1F3DB;' : '&#x1F311;'; // station vs system icon
+    const sec     = r.security != null
+      ? `<span style="color:${secColor(r.security)};font-size:.68rem;">${r.security.toFixed(1)}</span>`
+      : '';
+    const region  = r.regionName
+      ? `<span style="color:var(--text-dim);font-size:.68rem;">${esc(r.regionName)}</span>`
+      : '';
+    const subLine = r.isStation && r.systemName
+      ? `<div style="font-size:.68rem;color:var(--text-dim);">${esc(r.systemName)}</div>`
+      : '';
+    return `<div class="ap-result-item${sel}" onclick="selectSearchResult(${i})" ondblclick="selectSearchResult(${i});saveSelectedDest()">
+      <input type="radio" name="ap-search-radio" ${sel?' checked':''}>
+      <span style="font-size:.9rem;flex-shrink:0;">${typeTag}</span>
+      <div class="ap-result-info" style="flex:1;min-width:0;">
+        <div class="ap-result-name">${esc(r.name||'—')}</div>
+        ${subLine}
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0;">${sec}${region}</div>
+    </div>`;
   }).join('');
-  g.innerHTML = html || '<span class="empty">No stations saved</span>';
 }
+
+function selectSearchResult(i) {
+  apSelectedSearch = apSearchResults[i] || null;
+  apSelectedDest   = null;    // deselect saved
+  renderSearchResults();
+  renderDestinations();
+  $('ap-save-btn').disabled = !apSelectedSearch;
+  updateApStatus();
+}
+
+async function saveSelectedDest() {
+  if (!apSelectedSearch) return;
+  try {
+    const list = await fetch('/api/destinations', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(apSelectedSearch),
+    }).then(r => r.json());
+    apDestinations = Array.isArray(list) ? list : [];
+    apSelectedDest = apSelectedSearch;
+    apSelectedSearch = null;
+    renderDestinations();
+    renderSearchResults();
+    $('ap-save-btn').disabled = true;
+  } catch(e) {}
+}
+
+async function loadDestinations() {
+  try { apDestinations = await fetch('/api/destinations').then(r => r.json()) || []; }
+  catch(e) { apDestinations = []; }
+  renderDestinations();
+}
+
+function renderDestinations() {
+  const el = $('ap-dest-list');
+  if (!apDestinations.length) { el.innerHTML = '<div class="empty">No saved destinations</div>'; return; }
+  el.innerHTML = apDestinations.map((d, i) => {
+    const sel = apSelectedDest && apSelectedDest.id === d.id ? ' selected' : '';
+    const icon = d.iconUrl
+      ? `<img class="ap-dest-icon" src="${esc(d.iconUrl)}" onerror="this.style.display='none'">`
+      : `<div class="ap-dest-icon-placeholder"></div>`;
+    const sys = d.systemName ? `<div class="ap-dest-sys">${esc(d.systemName)}</div>` : '';
+    return `<div class="ap-dest-item${sel}" onclick="selectDest(${i})">
+      <input type="radio" name="ap-dest-radio" ${sel?' checked':''}>
+      ${icon}
+      <div class="ap-dest-info">
+        <div class="ap-dest-name">${esc(d.name||'—')}</div>
+        ${sys}
+      </div>
+      <span class="ap-dest-del" onclick="event.stopPropagation();deleteDest('${esc(d.id)}')" title="Remove">✕</span>
+    </div>`;
+  }).join('');
+}
+
+function selectDest(i) {
+  apSelectedDest   = apDestinations[i] || null;
+  apSelectedSearch = null;  // deselect search result
+  renderDestinations();
+  renderSearchResults();
+  $('ap-save-btn').disabled = true;
+  updateApStatus();
+}
+
+async function deleteDest(id) {
+  try {
+    const list = await fetch('/api/destinations/' + encodeURIComponent(id), {method:'DELETE'}).then(r => r.json());
+    apDestinations = Array.isArray(list) ? list : [];
+    if (apSelectedDest && apSelectedDest.id === id) apSelectedDest = null;
+    renderDestinations();
+    updateApStatus();
+  } catch(e) {}
+}
+
+function getSelectedDestination() {
+  // Returns the best destination object: search result if selected, else saved dest
+  return apSelectedSearch || apSelectedDest || null;
+}
+
+function updateApStatus() {
+  const d = getSelectedDestination();
+  const sl = $('ap-status-line');
+  if (d) sl.textContent = `Selected: ${d.name}${d.systemName ? ' (' + d.systemName + ')' : ''}`;
+  else sl.textContent = 'No destination selected — bot will use in-game route';
+}
+
+async function startAutopilot() {
+  const dest = getSelectedDestination();
+  const body = { botName: 'Travel Bot' };
+  if (dest) body.destination = dest.name;
+  try {
+    const r = await fetch('/api/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed to start'); }
+  } catch(e) { console.error(e); }
+}
+
+async function startMining() {
+  const body = {
+    botName: 'Mining Bot',
+    mining: {
+      homeStation:  $('mb-home').value.trim() || null,
+      oreHoldFull:  parseInt($('mb-ore-pct').value),
+      shieldEscape: parseInt($('mb-shield-pct').value),
+      maxLocks:     parseInt($('mb-locks').value),
+      minCap:       parseInt($('mb-cap-pct').value),
+      laserRangeM:  parseInt($('mb-range').value),
+    },
+  };
+  try {
+    const r = await fetch('/api/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed to start'); }
+  } catch(e) { console.error(e); }
+}
+
+function updateMbStats() {
+  const sl = $('mb-status-line');
+  const statsDiv = $('mb-stats');
+  const isMining = botState !== 'Idle' && botName === 'Mining Bot';
+  if (!isMining) {
+    if (statsDiv) statsDiv.textContent = 'Idle';
+    if (sl) sl.textContent = '';
+    return;
+  }
+  const m3 = miningStats.totalM3 || 0;
+  const cyc = miningStats.cycles || 0;
+  if (statsDiv) statsDiv.innerHTML =
+    `<span style="color:var(--purple)">${m3.toFixed(1)} m³</span> mined &nbsp;·&nbsp; ` +
+    `<span style="color:var(--accent)">${cyc}</span> cycle${cyc!==1?'s':''}`;
+  if (sl) sl.textContent = isMining ? `Running — ${m3.toFixed(1)} m³ mined` : '';
+}
+
+// ── Misc ──────────────────────────────────────────────────────────────────
 
 async function apiClick(url) {
   try { const r = await fetch(url,{method:'POST'}); if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.message||'Failed');} } catch(e) {}
@@ -719,30 +904,30 @@ function addActionEntry(e) {
 }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-// ── UI state machine ───────────────────────────────────────────────────────
+// ── UI state machine ──────────────────────────────────────────────────────
 function refreshUI() {
   const running = botState==='Running', paused = botState==='Paused', idle = botState==='Idle';
   const pill = $('state-pill');
   pill.textContent = botState;
   pill.className = 'state-pill' + (running?' running':paused?' paused':'');
-  $('btn-start').disabled  = !idle;
   $('btn-stop').disabled   = idle;
   $('btn-pause').disabled  = !running;
   $('btn-resume').disabled = !paused;
-  let descEl = $('bot-desc-badge');
-  if (!descEl) {
-    descEl = document.createElement('span'); descEl.id = 'bot-desc-badge';
-    descEl.style.cssText = 'font-size:.7rem;color:var(--text-dim);margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;';
-    pill.insertAdjacentElement('afterend', descEl);
-  }
-  descEl.textContent = (!idle && botDesc) ? botDesc : '';
+  $('bot-desc-badge').textContent = (!idle && botDesc) ? botDesc : '';
+  // Autopilot launch buttons
+  $('ap-start-btn').disabled = !idle;
+  $('ap-stop-btn').disabled  = idle;
+  updateApStatus();
+  // Mining launch buttons
+  $('mb-start-btn').disabled = !idle;
+  $('mb-stop-btn').disabled  = idle;
+  updateMbStats();
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────
-$('btn-start').addEventListener('click', () => api('POST','/api/start',{botName:$('bot-select').value}));
-$('btn-stop').addEventListener('click',  () => api('POST','/api/stop'));
-$('btn-pause').addEventListener('click', () => api('POST','/api/pause'));
-$('btn-resume').addEventListener('click',() => api('POST','/api/resume'));
+$('btn-stop').addEventListener('click',   () => api('POST','/api/stop'));
+$('btn-pause').addEventListener('click',  () => api('POST','/api/pause'));
+$('btn-resume').addEventListener('click', () => api('POST','/api/resume'));
 $('btn-save-frame').addEventListener('click', async () => {
   try {
     const r = await fetch('/api/save-frame',{method:'POST'});
@@ -783,835 +968,9 @@ $('btn-diag-input').addEventListener('click', async () => {
   catch(e) { $('diag-report').textContent='Fetch error: '+e.message; }
 });
 
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  CANVAS — Visual Bot Sequence Builder
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ── UI Target catalogue ────────────────────────────────────────────────────
-// Each entry: { group, id, label, param? { key, label, type, default } }
-// `param` is shown as a second input when that target is selected.
-const UI_TARGETS = [
-  // Ship UI
-  { group:'Ship UI',       id:'ship_ui.module_slot',      label:'Module Slot #',       param:{ key:'slot',  label:'Slot (1–9)',             type:'number', default:'1' }},
-  { group:'Ship UI',       id:'ship_ui.stop_button',      label:'Stop Button' },
-  { group:'Ship UI',       id:'ship_ui.max_speed_button', label:'Max Speed Button' },
-  { group:'Ship UI',       id:'ship_ui.capacitor',        label:'Capacitor' },
-  // Overview
-  { group:'Overview',      id:'overview.first_entry',     label:'First Entry' },
-  { group:'Overview',      id:'overview.entry_by_name',   label:'Entry by Name',        param:{ key:'name',  label:'Name (partial match)',   type:'text',   default:'' }},
-  { group:'Overview',      id:'overview.entry_by_index',  label:'Entry by Index',       param:{ key:'index', label:'Index (1-based)',        type:'number', default:'1' }},
-  { group:'Overview',      id:'overview.tab_by_name',     label:'Tab by Name',          param:{ key:'name',  label:'Tab name',              type:'text',   default:'' }},
-  // Context Menu
-  { group:'Context Menu',  id:'ctx.first_entry',          label:'First Entry' },
-  { group:'Context Menu',  id:'ctx.entry_by_text',        label:'Entry by Text',        param:{ key:'text',  label:'Entry text (partial)',   type:'text',   default:'' }},
-  { group:'Context Menu',  id:'ctx.entry_by_index',       label:'Entry by Index',       param:{ key:'index', label:'Index (1-based)',        type:'number', default:'1' }},
-  // Locked Targets
-  { group:'Locked Targets',id:'targets.first',            label:'First Target' },
-  { group:'Locked Targets',id:'targets.active',           label:'Active Target' },
-  { group:'Locked Targets',id:'targets.by_name',          label:'Target by Name',       param:{ key:'name',  label:'Name (partial)',         type:'text',   default:'' }},
-  // Message Box
-  { group:'Message Box',   id:'msgbox.first_button',      label:'First Button' },
-  { group:'Message Box',   id:'msgbox.button_by_text',    label:'Button by Text',       param:{ key:'text',  label:'Button text',           type:'text',   default:'OK' }},
-  // Inventory
-  { group:'Inventory',     id:'inv.nav_entry_by_name',    label:'Nav Entry by Name',    param:{ key:'name',  label:'Hold name (partial)',    type:'text',   default:'' }},
-  { group:'Inventory',     id:'inv.stack_all_button',     label:'Stack All Button' },
-  // Selected Item
-  { group:'Selected Item', id:'sel.first_button',         label:'First Action Button' },
-  { group:'Selected Item', id:'sel.button_by_index',      label:'Action Button #',      param:{ key:'index', label:'Index (1-based)',        type:'number', default:'1' }},
-  // Station / Info Panel
-  { group:'Station',       id:'station.undock_button',    label:'Undock Button' },
-  { group:'Info Panel',    id:'infopanel.route_marker',   label:'First Route Marker' },
-  // Neocom
-  { group:'Neocom',        id:'neocom.self',              label:'Neocom' },
-];
-
-// ── Keyboard key catalogue ─────────────────────────────────────────────────
-const KEY_GROUPS = [
-  { group:'Function',   keys:['F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'] },
-  { group:'Control',    keys:['Escape','Enter','Space','Tab','Backspace','Delete'] },
-  { group:'Navigation', keys:['Left','Right','Up','Down','Home','End','PageUp','PageDown'] },
-  { group:'Letters',    keys:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('') },
-  { group:'Numbers',    keys:'0123456789'.split('') },
-];
-
-// ── Node type definitions ──────────────────────────────────────────────────
-const NODE_DEFS = {
-  start: {
-    label: 'START', bg: '#0a2a1a', border: '#4caf7d', textColor: '#4caf7d',
-    portsIn: false,
-    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
-    params: [],
-  },
-  left_click: {
-    label: 'L CLICK', bg: '#1e1400', border: '#f9a825', textColor: '#f9a825',
-    portsIn: true,
-    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
-    params: [{ key: 'target', type: 'target', label: 'Target UI Element' }],
-  },
-  right_click: {
-    label: 'R CLICK', bg: '#1e0e00', border: '#ff7043', textColor: '#ff7043',
-    portsIn: true,
-    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
-    params: [{ key: 'target', type: 'target', label: 'Target UI Element' }],
-  },
-  key_press: {
-    label: 'KEY PRESS', bg: '#120018', border: '#ce93d8', textColor: '#ce93d8',
-    portsIn: true,
-    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
-    params: [
-      { key: 'key',   type: 'key',  label: 'Key' },
-      { key: 'ctrl',  type: 'bool', label: 'Ctrl',  default: 'false' },
-      { key: 'shift', type: 'bool', label: 'Shift', default: 'false' },
-      { key: 'alt',   type: 'bool', label: 'Alt',   default: 'false' },
-    ],
-  },
-  type_text: {
-    label: 'TYPE TEXT', bg: '#001820', border: '#4fc3f7', textColor: '#4fc3f7',
-    portsIn: true,
-    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
-    params: [
-      { key: 'text',   type: 'text',            label: 'Text to type' },
-      { key: 'target', type: 'target_optional', label: 'Click target first (optional)' },
-    ],
-  },
-  condition: {
-    label: 'CONDITION', bg: '#1e0a00', border: '#ff7043', textColor: '#ff7043',
-    portsIn: true,
-    portsOut: [{ id: 'true', cls: 'port-out-l', label: 'T' }, { id: 'false', cls: 'port-out-r', label: 'F' }],
-    params: [
-      { key: 'check', type: 'select', label: 'Check', options: [
-        'shield_below','armor_below','structure_below','cap_below',
-        'is_docked','is_in_space','is_warping',
-        'has_target','target_count_above',
-        'cargo_full','cargo_below_percent',
-        'module_active','module_inactive',
-        'overview_has_entry','context_menu_open','message_box_visible',
-        'route_jumps_remaining_above','route_jumps_remaining_below',
-      ]},
-      { key: 'value', type: 'text', label: 'Value (%, slot, name…)', default: '30' },
-    ],
-  },
-  loop: {
-    label: 'LOOP', bg: '#001a1e', border: '#00bcd4', textColor: '#00bcd4',
-    portsIn: true,
-    portsOut: [{ id: 'body', cls: 'port-out-l', label: '▶' }, { id: 'done', cls: 'port-out-r', label: '✓' }],
-    params: [
-      { key: 'iterations', type: 'number', label: 'Iterations (0 = infinite)', default: '0' },
-    ],
-  },
-  wait: {
-    label: 'WAIT', bg: '#10102a', border: '#7c4dff', textColor: '#b39ddb',
-    portsIn: true,
-    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
-    params: [
-      { key: 'ms', type: 'number', label: 'Milliseconds', default: '2000' },
-    ],
-  },
-  wait_until: {
-    label: 'WAIT UNTIL', bg: '#120a28', border: '#7c4dff', textColor: '#ce93d8',
-    portsIn: true,
-    portsOut: [{ id: 'next', cls: 'port-out', label: '' }],
-    params: [
-      { key: 'check', type: 'select', label: 'Condition', options: [
-        'is_in_space','is_docked','is_warping',
-        'shield_below','armor_below','structure_below','cap_below',
-        'has_target','target_count_above',
-        'context_menu_open','message_box_visible',
-        'overview_has_entry','cargo_full','cargo_below_percent',
-        'module_active','module_inactive',
-        'route_jumps_remaining_above','route_jumps_remaining_below',
-      ]},
-      { key: 'value',      type: 'text',   label: 'Value',            default: '0' },
-      { key: 'timeout_ms', type: 'number', label: 'Timeout (ms)',     default: '30000' },
-      { key: 'poll_ms',    type: 'number', label: 'Poll interval (ms)',default: '500' },
-    ],
-  },
-  end: {
-    label: 'END', bg: '#1e0808', border: '#ef5350', textColor: '#ef5350',
-    portsIn: true,
-    portsOut: [],
-    params: [],
-  },
-  stop_sequence: {
-    label: 'STOP', bg: '#2a0808', border: '#ef5350', textColor: '#ef5350',
-    portsIn: true,
-    portsOut: [],
-    params: [],
-  },
-};
-
-// ── Canvas state ───────────────────────────────────────────────────────────
-let cnvNodes    = [];         // {id, type, params:{}, x, y}
-let cnvEdges    = [];         // {id, from, fromPort, to, toPort}
-let cnvSel      = null;       // single-selected node id or edge id
-let cnvMultiSel = new Set();  // multi-selected node ids (box select)
-let cnvDrag     = null;       // {nodeId, ox, oy, isMulti, startPositions, startMX, startMY}
-let cnvBoxSel   = null;       // {x0, y0, x1, y1} — box-select in progress
-let cnvConn     = null;       // {nodeId, port} — connection in progress
-let cnvIdSeq    = 2;
-let seqId       = null;
-let seqPlaying  = false;
-
-const NODE_W = 158;
-const NODE_H = 54; // approx height for port calc
-
-function cnvInit() {
-  cnvNodes = [{ id: 'n1', type: 'start', params: {}, x: 60, y: 90 }];
-  cnvEdges = [];
-  cnvSel   = null;
-  cnvIdSeq = 2;
-  cnvRender();
-}
-
-// ── Rendering ──────────────────────────────────────────────────────────────
-function cnvRender() {
-  cnvRenderNodes();
-  // Render edges after layout pass so port positions are available
-  requestAnimationFrame(cnvRenderEdges);
-  cnvRenderProps();
-}
-
-function cnvRenderNodes() {
-  const layer = $('nodes-layer');
-  if (!layer) return;
-  layer.innerHTML = '';
-  for (const n of cnvNodes) layer.appendChild(cnvMakeNodeEl(n));
-}
-
-function cnvRenderEdges() {
-  const g = $('edges-g');
-  if (!g) return;
-  g.innerHTML = '';
-  for (const e of cnvEdges) {
-    const path = cnvMakeEdgePath(e);
-    if (path) g.appendChild(path);
-  }
-}
-
-function cnvMakeNodeEl(node) {
-  const def = NODE_DEFS[node.type] || NODE_DEFS.end;
-  const isSel   = cnvSel === node.id;
-  const isMulti = cnvMultiSel.has(node.id);
-
-  const div = document.createElement('div');
-  div.className = 'canvas-node' + (isSel ? ' selected' : '') + (isMulti ? ' multi-selected' : '');
-  div.dataset.id = node.id;
-  div.style.left   = node.x + 'px';
-  div.style.top    = node.y + 'px';
-  div.style.borderColor = sel ? 'rgba(255,255,255,.5)' : def.border;
-  div.style.background  = def.bg;
-
-  // Header
-  const hdr = document.createElement('div');
-  hdr.className = 'canvas-node-hdr';
-  hdr.style.cssText = `color:${def.textColor};border-bottom:1px solid ${def.border}33;`;
-
-  const typeSpan = document.createElement('span');
-  typeSpan.className = 'canvas-node-type';
-  typeSpan.textContent = def.label;
-  hdr.appendChild(typeSpan);
-
-  // Show primary param as subtitle
-  if (def.params.length > 0) {
-    const fp = def.params[0];
-    const val = node.params[fp.key] ?? fp.default ?? '';
-    const subSpan = document.createElement('span');
-    subSpan.className = 'canvas-node-sub';
-    subSpan.id = `nsub-${node.id}`;
-    subSpan.textContent = String(val).replace(/_/g,' ').slice(0, 20);
-    hdr.appendChild(subSpan);
-  }
-
-  if (node.type !== 'start') {
-    const del = document.createElement('button');
-    del.className = 'canvas-node-del'; del.textContent = '×';
-    del.title = 'Delete node';
-    del.onmousedown = e => e.stopPropagation();
-    del.onclick = e => { e.stopPropagation(); cnvDeleteNode(node.id); };
-    hdr.appendChild(del);
-  }
-  div.appendChild(hdr);
-
-  // Input port
-  if (def.portsIn) {
-    const p = document.createElement('div');
-    p.className = 'canvas-port port-in';
-    p.dataset.nodeId = node.id; p.dataset.port = 'in';
-    div.appendChild(p);
-  }
-
-  // Output ports
-  for (const op of def.portsOut) {
-    const p = document.createElement('div');
-    p.className = 'canvas-port ' + op.cls;
-    p.dataset.nodeId = node.id; p.dataset.port = op.id;
-    p.title = op.label || op.id;
-
-    if (op.label) {
-      const lbl = document.createElement('span');
-      lbl.className = 'port-label';
-      lbl.textContent = op.label;
-      p.appendChild(lbl);
-    }
-    div.appendChild(p);
-  }
-
-  // Drag handling
-  div.addEventListener('mousedown', e => {
-    if (e.target.classList.contains('canvas-port')) return;
-    if (e.target.classList.contains('canvas-node-del')) return;
-    e.preventDefault(); e.stopPropagation();
-    const areaRect = $('canvas-area').getBoundingClientRect();
-    const mx = e.clientX - areaRect.left, my = e.clientY - areaRect.top;
-    const inMulti = cnvMultiSel.has(node.id);
-    if (!inMulti || e.shiftKey) {
-      // Not part of multi-sel: switch to single selection
-      cnvMultiSel.clear();
-      cnvSel = node.id;
-    }
-    const isMultiDrag = cnvMultiSel.size > 0;
-    cnvDrag = {
-      nodeId: node.id,
-      ox: mx - node.x, oy: my - node.y,
-      isMulti: isMultiDrag,
-      startPositions: isMultiDrag
-        ? Object.fromEntries([...cnvMultiSel].map(id => {
-            const n = cnvNodes.find(n => n.id === id);
-            return [id, { x: n.x, y: n.y }];
-          }))
-        : null,
-      startMX: mx, startMY: my,
-    };
-    cnvRenderNodes();
-    requestAnimationFrame(cnvRenderEdges);
-    cnvRenderProps();
-  });
-
-  return div;
-}
-
-// Get port center in canvas-area coordinates
-function cnvPortPos(nodeId, port) {
-  // Try DOM measurement first
-  const nodeEl = document.querySelector(`.canvas-node[data-id="${nodeId}"]`);
-  if (nodeEl) {
-    const portEl = nodeEl.querySelector(`[data-port="${port}"]`);
-    if (portEl) {
-      const areaRect = $('canvas-area').getBoundingClientRect();
-      const pRect = portEl.getBoundingClientRect();
-      return { x: pRect.left + pRect.width/2 - areaRect.left, y: pRect.top + pRect.height/2 - areaRect.top };
-    }
-  }
-  // Fallback: approximate
-  const node = cnvNodes.find(n => n.id === nodeId);
-  if (!node) return { x: 0, y: 0 };
-  const def = NODE_DEFS[node.type] || NODE_DEFS.action;
-  if (port === 'in') return { x: node.x + NODE_W/2, y: node.y };
-  const ops = def.portsOut || [];
-  if (ops.length === 1) return { x: node.x + NODE_W/2, y: node.y + NODE_H };
-  const idx = ops.findIndex(p => p.id === port);
-  return { x: node.x + (idx===0 ? NODE_W*0.28 : NODE_W*0.72), y: node.y + NODE_H };
-}
-
-function cnvMakeEdgePath(edge) {
-  const from = cnvPortPos(edge.from, edge.fromPort);
-  const to   = cnvPortPos(edge.to,   edge.toPort);
-  if (!from || !to) return null;
-
-  const dx = to.x - from.x, dy = to.y - from.y;
-  const cy = Math.max(40, Math.abs(dy) * 0.55);
-  const d = `M ${from.x.toFixed(1)} ${from.y.toFixed(1)} C ${from.x.toFixed(1)} ${(from.y+cy).toFixed(1)}, ${to.x.toFixed(1)} ${(to.y-cy).toFixed(1)}, ${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
-
-  const isSel = cnvSel === edge.id;
-  const color = isSel ? '#ffffff'
-    : edge.fromPort === 'false' ? '#ef5350'
-    : edge.fromPort === 'true'  ? '#4caf7d'
-    : edge.fromPort === 'body'  ? '#00bcd4'
-    : edge.fromPort === 'done'  ? '#4caf7d'
-    : '#4fc3f7';
-  const marker = isSel ? 'arr-white'
-    : edge.fromPort === 'false' ? 'arr-red'
-    : (edge.fromPort === 'true' || edge.fromPort === 'done') ? 'arr-green'
-    : 'arr-blue';
-
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', d);
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', color);
-  path.setAttribute('stroke-width', isSel ? '2.5' : '1.8');
-  path.setAttribute('marker-end', `url(#${marker})`);
-  path.setAttribute('opacity', isSel ? '1' : '0.75');
-  path.dataset.edgeId = edge.id;
-  path.style.cursor = 'pointer';
-  path.style.pointerEvents = 'stroke';
-  path.addEventListener('click', ev => {
-    ev.stopPropagation();
-    cnvSel = edge.id;
-    cnvRenderEdges();
-    cnvRenderProps();
-  });
-  return path;
-}
-
-// ── Properties panel ────────────────────────────────────────────────────────
-
-// Build an <optgroup>-based target select element
-function buildTargetSelect(nodeId, key, currentVal, optional) {
-  const sel = document.createElement('select');
-  sel.className = 'prop-input';
-  sel.dataset.nodeId = nodeId; sel.dataset.key = key;
-  if (optional) {
-    const opt = document.createElement('option'); opt.value = ''; opt.textContent = '— none —';
-    if (!currentVal) opt.selected = true;
-    sel.appendChild(opt);
-  }
-  // Group targets by group name
-  const groups = {};
-  for (const t of UI_TARGETS) {
-    (groups[t.group] = groups[t.group] || []).push(t);
-  }
-  for (const [grpName, targets] of Object.entries(groups)) {
-    const grp = document.createElement('optgroup'); grp.label = grpName;
-    for (const t of targets) {
-      const opt = document.createElement('option'); opt.value = t.id;
-      opt.textContent = t.label;
-      if (t.id === currentVal) opt.selected = true;
-      grp.appendChild(opt);
-    }
-    sel.appendChild(grp);
-  }
-  return sel;
-}
-
-// Build an <optgroup>-based key select element
-function buildKeySelect(nodeId, key, currentVal) {
-  const sel = document.createElement('select');
-  sel.className = 'prop-input';
-  sel.dataset.nodeId = nodeId; sel.dataset.key = key;
-  for (const { group, keys } of KEY_GROUPS) {
-    const grp = document.createElement('optgroup'); grp.label = group;
-    for (const k of keys) {
-      const opt = document.createElement('option'); opt.value = k; opt.textContent = k;
-      if (k === currentVal) opt.selected = true;
-      grp.appendChild(opt);
-    }
-    sel.appendChild(grp);
-  }
-  return sel;
-}
-
-// Returns a label string for the node subtitle from its first meaningful param
-function cnvNodeSubtitle(node) {
-  const def = NODE_DEFS[node.type];
-  if (!def || def.params.length === 0) return '';
-  const fp = def.params[0];
-  const val = node.params[fp.key] ?? fp.default ?? '';
-  if (fp.type === 'target' || fp.type === 'target_optional') {
-    const t = UI_TARGETS.find(t => t.id === val);
-    return t ? t.label : (val ? val.replace(/[._]/g, ' ') : '');
-  }
-  if (fp.type === 'key') return val;
-  return String(val).slice(0, 20);
-}
-
-function cnvRenderProps() {
-  const body = $('canvas-props-body');
-  if (!body) return;
-
-  if (!cnvSel) { body.innerHTML = '<span class="empty">Select a node to edit properties</span>'; return; }
-
-  // Edge selected?
-  const edge = cnvEdges.find(e => e.id === cnvSel);
-  if (edge) {
-    body.innerHTML = `
-      <span style="color:var(--text-dim);font-size:.75rem">Edge: <b>${edge.from}</b>.${edge.fromPort} → <b>${edge.to}</b>.${edge.toPort}</span>
-      <button class="btn btn-danger" style="margin-left:8px;font-size:.7rem;padding:2px 8px;"
-        onclick="cnvEdges=cnvEdges.filter(e=>e.id!=='${edge.id}');cnvSel=null;cnvRenderEdges();cnvRenderProps()">Delete Edge</button>`;
-    return;
-  }
-
-  // Node selected?
-  const node = cnvNodes.find(n => n.id === cnvSel);
-  if (!node) { body.innerHTML = '<span class="empty">Select a node to edit properties</span>'; return; }
-
-  const def = NODE_DEFS[node.type];
-  if (!def || def.params.length === 0) {
-    body.innerHTML = `<span class="empty">${def?.label || node.type} — no parameters</span>`;
-    return;
-  }
-
-  body.innerHTML = '';
-
-  for (const param of def.params) {
-    const val = node.params[param.key] ?? param.default ?? '';
-
-    // ── target / target_optional ─────────────────────────────────────────
-    if (param.type === 'target' || param.type === 'target_optional') {
-      const row = document.createElement('div'); row.className = 'prop-row';
-      const lbl = document.createElement('label'); lbl.className = 'prop-label'; lbl.textContent = param.label;
-      row.appendChild(lbl);
-
-      const sel = buildTargetSelect(node.id, param.key, val, param.type === 'target_optional');
-      sel.addEventListener('change', e => {
-        node.params[e.target.dataset.key] = e.target.value;
-        // Clear stale target_param when target type changes
-        node.params.target_param = '';
-        cnvUpdateSubtitle(node);
-        cnvRenderProps(); // re-render to show/hide target_param input
-      });
-      row.appendChild(sel);
-      body.appendChild(row);
-
-      // Conditional target_param input
-      const selTarget = UI_TARGETS.find(t => t.id === (node.params[param.key] || ''));
-      if (selTarget?.param) {
-        const p = selTarget.param;
-        const pRow = document.createElement('div'); pRow.className = 'prop-row';
-        const pLbl = document.createElement('label'); pLbl.className = 'prop-label'; pLbl.textContent = p.label;
-        pRow.appendChild(pLbl);
-        const pInp = document.createElement('input');
-        pInp.type = p.type === 'number' ? 'number' : 'text';
-        pInp.className = 'prop-input';
-        pInp.value = node.params.target_param ?? p.default ?? '';
-        pInp.dataset.nodeId = node.id; pInp.dataset.key = 'target_param';
-        pInp.addEventListener('input', cnvSetParam);
-        pRow.appendChild(pInp);
-        body.appendChild(pRow);
-      }
-      continue;
-    }
-
-    // ── key select ────────────────────────────────────────────────────────
-    if (param.type === 'key') {
-      const row = document.createElement('div'); row.className = 'prop-row';
-      const lbl = document.createElement('label'); lbl.className = 'prop-label'; lbl.textContent = param.label;
-      row.appendChild(lbl);
-      const sel = buildKeySelect(node.id, param.key, val);
-      sel.addEventListener('change', e => { node.params[e.target.dataset.key] = e.target.value; cnvUpdateSubtitle(node); });
-      row.appendChild(sel);
-      body.appendChild(row);
-      continue;
-    }
-
-    // ── bool (checkbox) ───────────────────────────────────────────────────
-    if (param.type === 'bool') {
-      const row = document.createElement('div'); row.className = 'prop-row';
-      row.style.flexDirection = 'row'; row.style.alignItems = 'center'; row.style.gap = '6px';
-      const cb = document.createElement('input'); cb.type = 'checkbox';
-      cb.checked = (val === 'true' || val === true);
-      cb.style.cursor = 'pointer'; cb.style.accentColor = 'var(--accent)';
-      cb.dataset.nodeId = node.id; cb.dataset.key = param.key;
-      cb.addEventListener('change', e => { node.params[e.target.dataset.key] = e.target.checked ? 'true' : 'false'; });
-      const lbl = document.createElement('label'); lbl.className = 'prop-label';
-      lbl.textContent = param.label; lbl.style.marginBottom = '0';
-      lbl.style.cursor = 'pointer';
-      row.appendChild(cb); row.appendChild(lbl);
-      body.appendChild(row);
-      continue;
-    }
-
-    // ── text / number ─────────────────────────────────────────────────────
-    const row = document.createElement('div'); row.className = 'prop-row';
-    const lbl = document.createElement('label'); lbl.className = 'prop-label'; lbl.textContent = param.label;
-    row.appendChild(lbl);
-    const inp = document.createElement('input');
-    inp.type = param.type === 'number' ? 'number' : 'text';
-    inp.className = 'prop-input'; inp.value = val;
-    inp.dataset.nodeId = node.id; inp.dataset.key = param.key;
-    inp.addEventListener('input', cnvSetParam);
-    row.appendChild(inp);
-    body.appendChild(row);
-  }
-}
-
-function cnvUpdateSubtitle(node) {
-  const subEl = document.getElementById(`nsub-${node.id}`);
-  if (subEl) subEl.textContent = cnvNodeSubtitle(node);
-}
-
-function cnvSetParam(e) {
-  const nodeId = e.target.dataset.nodeId;
-  const key    = e.target.dataset.key;
-  const node   = cnvNodes.find(n => n.id === nodeId);
-  if (!node) return;
-  node.params[key] = e.target.value;
-  // Update header subtitle without full re-render (preserves focus)
-  const subEl = document.getElementById(`nsub-${nodeId}`);
-  if (subEl) {
-    const def = NODE_DEFS[node.type];
-    if (def?.params?.length > 0) {
-      const fp = def.params[0];
-      subEl.textContent = String(node.params[fp.key] ?? fp.default ?? '').replace(/_/g,' ').slice(0, 20);
-    }
-  }
-}
-
-// ── Mouse events ────────────────────────────────────────────────────────────
-document.addEventListener('mousemove', e => {
-  // Node dragging
-  if (cnvDrag) {
-    const areaRect = $('canvas-area').getBoundingClientRect();
-    const mx = e.clientX - areaRect.left, my = e.clientY - areaRect.top;
-    if (cnvDrag.isMulti && cnvDrag.startPositions) {
-      const dx = mx - cnvDrag.startMX, dy = my - cnvDrag.startMY;
-      for (const [id, pos] of Object.entries(cnvDrag.startPositions)) {
-        const n = cnvNodes.find(n => n.id === id);
-        if (n) {
-          n.x = Math.max(0, pos.x + dx); n.y = Math.max(0, pos.y + dy);
-          const el = document.querySelector(`.canvas-node[data-id="${id}"]`);
-          if (el) { el.style.left = n.x+'px'; el.style.top = n.y+'px'; }
-        }
-      }
-    } else {
-      const node = cnvNodes.find(n => n.id === cnvDrag.nodeId);
-      if (node) {
-        node.x = Math.max(0, mx - cnvDrag.ox);
-        node.y = Math.max(0, my - cnvDrag.oy);
-        const el = document.querySelector(`.canvas-node[data-id="${cnvDrag.nodeId}"]`);
-        if (el) { el.style.left = node.x+'px'; el.style.top = node.y+'px'; }
-      }
-    }
-    requestAnimationFrame(cnvRenderEdges);
-  }
-  // Box selection
-  if (cnvBoxSel) {
-    const areaRect = $('canvas-area').getBoundingClientRect();
-    cnvBoxSel.x1 = e.clientX - areaRect.left;
-    cnvBoxSel.y1 = e.clientY - areaRect.top;
-    cnvRenderBoxSel();
-  }
-  // Connection dragging
-  if (cnvConn) {
-    const areaRect = $('canvas-area').getBoundingClientRect();
-    const mx = e.clientX - areaRect.left;
-    const my = e.clientY - areaRect.top;
-    const te = $('temp-edge');
-    const sp = cnvPortPos(cnvConn.nodeId, cnvConn.port);
-    if (te && sp) {
-      const cy = Math.max(30, Math.abs(my - sp.y) * 0.5);
-      te.setAttribute('d', `M ${sp.x.toFixed(1)} ${sp.y.toFixed(1)} C ${sp.x.toFixed(1)} ${(sp.y+cy).toFixed(1)}, ${mx.toFixed(1)} ${(my-cy).toFixed(1)}, ${mx.toFixed(1)} ${my.toFixed(1)}`);
-      te.style.display = '';
-    }
-    // Highlight hovered input port
-    document.querySelectorAll('.canvas-port.hot').forEach(p => p.classList.remove('hot'));
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    if (el?.classList.contains('canvas-port') && el.dataset.port === 'in') el.classList.add('hot');
-  }
-});
-
-document.addEventListener('mouseup', e => {
-  cnvDrag = null;
-  if (cnvBoxSel) {
-    // Finalize box selection
-    if (cnvMultiSel.size === 1 && !e.shiftKey) {
-      cnvSel = [...cnvMultiSel][0]; cnvMultiSel.clear();
-    }
-    cnvBoxSel = null;
-    const r = $('sel-box'); if (r) r.style.display = 'none';
-    cnvRenderNodes();
-    requestAnimationFrame(cnvRenderEdges);
-    cnvRenderProps();
-  }
-  if (cnvConn) {
-    const target = e.target;
-    if (target.classList.contains('canvas-port') && target.dataset.port === 'in') {
-      const toNodeId = target.dataset.nodeId;
-      if (toNodeId !== cnvConn.nodeId) {
-        // Remove any existing edge to this input port
-        cnvEdges = cnvEdges.filter(ed => !(ed.to === toNodeId && ed.toPort === 'in'));
-        cnvEdges.push({ id: 'e'+(cnvIdSeq++), from: cnvConn.nodeId, fromPort: cnvConn.port, to: toNodeId, toPort: 'in' });
-      }
-    }
-    cnvConn = null;
-    const te = $('temp-edge'); if (te) te.style.display = 'none';
-    document.querySelectorAll('.canvas-port.hot').forEach(p => p.classList.remove('hot'));
-    $('canvas-area').classList.remove('connecting');
-    cnvRenderEdges();
-  }
-});
-
-// Port mousedown → begin connecting
-document.addEventListener('mousedown', e => {
-  if (e.target.classList.contains('canvas-port') && e.target.dataset.port !== 'in') {
-    e.preventDefault(); e.stopPropagation();
-    cnvConn = { nodeId: e.target.dataset.nodeId, port: e.target.dataset.port };
-    $('canvas-area').classList.add('connecting');
-  }
-});
-
-// Canvas background click → deselect
-$('canvas-area').addEventListener('click', e => {
-  if (e.target === $('canvas-area') || e.target === $('canvas-svg') || e.target.id === 'nodes-layer') {
-    cnvSel = null; cnvMultiSel.clear(); cnvRenderEdges(); cnvRenderProps();
-  }
-});
-
-// Canvas background mousedown → start box selection
-$('canvas-area').addEventListener('mousedown', e => {
-  if (e.target.closest('.canvas-node') || e.target.closest('[data-edge-id]')) return;
-  if (e.button !== 0) return;
-  e.preventDefault();
-  const rect = $('canvas-area').getBoundingClientRect();
-  const x = e.clientX - rect.left, y = e.clientY - rect.top;
-  if (!e.shiftKey) { cnvMultiSel.clear(); cnvSel = null; }
-  cnvBoxSel = { x0: x, y0: y, x1: x, y1: y };
-});
-
-// Box selection render helper
-function cnvRenderBoxSel() {
-  const r = $('sel-box');
-  if (!r || !cnvBoxSel) { if (r) r.style.display = 'none'; return; }
-  const bx = Math.min(cnvBoxSel.x0, cnvBoxSel.x1), by = Math.min(cnvBoxSel.y0, cnvBoxSel.y1);
-  const bw = Math.abs(cnvBoxSel.x1 - cnvBoxSel.x0), bh = Math.abs(cnvBoxSel.y1 - cnvBoxSel.y0);
-  if (bw < 4 && bh < 4) { r.style.display = 'none'; return; }
-  r.setAttribute('x', bx); r.setAttribute('y', by);
-  r.setAttribute('width', bw); r.setAttribute('height', bh);
-  r.style.display = '';
-  cnvMultiSel.clear();
-  for (const n of cnvNodes) {
-    if (n.x + NODE_W > bx && n.x < bx + bw && n.y + NODE_H > by && n.y < by + bh)
-      cnvMultiSel.add(n.id);
-  }
-  document.querySelectorAll('.canvas-node').forEach(el => {
-    el.classList.toggle('multi-selected', cnvMultiSel.has(el.dataset.id));
-  });
-}
-
-// Keyboard: Delete/Backspace removes selected
-document.addEventListener('keydown', e => {
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
-    // Multi-selection delete
-    if (cnvMultiSel.size > 0) {
-      for (const id of cnvMultiSel) {
-        if (cnvNodes.find(n => n.id === id)?.type === 'start') continue;
-        cnvNodes = cnvNodes.filter(n => n.id !== id);
-        cnvEdges = cnvEdges.filter(ed => ed.from !== id && ed.to !== id);
-      }
-      cnvMultiSel.clear(); cnvSel = null; cnvRender(); return;
-    }
-    if (!cnvSel) return;
-    const nodeIdx = cnvNodes.findIndex(n => n.id === cnvSel);
-    if (nodeIdx >= 0) {
-      if (cnvNodes[nodeIdx].type === 'start') return;
-      cnvDeleteNode(cnvSel);
-    } else {
-      cnvEdges = cnvEdges.filter(ed => ed.id !== cnvSel);
-      cnvSel = null; cnvRenderEdges(); cnvRenderProps();
-    }
-  }
-});
-
-function cnvDeleteNode(nodeId) {
-  if (cnvNodes.find(n => n.id === nodeId)?.type === 'start') return;
-  cnvNodes = cnvNodes.filter(n => n.id !== nodeId);
-  cnvEdges = cnvEdges.filter(ed => ed.from !== nodeId && ed.to !== nodeId);
-  if (cnvSel === nodeId) cnvSel = null;
-  cnvRender();
-}
-
-// ── Drag from palette ──────────────────────────────────────────────────────
-document.querySelectorAll('.palette-item').forEach(item => {
-  item.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.dataset.type); });
-});
-$('canvas-area').addEventListener('dragover', e => e.preventDefault());
-$('canvas-area').addEventListener('drop', e => {
-  e.preventDefault();
-  const type = e.dataTransfer.getData('text/plain');
-  if (!NODE_DEFS[type]) return;
-  const rect = $('canvas-area').getBoundingClientRect();
-  const x = Math.max(4, e.clientX - rect.left - NODE_W/2);
-  const y = Math.max(4, e.clientY - rect.top  - NODE_H/2);
-  cnvNodes.push({ id: 'n'+(cnvIdSeq++), type, params: {}, x, y });
-  cnvRender();
-});
-
-// ── Sequence CRUD ──────────────────────────────────────────────────────────
-function newSequence() {
-  if (cnvNodes.length > 1 && !confirm('Discard current sequence?')) return;
-  seqId = null;
-  $('seq-name').value = 'Untitled';
-  $('btn-del-seq').disabled = true;
-  cnvInit();
-  const sel = $('seq-load-select'); if (sel) sel.value = '';
-}
-
-async function saveSequence() {
-  const name = ($('seq-name').value || '').trim() || 'Untitled';
-  const graph = { id: seqId, name, nodes: cnvNodes, edges: cnvEdges };
-  try {
-    const r = await fetch('/api/sequences', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(graph),
-    });
-    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message||'Save failed'); return; }
-    const j = await r.json();
-    seqId = j.id;
-    $('btn-del-seq').disabled = false;
-    await refreshSeqList();
-    const sel = $('seq-load-select'); if (sel) sel.value = seqId;
-  } catch(ex) { alert('Save error: '+ex.message); }
-}
-
-async function refreshSeqList() {
-  try {
-    const list = await fetch('/api/sequences').then(r => r.json());
-    const sel = $('seq-load-select');
-    const prev = sel?.value;
-    if (sel) sel.innerHTML = '<option value="">Load saved…</option>' +
-      list.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
-    if (prev && list.find(s => s.id === prev) && sel) sel.value = prev;
-  } catch(ex) {}
-}
-
-async function loadSequence(id) {
-  if (!id) return;
-  try {
-    const seq = await fetch('/api/sequences/'+encodeURIComponent(id)).then(r => r.json());
-    seqId = seq.id; $('seq-name').value = seq.name || 'Untitled';
-    cnvNodes = seq.nodes || []; cnvEdges = seq.edges || []; cnvSel = null;
-    cnvIdSeq = Math.max(2, ...cnvNodes.map(n => { const m = n.id.match(/\d+$/); return m ? parseInt(m[0])+1 : 1; }), ...cnvEdges.map(e => { const m = e.id.match(/\d+$/); return m ? parseInt(m[0])+1 : 1; }));
-    $('btn-del-seq').disabled = false;
-    cnvRender();
-  } catch(ex) { alert('Load error: '+ex.message); }
-}
-
-async function deleteSequence() {
-  if (!seqId || !confirm('Delete this sequence?')) return;
-  try {
-    await fetch('/api/sequences/'+encodeURIComponent(seqId), { method: 'DELETE' });
-    seqId = null; $('btn-del-seq').disabled = true; $('seq-name').value = 'Untitled';
-    cnvInit(); await refreshSeqList();
-  } catch(ex) { alert('Delete error: '+ex.message); }
-}
-
-async function playSequence() {
-  if (!seqId) { alert('Save the sequence first, then play it.'); return; }
-  try {
-    const r = await fetch('/api/sequences/'+encodeURIComponent(seqId)+'/run', { method: 'POST' });
-    if (r.ok) {
-      seqPlaying = true;
-      $('btn-play-seq').disabled = true; $('btn-stop-seq').disabled = false;
-      $('seq-play-status').textContent = '▶ Running';
-      $('seq-play-status').style.color = 'var(--green)';
-    } else {
-      const j = await r.json().catch(()=>({})); alert(j.message||'Play failed');
-    }
-  } catch(ex) { alert('Play error: '+ex.message); }
-}
-
-async function stopSequence() {
-  try {
-    await fetch('/api/sequences/stop', { method: 'POST' });
-    seqPlaying = false;
-    $('btn-play-seq').disabled = false; $('btn-stop-seq').disabled = true;
-    $('seq-play-status').textContent = '';
-  } catch(ex) {}
-}
-
-// ── Boot ────────────────────────────────────────────────────────────────────
-cnvInit();
+// ── Boot ──────────────────────────────────────────────────────────────────
 startConnection();
+pollSdeStatus();
 </script>
 </body>
 </html>

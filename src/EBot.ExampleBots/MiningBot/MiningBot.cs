@@ -24,13 +24,25 @@ namespace EBot.ExampleBots.MiningBot;
 /// </summary>
 public sealed class MiningBot : IBot
 {
-    // ─── Constants ──────────────────────────────────────────────────────────
+    // ─── Configurable settings (set at construction time via init) ─────────
 
-    private const int    ShieldEscapePercent = 25;
-    private const double OreHoldFullPercent  = 95.0;
-    private const int    MaxLockedAsteroids  = 2;
-    private const int    MinCapPercent       = 15;
-    private const double LaserRangeM         = 14_500; // approach if farther than this
+    /// <summary>Name of the home station to return to. Auto-detected from station window if null.</summary>
+    public string? HomeStationOverride  { get; init; }
+
+    /// <summary>Ore hold fill % at which the bot returns to unload. Default 95.</summary>
+    public int    OreHoldFullPercent  { get; init; } = 95;
+
+    /// <summary>Shield % below which the bot emergency-warps to station. Default 25.</summary>
+    public int    ShieldEscapePercent { get; init; } = 25;
+
+    /// <summary>Maximum asteroids to keep locked simultaneously. Default 2.</summary>
+    public int    MaxLockedAsteroids  { get; init; } = 2;
+
+    /// <summary>Capacitor % below which the bot pauses and waits. Default 15.</summary>
+    public int    MinCapPercent       { get; init; } = 15;
+
+    /// <summary>Distance in metres beyond which the bot approaches a locked target. Default 14 500 m.</summary>
+    public double LaserRangeM         { get; init; } = 14_500;
 
     // ─── Session statistics ──────────────────────────────────────────────────
 
@@ -68,6 +80,12 @@ public sealed class MiningBot : IBot
         _totalUnloadedM3 = 0;
         _unloadCycles    = 0;
         _sessionStart    = DateTimeOffset.UtcNow;
+        // Pre-seed home station if provided so the bot doesn't need to auto-detect
+        if (!string.IsNullOrWhiteSpace(HomeStationOverride))
+        {
+            ctx.Blackboard.Set("home_station",     HomeStationOverride);
+            ctx.Blackboard.Set("home_station_set", true);
+        }
         SyncStats(ctx);
     }
 
@@ -359,7 +377,7 @@ public sealed class MiningBot : IBot
 
     // ─── 7a. Cap regen ───────────────────────────────────────────────────────
 
-    private static IBehaviorNode WaitCapRegen() =>
+    private IBehaviorNode WaitCapRegen() =>
         new SequenceNode("Cap regen",
             new ConditionNode("Cap critical?", ctx =>
                 ctx.GameState.CapacitorPercent.HasValue &&
@@ -508,7 +526,7 @@ public sealed class MiningBot : IBot
     //    3. Approach if nearest locked target is beyond laser range
     //    4. Idle (mining in progress)
 
-    private static IBehaviorNode MineAtBelt() =>
+    private IBehaviorNode MineAtBelt() =>
         new SequenceNode("Mine at belt",
             new ConditionNode("Asteroids visible?", ctx => AnyAsteroidsInOverview(ctx)),
             new SelectorNode("Mining actions",
@@ -791,10 +809,29 @@ public sealed class MiningBot : IBot
                                 ctx.Log($"[WarpToBelt] positional belt fallback from menu x={subMenu!.UINode.Region.X}: '{beltEntry.Text}'");
                         }
 
+                        // Full UI-tree scan: the belt submenu container may not have Python
+                        // type "ContextMenu" — search all MenuEntryView nodes in the whole tree.
+                        UITreeNodeWithDisplayRegion? beltNodeFromTree = null;
                         if (beltEntry == null)
                         {
+                            beltNodeFromTree = (ctx.GameState.ParsedUI.UITree?
+                                .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                    n.GetAllContainedDisplayTexts().Any(t =>
+                                        t.Length > 20 &&
+                                        t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)))
+                                ?? [])
+                                .MinBy(n => n.Region.Y); // pick topmost entry
+                            if (beltNodeFromTree != null)
+                            {
+                                var txt = beltNodeFromTree.GetAllContainedDisplayTexts()
+                                    .FirstOrDefault(t => t.Contains("Asteroid Belt")) ?? "?";
+                                ctx.Log($"[WarpToBelt] Tree-scan belt: '{txt}' type={beltNodeFromTree.Node.PythonObjectTypeName}");
+                            }
+                        }
+
+                        if (beltEntry == null && beltNodeFromTree == null)
+                        {
                             // Submenu not yet detected — re-hover "Asteroid Belts" to keep it open.
-                            // "Asteroid Belts" is short (<20 chars) and contains "Asteroid Belt".
                             var beltsHeader = allEntries.FirstOrDefault(e =>
                                 EntryHasText(e, t => t.Length < 20 &&
                                     t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)));
@@ -808,8 +845,16 @@ public sealed class MiningBot : IBot
                             return NodeStatus.Running;
                         }
 
-                        ctx.Log($"[WarpToBelt] Hovering belt: '{beltEntry.Text}'");
-                        ctx.Hover(beltEntry.UINode);
+                        if (beltEntry != null)
+                        {
+                            ctx.Log($"[WarpToBelt] Hovering belt (menu entry): '{beltEntry.Text}'");
+                            ctx.Hover(beltEntry.UINode);
+                        }
+                        else if (beltNodeFromTree != null)
+                        {
+                            ctx.Log($"[WarpToBelt] Hovering belt (tree node)");
+                            ctx.Hover(beltNodeFromTree);
+                        }
                         ctx.Wait(TimeSpan.FromMilliseconds(800));
                         Progress("await_actions_menu");
                         return NodeStatus.Running;
@@ -843,14 +888,40 @@ public sealed class MiningBot : IBot
                         warpEntry ??= allEntries.FirstOrDefault(e =>
                             EntryHasText(e, t => t.Contains("Warp", StringComparison.OrdinalIgnoreCase)));
 
+                        // Full UI-tree scan fallback for warp action
+                        UITreeNodeWithDisplayRegion? warpNodeFromTree = null;
                         if (warpEntry == null)
+                        {
+                            warpNodeFromTree = (ctx.GameState.ParsedUI.UITree?
+                                .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                    n.GetAllContainedDisplayTexts().Any(t =>
+                                        t.Contains("Warp", StringComparison.OrdinalIgnoreCase)))
+                                ?? [])
+                                .MinBy(n => n.Region.Y);
+                            if (warpNodeFromTree != null)
+                            {
+                                var txt = warpNodeFromTree.GetAllContainedDisplayTexts()
+                                    .FirstOrDefault(t => t.Contains("Warp")) ?? "?";
+                                ctx.Log($"[WarpToBelt] Tree-scan warp: '{txt}'");
+                            }
+                        }
+
+                        if (warpEntry == null && warpNodeFromTree == null)
                         {
                             if (TimedOut(12)) { ctx.KeyPress(VirtualKey.Escape); Reset(8); }
                             return NodeStatus.Running;
                         }
 
-                        ctx.Log($"[WarpToBelt] Hovering warp: '{warpEntry.Text}'");
-                        ctx.Hover(warpEntry.UINode);
+                        if (warpEntry != null)
+                        {
+                            ctx.Log($"[WarpToBelt] Hovering warp (menu entry): '{warpEntry.Text}'");
+                            ctx.Hover(warpEntry.UINode);
+                        }
+                        else if (warpNodeFromTree != null)
+                        {
+                            ctx.Log($"[WarpToBelt] Hovering warp (tree node)");
+                            ctx.Hover(warpNodeFromTree);
+                        }
                         ctx.Wait(TimeSpan.FromMilliseconds(800));
                         Progress("await_warp_distances");
                         return NodeStatus.Running;
@@ -884,10 +955,27 @@ public sealed class MiningBot : IBot
                                 (t.Equals("0 m", StringComparison.OrdinalIgnoreCase) ||
                                  t.Equals("0m",  StringComparison.OrdinalIgnoreCase))));
 
-                        if (within0 != null)
+                        // Full UI-tree scan fallback for distance entry
+                        UITreeNodeWithDisplayRegion? within0Node = null;
+                        if (within0 == null)
                         {
-                            ctx.Log($"[WarpToBelt] Clicking: '{within0.Text}'");
-                            ctx.Click(within0.UINode);
+                            within0Node = (ctx.GameState.ParsedUI.UITree?
+                                .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                    n.GetAllContainedDisplayTexts().Any(t =>
+                                        t.Contains("Within 0", StringComparison.OrdinalIgnoreCase) ||
+                                        t.Equals("0 m", StringComparison.OrdinalIgnoreCase) ||
+                                        t.Equals("0m",  StringComparison.OrdinalIgnoreCase)))
+                                ?? [])
+                                .MinBy(n => n.Region.Y);
+                            if (within0Node != null)
+                                ctx.Log($"[WarpToBelt] Tree-scan distance found");
+                        }
+
+                        if (within0 != null || within0Node != null)
+                        {
+                            ctx.Log($"[WarpToBelt] Clicking distance entry");
+                            if (within0 != null) ctx.Click(within0.UINode);
+                            else if (within0Node != null) ctx.Click(within0Node);
                             Reset();
                             ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(30));
                             return NodeStatus.Running;
@@ -952,7 +1040,7 @@ public sealed class MiningBot : IBot
             w.SubCaptionLabelText?.Contains("ore",   StringComparison.OrdinalIgnoreCase) == true ||
             w.SubCaptionLabelText?.Contains("mining", StringComparison.OrdinalIgnoreCase) == true);
 
-    private static bool IsOreHoldFull(BotContext ctx)
+    private bool IsOreHoldFull(BotContext ctx)
     {
         var w = FindOreHoldWindow(ctx);
         return w?.CapacityGauge?.FillPercent >= OreHoldFullPercent;
