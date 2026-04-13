@@ -452,6 +452,33 @@ api.MapGet("/mining-stats", (BotOrchestrator o) =>
     });
 });
 
+// GET /api/mining/belts  — returns the discovered belt registry for the active mining bot
+api.MapGet("/mining/belts", (BotOrchestrator o) =>
+{
+    var bot = o.ActiveMiningBot;
+    if (bot == null)
+        return Results.Ok(new { count = 0, belts = Array.Empty<object>() });
+
+    int count = bot.BeltCount;
+    var belts = Enumerable.Range(0, Math.Max(count, bot.BeltNames.Count))
+        .Select(i => (object)new
+        {
+            index    = i,
+            name     = bot.BeltNames.TryGetValue(i, out var n) ? n : $"Belt {i + 1}",
+            depleted = bot.BeltDepleted.TryGetValue(i, out var d) && d,
+            excluded = bot.BeltExcluded.TryGetValue(i, out var e) && e,
+        })
+        .ToArray();
+    return Results.Ok(new { count, belts });
+});
+
+// POST /api/mining/belts/{idx}/toggle  — toggle user-excluded status for a belt
+api.MapPost("/mining/belts/{idx:int}/toggle", (int idx, BotOrchestrator o) =>
+{
+    o.ToggleBeltExcluded(idx);
+    return Results.Ok(new { toggled = idx });
+});
+
 // GET /api/debug/modules  — dump raw dict keys for each module slot (diagnostic)
 api.MapGet("/debug/modules", (BotOrchestrator orch) =>
 {

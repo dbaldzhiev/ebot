@@ -76,8 +76,8 @@
     #dpi-info { font-size: .7rem; color: var(--text-dim); white-space: nowrap; }
     #dpi-scale-input { width: 48px; font-size: .76rem; padding: 3px 5px; text-align: center; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 
-    /* ── Main 3-column layout ── */
-    main { display: grid; grid-template-columns: 300px 1fr 310px; overflow: hidden; min-width: 0; }
+    /* ── Main 4-column layout ── */
+    main { display: grid; grid-template-columns: 300px 1fr 300px 300px; overflow: hidden; min-width: 0; }
 
     .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
     .panel:last-child { border-right: none; }
@@ -219,7 +219,7 @@
 
   <div class="toggle-group">
     <span class="toggle-label">Survival</span>
-    <label class="toggle survival"><input type="checkbox" id="toggle-survival" checked><span class="toggle-slider"></span></label>
+    <label class="toggle survival"><input type="checkbox" id="toggle-survival"><span class="toggle-slider"></span></label>
     <span id="dpi-info" title="System DPI"></span>
     <input type="number" id="dpi-scale-input" min="0.1" max="4" step="0.01" placeholder="1.0" title="Coordinate scale">
     <button class="btn btn-muted" id="btn-dpi-apply" style="font-size:.7rem;padding:2px 7px;">Scale</button>
@@ -292,7 +292,7 @@
   </div>
 
   <!-- ── Col 3: Autopilot ── -->
-  <div class="panel" style="border-right:none;">
+  <div class="panel">
     <div class="panel-title">Autopilot</div>
     <div class="panel-body" id="autopilot-body">
 
@@ -367,11 +367,18 @@
         Idle
       </div>
 
-      <!-- Home station -->
-      <div class="sec">Home Station</div>
-      <input type="text" id="mb-home" placeholder="Auto-detect from docked station" maxlength="120"
+      <!-- Belt registry -->
+      <div class="sec" style="margin-top:6px;">Asteroid Belts</div>
+      <div id="mb-belts" style="font-size:.72rem;color:var(--text-dim);padding:2px 0 4px;">
+        <span style="color:var(--text-dim)">No belts discovered yet</span>
+      </div>
+
+      <!-- Docking Bookmark -->
+      <div class="sec">Docking Bookmark</div>
+      <input type="text" id="mb-bookmark" placeholder="Bookmark or station name for home dock…" maxlength="120"
              style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);
-                    border-radius:4px;padding:5px 8px;font-size:.76rem;margin-bottom:6px;">
+                    border-radius:4px;padding:5px 8px;font-size:.76rem;margin-bottom:6px;"
+             title="Exact name of an in-game bookmark or station to use as the home docking point">
 
       <!-- Thresholds -->
       <div class="sec">Thresholds</div>
@@ -392,29 +399,6 @@
                  oninput="$('mb-shield-val').textContent=this.value+'%'"
                  style="flex:1;">
           <span id="mb-shield-val" style="font-size:.72rem;color:var(--red);width:36px;text-align:right;">25%</span>
-        </div>
-
-        <div class="stat-row" style="align-items:center;gap:8px;">
-          <span class="stat-key" style="flex:0 0 130px;">Min cap %</span>
-          <input type="range" id="mb-cap-pct" min="0" max="30" value="15"
-                 oninput="$('mb-cap-val').textContent=this.value+'%'"
-                 style="flex:1;">
-          <span id="mb-cap-val" style="font-size:.72rem;color:var(--yellow);width:36px;text-align:right;">15%</span>
-        </div>
-
-        <div class="stat-row" style="align-items:center;gap:8px;">
-          <span class="stat-key" style="flex:0 0 130px;">Max locked</span>
-          <input type="range" id="mb-locks" min="1" max="5" value="2"
-                 oninput="$('mb-locks-val').textContent=this.value"
-                 style="flex:1;">
-          <span id="mb-locks-val" style="font-size:.72rem;color:var(--text);width:36px;text-align:right;">2</span>
-        </div>
-
-        <div class="stat-row" style="align-items:center;gap:8px;">
-          <span class="stat-key" style="flex:0 0 130px;">Approach range m</span>
-          <input type="number" id="mb-range" value="14500" min="1000" max="30000" step="500"
-                 style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);
-                        border-radius:4px;padding:3px 6px;font-size:.76rem;">
         </div>
       </div>
 
@@ -462,7 +446,7 @@ conn.on('StateChanged', state => {
 conn.on('SurvivalChanged', en => { $('toggle-survival').checked = en; });
 conn.on('TickUpdate', gs => {
   renderGameState(gs);
-  if (botName === 'Mining Bot') pollMiningStats();
+  if (botName === 'Mining Bot') { pollMiningStats(); pollMiningBelts(); }
 });
 conn.on('LogEntry',    e => addLogEntry(e));
 conn.on('ActionLog',   e => addActionEntry(e));
@@ -606,6 +590,38 @@ async function pollMiningStats() {
   try { const s = await fetch('/api/mining-stats').then(r=>r.json()); miningStats = {totalM3:s.total_m3,cycles:s.cycles}; updateMbStats(); }
   catch(e) {}
   _miningPollBusy = false;
+}
+
+let _beltPollBusy = false;
+async function pollMiningBelts() {
+  if (_beltPollBusy) return;
+  _beltPollBusy = true;
+  try {
+    const d = await fetch('/api/mining/belts').then(r=>r.json());
+    renderBelts(d);
+  } catch(e) {}
+  _beltPollBusy = false;
+}
+
+function renderBelts(data) {
+  const el = $('mb-belts');
+  if (!el) return;
+  const belts = data?.belts ?? [];
+  if (!belts.length) { el.innerHTML = '<span style="color:var(--text-dim)">No belts discovered yet</span>'; return; }
+  el.innerHTML = belts.map(b => {
+    const cls = b.excluded ? 'color:var(--red)' : b.depleted ? 'color:var(--text-dim);text-decoration:line-through' : 'color:var(--text)';
+    const badge = b.excluded ? ' <span style="color:var(--red);font-size:.65rem">[excl]</span>'
+                : b.depleted ? ' <span style="color:var(--text-dim);font-size:.65rem">[empty]</span>' : '';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+      <span style="flex:1;${cls}">${esc(b.name)}${badge}</span>
+      <button onclick="toggleBelt(${b.index})" style="font-size:.65rem;padding:1px 6px;background:var(--bg3);border:1px solid var(--border);color:${b.excluded?'var(--red)':'var(--text-dim)'};border-radius:3px;cursor:pointer;">${b.excluded?'enable':'disable'}</button>
+    </div>`;
+  }).join('');
+}
+
+async function toggleBelt(idx) {
+  try { await fetch('/api/mining/belts/'+idx+'/toggle', {method:'POST'}); await pollMiningBelts(); }
+  catch(e) {}
 }
 
 function bar(label, pct, cls) {
@@ -842,12 +858,9 @@ async function startMining() {
   const body = {
     botName: 'Mining Bot',
     mining: {
-      homeStation:  $('mb-home').value.trim() || null,
+      dockingBookmark: $('mb-bookmark').value.trim() || null,
       oreHoldFull:  parseInt($('mb-ore-pct').value),
       shieldEscape: parseInt($('mb-shield-pct').value),
-      maxLocks:     parseInt($('mb-locks').value),
-      minCap:       parseInt($('mb-cap-pct').value),
-      laserRangeM:  parseInt($('mb-range').value),
     },
   };
   try {

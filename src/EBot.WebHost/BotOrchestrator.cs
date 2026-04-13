@@ -78,7 +78,13 @@ public sealed class BotOrchestrator : IDisposable
 
     public bool IsMonitoring => _isMonitorMode;
 
-    public bool SurvivalEnabled { get; private set; } = true;
+    public bool SurvivalEnabled { get; private set; } = false;
+
+    /// <summary>Returns the active MiningBot instance if one is running, otherwise null.</summary>
+    public MiningBot? ActiveMiningBot => _activeBot as MiningBot;
+
+    /// <summary>Toggle a belt's user-excluded status on the active mining bot.</summary>
+    public void ToggleBeltExcluded(int idx) => ActiveMiningBot?.ToggleBeltExcluded(idx);
 
     public BotOrchestrator(
         IHubContext<BotHub> hub,
@@ -181,12 +187,9 @@ public sealed class BotOrchestrator : IDisposable
             var cfg = mining ?? new MiningBotConfig();
             bot = new MiningBot
             {
-                HomeStationOverride = string.IsNullOrWhiteSpace(cfg.HomeStation) ? null : cfg.HomeStation,
+                HomeStationOverride = string.IsNullOrWhiteSpace(cfg.DockingBookmark) ? null : cfg.DockingBookmark,
                 OreHoldFullPercent  = cfg.OreHoldFull,
                 ShieldEscapePercent = cfg.ShieldEscape,
-                MaxLockedAsteroids  = cfg.MaxLocks,
-                MinCapPercent       = cfg.MinCap,
-                LaserRangeM         = cfg.LaserRangeM,
             };
         }
         else

@@ -95,12 +95,9 @@ public sealed record StartRequest(
 
 /// <summary>Settings for the Mining Bot, passed from the UI at start time.</summary>
 public sealed record MiningBotConfig(
-    string? HomeStation       = null,
-    int     OreHoldFull       = 95,
-    int     ShieldEscape      = 25,
-    int     MaxLocks          = 2,
-    int     MinCap            = 15,
-    int     LaserRangeM       = 14500);
+    string? DockingBookmark = null,
+    int     OreHoldFull     = 95,
+    int     ShieldEscape    = 25);
 
 public sealed record BotInfo(string Name, string Description);
 
