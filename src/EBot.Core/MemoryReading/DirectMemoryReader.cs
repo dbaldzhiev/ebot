@@ -61,7 +61,7 @@ public sealed class DirectMemoryReader : IEveMemoryReader
             if (json == null)
                 return Task.FromResult(MemoryReadingResult.Failure("No UI tree found in EVE process memory."));
 
-            _logger.LogDebug("Direct read in {Ms}ms, {Len} bytes", sw.ElapsedMilliseconds, json.Length);
+            _logger.LogTrace("Direct read in {Ms}ms, {Len} bytes", sw.ElapsedMilliseconds, json.Length);
             return Task.FromResult(MemoryReadingResult.Success(json, sw.Elapsed));
         }
         catch (OperationCanceledException)

@@ -8,14 +8,18 @@ namespace EBot.ExampleBots.AutopilotBot;
 /// <summary>
 /// Warp-to-0 travel bot with automatic final docking.
 ///
-/// Key guards:
-///   • HandleFinalDock only fires after navigation was active (was_in_space_with_route)
-///     OR an emergency_dock is declared (shield &lt; 75%).
-///   • HandleInSpace nav menu NEVER clicks "Dock" — only "Jump" or "Warp".
-///   • FindStation only returns confirmed station/structure keywords.
-///   • Watchdog: if in space with route and no progress for 15 s → retry marker click.
-///   • HandleFinalDock: improved docking with explicit state for every sub-step and
-///     a tick-counter wait (not a cooldown) for the overview station search.
+/// Core loop (every tick, priority order):
+///   1. Close message boxes.
+///   2. Set up route if a destination was given.
+///   3. Arrived (docked + route empty + was traveling) → stop.
+///   4. Undock if docked with route remaining.
+///   5. In space with route markers → right-click next marker:
+///        Dock   — available when already at destination in range → dock
+///        Jump   — gate in menu → jump through
+///        Warp   — warp to gate or station at 0
+///
+/// The same right-click logic handles every hop and the final dock — no
+/// separate HandleFinalDock state machine is needed.
 /// </summary>
 public sealed class TravelBot : IBot
 {
@@ -40,7 +44,6 @@ public sealed class TravelBot : IBot
         if (!string.IsNullOrWhiteSpace(Destination))
             ctx.Blackboard.Set("travel_destination", Destination);
 
-        // Seed the progress heartbeat so the watchdog doesn't fire on the very first tick.
         ctx.Blackboard.SetCooldown("progress_heartbeat", TimeSpan.FromSeconds(15));
     }
 
@@ -48,25 +51,18 @@ public sealed class TravelBot : IBot
 
     public IBehaviorNode BuildBehaviorTree() =>
         new SelectorNode("Travel Root",
-            TrackSystemChange(),      // always Failure — side-effects only (heartbeat + system log)
-            HandleEmergencyDock(),    // shield < 75% → dock immediately
+            TrackSystemChange(),
             HandleMessageBoxes(),
             SetupDestination(),
-            HandleArrived(),          // docked + route empty → stop
-            HandleUndock(),           // docked + route remaining → undock
-            HandleFinalDock(),        // in space + route done (or emergency) → dock at station
-            HandleInSpace());         // in space + route remaining → warp/jump
+            HandleArrived(),
+            HandleUndock(),
+            HandleInSpace());
 
-    // ─── System-change tracker ────────────────────────────────────────────────
+    // ─── System-change / heartbeat tracker ───────────────────────────────────
+    // Always returns Failure — side-effects only (heartbeat, jump detection).
 
-    /// <summary>
-    /// Tracks system changes (gate jumps) and warp state.
-    /// Also resets the progress heartbeat whenever the ship is making forward motion
-    /// so the stuck watchdog doesn't fire during legitimate travel.
-    /// Always returns Failure so the parent Selector continues.
-    /// </summary>
     private static IBehaviorNode TrackSystemChange() =>
-        new ActionNode("Track system change", ctx =>
+        new ActionNode("Track system", ctx =>
         {
             var sys  = ctx.GameState.ParsedUI.InfoPanelContainer?.InfoPanelLocationInfo?.SystemName;
             var prev = ctx.Blackboard.Get<string>("travel_sys");
@@ -77,8 +73,7 @@ public sealed class TravelBot : IBot
             {
                 ctx.Blackboard.SetCooldown("post_jump", TimeSpan.FromSeconds(2));
                 ctx.Blackboard.Set("nav_menu_expected", false);
-                ctx.Blackboard.Set("warp_just_stopped", false);
-                ctx.Log($"[Travel] Jump: {prev} → {sys}");
+                ctx.Log($"[Travel] Jumped: {prev} → {sys}");
             }
             if (sys != null) ctx.Blackboard.Set("travel_sys", sys);
 
@@ -86,35 +81,16 @@ public sealed class TravelBot : IBot
             var isWarping  = ctx.GameState.IsWarping;
             if (wasWarping && !isWarping && !ctx.GameState.IsDocked)
             {
-                ctx.Blackboard.Set("warp_just_stopped", true);
-                ctx.Blackboard.SetCooldown("jump_retry", TimeSpan.FromSeconds(8));
+                ctx.Blackboard.SetCooldown("post_warp", TimeSpan.FromSeconds(4));
+                ctx.Blackboard.SetCooldown("progress_heartbeat", TimeSpan.FromSeconds(15));
             }
             ctx.Blackboard.Set("was_warping", isWarping);
 
-            // Reset the stuck watchdog whenever the ship is visibly in motion.
-            if (isWarping || IsJumping(ctx.GameState) || jumped)
+            if (isWarping || jumped)
                 ctx.Blackboard.SetCooldown("progress_heartbeat", TimeSpan.FromSeconds(15));
 
             return NodeStatus.Failure;
         });
-
-    // ─── Emergency dock ───────────────────────────────────────────────────────
-
-    private static IBehaviorNode HandleEmergencyDock() =>
-        new SequenceNode("Emergency dock trigger",
-            new ConditionNode("Shield < 75% while in space?", ctx =>
-                ctx.GameState.IsInSpace &&
-                !ctx.GameState.IsDocked &&
-                !ctx.Blackboard.Get<bool>("emergency_dock") &&
-                (ctx.GameState.ParsedUI.ShipUI?.HitpointsPercent?.Shield ?? 100) < 75),
-            new ActionNode("Activate emergency dock", ctx =>
-            {
-                ctx.Log("[Travel] EMERGENCY: shield < 75% — docking immediately");
-                ctx.Blackboard.Set("emergency_dock", true);
-                ctx.Blackboard.Set("dock_phase", "");
-                ctx.Blackboard.Set("was_in_space_with_route", true);
-                return NodeStatus.Success;
-            }));
 
     // ─── Message boxes ────────────────────────────────────────────────────────
 
@@ -228,11 +204,12 @@ public sealed class TravelBot : IBot
 
     private static IBehaviorNode HandleArrived() =>
         new SequenceNode("Arrived",
-            new ConditionNode("Docked AND route empty?", ctx =>
-                ctx.GameState.IsDocked && ctx.GameState.RouteJumpsRemaining == 0),
-            new ActionNode("Request stop", ctx =>
+            new ConditionNode("Docked, route empty, was traveling?", ctx =>
+                ctx.GameState.IsDocked &&
+                ctx.GameState.RouteJumpsRemaining == 0 &&
+                ctx.Blackboard.Get<bool>("was_in_space_with_route")),
+            new ActionNode("Stop", ctx =>
             {
-                ctx.Blackboard.Set("emergency_dock", false);
                 ctx.Blackboard.Set("was_in_space_with_route", false);
                 ctx.Log("[Travel] Arrived and docked — stopping");
                 ctx.RequestStop();
@@ -243,9 +220,9 @@ public sealed class TravelBot : IBot
 
     private static IBehaviorNode HandleUndock() =>
         new SequenceNode("Undock",
-            new ConditionNode("Docked AND route remaining?", ctx =>
+            new ConditionNode("Docked with route?", ctx =>
                 ctx.GameState.IsDocked && ctx.GameState.RouteJumpsRemaining > 0),
-            new ConditionNode("Undock cooldown ready?",
+            new ConditionNode("Undock cooldown?",
                 ctx => ctx.Blackboard.IsCooldownReady("undock_cooldown")),
             new ActionNode("Click undock", ctx =>
             {
@@ -256,203 +233,38 @@ public sealed class TravelBot : IBot
                 return NodeStatus.Success;
             }));
 
-    // ─── Final dock ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Fires only when:
-    ///   • Route complete (RouteJumpsRemaining == 0) AND was_in_space_with_route is true
-    ///     — prevents false-triggering if route was never set.
-    ///   • OR emergency_dock == true (shield drop).
-    ///
-    /// Navigation is exclusively via route-marker right-click — no overview interaction.
-    ///
-    /// dock_phase state machine:
-    ///   ""                → right-click the final route marker
-    ///   "marker_menu"     → Dock → "docking"; Warp to 0 → "warping_to_dock"; else retry
-    ///   "warping_to_dock" → wait for warp to complete (IsWarping guard), then back to ""
-    ///   "docking"         → wait for IsDocked (HandleArrived fires)
-    /// </summary>
-    private static IBehaviorNode HandleFinalDock() =>
-        new SequenceNode("Final dock",
-            new ConditionNode("Final dock needed?", ctx =>
-                ctx.GameState.IsInSpace &&
-                ((ctx.GameState.RouteJumpsRemaining == 0 &&
-                  ctx.Blackboard.Get<bool>("was_in_space_with_route")) ||
-                 ctx.Blackboard.Get<bool>("emergency_dock"))),
-            new ActionNode("Dock state machine", ctx =>
-            {
-                // Always wait for any active warp — do not act mid-warp.
-                if (ctx.GameState.IsWarping) return NodeStatus.Running;
-                if (!ctx.Blackboard.IsCooldownReady("post_jump")) return NodeStatus.Running;
-
-                var phase = ctx.Blackboard.Get<string>("dock_phase") ?? "";
-
-                switch (phase)
-                {
-                    // ── Right-click the final route marker ────────────────────────────
-                    case "":
-                    {
-                        var marker = ctx.GameState.ParsedUI.InfoPanelContainer?
-                            .InfoPanelRoute?.RouteElementMarkers
-                            .OrderBy(m => m.Region.X + m.Region.Y)
-                            .FirstOrDefault();
-
-                        if (marker == null)
-                        {
-                            ctx.Log("[Travel] Final dock: route has 0 jumps but no marker visible — waiting for UI to update");
-                            return NodeStatus.Running;
-                        }
-
-                        ctx.Log("[Travel] Final dock: right-clicking destination route marker to open dock menu");
-                        ctx.RightClick(marker);
-                        ctx.Wait(TimeSpan.FromSeconds(1));
-                        ctx.Blackboard.SetCooldown("dock_menu_timeout", TimeSpan.FromSeconds(6));
-                        ctx.Blackboard.Set("dock_phase", "marker_menu");
-                        return NodeStatus.Running;
-                    }
-
-                    // ── Handle route marker context menu ───────────────────────────────
-                    case "marker_menu":
-                    {
-                        // Collect entries from parsed ContextMenus first (fast path).
-                        // Also scan the raw UI tree for MenuEntryView nodes — the route-marker
-                        // context menu may not use the Python ContextMenu type, which means
-                        // ParsedUI.ContextMenus is empty even though the menu is visible.
-                        var parsedEntries = ctx.GameState.ParsedUI.ContextMenus
-                            .SelectMany(m => m.Entries).ToList();
-
-                        var treeEntries = (ctx.GameState.ParsedUI.UITree?
-                            .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView") ?? [])
-                            .ToList();
-
-                        bool menuVisible = parsedEntries.Count > 0 || treeEntries.Count > 0;
-
-                        if (!menuVisible)
-                        {
-                            if (!ctx.Blackboard.IsCooldownReady("dock_menu_timeout"))
-                                return NodeStatus.Running;
-                            ctx.Log("[Travel] Final dock: route marker menu never appeared — retrying right-click");
-                            ctx.Blackboard.Set("dock_phase", "");
-                            return NodeStatus.Running;
-                        }
-
-                        // ── Look for Dock ──────────────────────────────────────────────────
-                        var dockEntry = parsedEntries.FirstOrDefault(e => EntryHasText(e, "Dock"));
-
-                        UITreeNodeWithDisplayRegion? dockNode = null;
-                        if (dockEntry == null)
-                            dockNode = treeEntries.FirstOrDefault(n =>
-                                n.GetAllContainedDisplayTexts().Any(t =>
-                                    t.Trim().Equals("Dock", StringComparison.OrdinalIgnoreCase) ||
-                                    t.Trim().StartsWith("Dock ", StringComparison.OrdinalIgnoreCase)));
-
-                        if (dockEntry != null)
-                        {
-                            ctx.Log("[Travel] Final dock: station is in docking range — clicking Dock in route marker menu");
-                            ctx.Click(dockEntry.UINode);
-                            ctx.Blackboard.Set("dock_phase", "docking");
-                            ctx.Blackboard.SetCooldown("post_jump", TimeSpan.FromSeconds(12));
-                            return NodeStatus.Running;
-                        }
-                        if (dockNode != null)
-                        {
-                            ctx.Log("[Travel] Final dock: station is in docking range — clicking Dock (found via UI tree scan)");
-                            ctx.Click(dockNode);
-                            ctx.Blackboard.Set("dock_phase", "docking");
-                            ctx.Blackboard.SetCooldown("post_jump", TimeSpan.FromSeconds(12));
-                            return NodeStatus.Running;
-                        }
-
-                        // ── Not in range — look for Warp to 0 ─────────────────────────────
-                        var warpEntry =
-                            parsedEntries.FirstOrDefault(e =>
-                                EntryHasText(e, "warp") &&
-                                e.UINode.GetAllContainedDisplayTexts().Any(t =>
-                                    t.Contains(" 0 ") || t.Contains("0 m") || t.EndsWith(" 0"))) ??
-                            parsedEntries.FirstOrDefault(e => EntryHasText(e, "warp"));
-
-                        UITreeNodeWithDisplayRegion? warpNode = null;
-                        if (warpEntry == null)
-                            warpNode = treeEntries
-                                .Where(n => n.GetAllContainedDisplayTexts()
-                                    .Any(t => t.Contains("Warp", StringComparison.OrdinalIgnoreCase)))
-                                .MinBy(n => n.Region.Y);
-
-                        if (warpEntry != null)
-                        {
-                            ctx.Log($"[Travel] Final dock: not in docking range — warping to 0 via route marker menu ('{warpEntry.Text}')");
-                            ctx.Click(warpEntry.UINode);
-                            ctx.Blackboard.Set("dock_phase", "warping_to_dock");
-                            return NodeStatus.Running;
-                        }
-                        if (warpNode != null)
-                        {
-                            ctx.Log("[Travel] Final dock: not in docking range — warping to 0 (found via UI tree scan)");
-                            ctx.Click(warpNode);
-                            ctx.Blackboard.Set("dock_phase", "warping_to_dock");
-                            return NodeStatus.Running;
-                        }
-
-                        // Menu visible but contains neither Dock nor Warp — wrong menu or gate.
-                        ctx.Log($"[Travel] Final dock: marker menu has {parsedEntries.Count} parsed + {treeEntries.Count} tree entries but no Dock/Warp — dismissing and retrying");
-                        ctx.KeyPress(VirtualKey.Escape);
-                        ctx.Blackboard.Set("dock_phase", "");
-                        return NodeStatus.Running;
-                    }
-
-                    // ── Wait for warp-to-0 to complete, then retry from "" ─────────────
-                    case "warping_to_dock":
-                    {
-                        // IsWarping guard at the top already handles the in-warp wait.
-                        // We reach here only when warp has stopped.
-                        ctx.Log("[Travel] Final dock: warp-to-0 complete — re-opening route marker menu to dock");
-                        ctx.Blackboard.Set("dock_phase", "");
-                        return NodeStatus.Running;
-                    }
-
-                    case "docking":
-                        return NodeStatus.Running;
-
-                    default:
-                        ctx.Blackboard.Set("dock_phase", "");
-                        return NodeStatus.Running;
-                }
-            }));
-
     // ─── In-space navigation ──────────────────────────────────────────────────
+    //
+    // Right-clicks the next route marker every tick. The menu may contain:
+    //   • Dock   → we're at the destination station and in docking range → dock
+    //   • Jump   → we're at a gate → jump through
+    //   • Warp   → we need to warp to gate or station → warp to 0
+    //
+    // All three cases are handled by the same menu-click logic, including the
+    // final docking step — no separate HandleFinalDock needed.
 
-    /// <summary>
-    /// Hop-by-hop navigation while RouteJumpsRemaining > 0.
-    /// Sets was_in_space_with_route on each tick so HandleFinalDock can fire
-    /// correctly when the route is complete.
-    /// NEVER clicks "Dock" — docking is exclusively HandleFinalDock's job.
-    /// Watchdog: if no progress (warp/jump) for 15 s, resets state and retries marker click.
-    /// </summary>
     private static IBehaviorNode HandleInSpace() =>
         new SequenceNode("Navigate in space",
-            new ConditionNode("In space with route?", ctx =>
+            new ConditionNode("In space with markers?", ctx =>
             {
-                if (ctx.GameState.IsInSpace && ctx.GameState.RouteJumpsRemaining > 0)
-                {
-                    ctx.Blackboard.Set("was_in_space_with_route", true);
-                    return true;
-                }
-                return false;
+                if (!ctx.GameState.IsInSpace) return false;
+                var hasMarkers = FirstMarker(ctx) != null;
+                if (hasMarkers) ctx.Blackboard.Set("was_in_space_with_route", true);
+                return hasMarkers;
             }),
             new SelectorNode("Nav steps",
 
-                // Warping or waiting to confirm jump via system-name change
-                new SequenceNode("Wait for jump/warp",
-                    new ConditionNode("In motion or awaiting jump?", ctx =>
+                // Wait while warping or during post-warp settle
+                new SequenceNode("Wait for motion",
+                    new ConditionNode("In motion or settling?", ctx =>
                         ctx.GameState.IsWarping ||
                         IsJumping(ctx.GameState) ||
-                        (ctx.Blackboard.Get<bool>("warp_just_stopped") &&
-                         !ctx.Blackboard.IsCooldownReady("jump_retry"))),
+                        !ctx.Blackboard.IsCooldownReady("post_warp")),
                     new ActionNode("Wait", _ => NodeStatus.Success)),
 
                 // Post-jump cloak / session-change window
                 new SequenceNode("Post-jump cooldown",
-                    new ConditionNode("Cooldown?",
+                    new ConditionNode("Post-jump?",
                         ctx => !ctx.Blackboard.IsCooldownReady("post_jump")),
                     new ActionNode("Wait", _ => NodeStatus.Success)),
 
@@ -467,87 +279,125 @@ public sealed class TravelBot : IBot
                         return NodeStatus.Success;
                     })),
 
-                // Context menu we opened — click Jump or Warp to 0 ONLY.
-                // "Dock" is intentionally excluded — that's HandleFinalDock's job.
+                // Context menu we opened — click Dock, Jump, or Warp (in priority order)
                 new SequenceNode("Handle nav menu",
                     new ConditionNode("Our menu open?", ctx =>
                         ctx.GameState.HasContextMenu &&
                         ctx.Blackboard.Get<bool>("nav_menu_expected")),
-                    new ActionNode("Click jump/warp", ctx =>
+                    new ActionNode("Click nav action", ctx =>
                     {
                         ctx.Blackboard.Set("nav_menu_expected", false);
 
-                        var menu = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
-                        if (menu == null) return NodeStatus.Failure;
+                        // Gather entries from parsed menus and raw tree scan
+                        var parsedEntries = ctx.GameState.ParsedUI.ContextMenus
+                            .SelectMany(m => m.Entries).ToList();
+                        var treeEntries = (ctx.GameState.ParsedUI.UITree?
+                            .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView") ?? [])
+                            .ToList();
 
-                        var entries = menu.Entries;
-                        var chosen =
-                            entries.FirstOrDefault(e => EntryHasText(e, "jump")) ??
-                            entries.FirstOrDefault(e =>
+                        bool menuVisible = parsedEntries.Count > 0 || treeEntries.Count > 0;
+                        if (!menuVisible)
+                        {
+                            // Menu closed before we could read it — retry marker click next tick
+                            return NodeStatus.Failure;
+                        }
+
+                        // Priority 1: Dock (at destination station in range)
+                        NavEntry? dock =
+                            AsEntry(parsedEntries.FirstOrDefault(e => EntryHasText(e, "Dock"))) ??
+                            AsEntry(treeEntries.FirstOrDefault(n =>
+                                n.GetAllContainedDisplayTexts().Any(t =>
+                                    t.Trim().Equals("Dock", StringComparison.OrdinalIgnoreCase))));
+
+                        // Priority 2: Jump (through gate)
+                        NavEntry? jump =
+                            AsEntry(parsedEntries.FirstOrDefault(e => EntryHasText(e, "jump"))) ??
+                            AsEntry(treeEntries.FirstOrDefault(n =>
+                                n.GetAllContainedDisplayTexts().Any(t =>
+                                    t.Contains("Jump", StringComparison.OrdinalIgnoreCase))));
+
+                        // Priority 3: Warp to 0 (approach gate or station)
+                        NavEntry? warp =
+                            AsEntry(parsedEntries.FirstOrDefault(e =>
                                 EntryHasText(e, "warp") &&
                                 e.UINode.GetAllContainedDisplayTexts().Any(t =>
-                                    t.Contains(" 0 ") || t.Contains("0 m") || t.EndsWith(" 0"))) ??
-                            entries.FirstOrDefault(e => EntryHasText(e, "warp"));
+                                    t.Contains(" 0 ") || t.Contains("0 m") || t.EndsWith(" 0")))) ??
+                            AsEntry(parsedEntries.FirstOrDefault(e => EntryHasText(e, "warp"))) ??
+                            AsEntry(treeEntries.FirstOrDefault(n =>
+                                n.GetAllContainedDisplayTexts().Any(t =>
+                                    t.Contains("Warp", StringComparison.OrdinalIgnoreCase))));
 
+                        var chosen = dock ?? jump ?? warp;
                         if (chosen == null)
                         {
-                            ctx.Log("[Travel] Nav: route marker menu has no Jump/Warp entry (unexpected menu?) — dismissing");
+                            ctx.Log($"[Travel] Marker menu has {parsedEntries.Count + treeEntries.Count} entries but no Dock/Jump/Warp — dismissing");
                             ctx.KeyPress(VirtualKey.Escape);
                             return NodeStatus.Failure;
                         }
 
-                        bool isJump = EntryHasText(chosen, "jump");
-                        ctx.Log($"[Travel] Nav: {(isJump ? "jumping through gate" : "warping to next hop")} — clicking '{chosen.Text}'");
-                        ctx.Click(chosen.UINode);
-                        ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(isJump ? 5 : 3));
+                        string action = dock != null ? "docking" : jump != null ? "jumping" : "warping";
+                        ctx.Log($"[Travel] {action} — clicking '{chosen.Text ?? "(tree node)"}'");
+                        // Hover first so the mouse arrives at the entry, then wait for
+                        // the pointer to settle before the actual button press fires.
+                        ctx.Hover(chosen.Node);
+                        ctx.Wait(TimeSpan.FromMilliseconds(180));
+                        ctx.Click(chosen.Node);
+
+                        int cooldownSec = dock != null ? 15 : jump != null ? 6 : 3;
+                        ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(cooldownSec));
+                        if (dock != null) ctx.Blackboard.SetCooldown("post_jump", TimeSpan.FromSeconds(12));
                         return NodeStatus.Success;
                     })),
 
-                // ── Watchdog ─────────────────────────────────────────────────────────
-                // If the ship has not warped, jumped, or changed system for 15 seconds
-                // while route is still active, something is stuck. Reset nav state and
-                // re-arm a marker right-click.
+                // Watchdog: no progress for 15 s → dismiss stray menu, reset, retry
                 new SequenceNode("Stuck watchdog",
-                    new ConditionNode("No progress for 15 s?", ctx =>
+                    new ConditionNode("No progress 15 s?", ctx =>
                         !ctx.GameState.IsWarping &&
                         !IsJumping(ctx.GameState) &&
                         ctx.Blackboard.IsCooldownReady("post_jump") &&
-                        !ctx.Blackboard.Get<bool>("warp_just_stopped") &&
+                        ctx.Blackboard.IsCooldownReady("post_warp") &&
                         ctx.Blackboard.IsCooldownReady("progress_heartbeat")),
-                    new ActionNode("Retry navigation", ctx =>
+                    new ActionNode("Reset and retry", ctx =>
                     {
-                        ctx.Log("[Travel] Watchdog: ship has not warped or jumped for 15 s — dismissing any stray menu and re-clicking route marker");
+                        ctx.Log("[Travel] Watchdog: no progress for 15 s — retrying");
                         if (ctx.GameState.HasContextMenu) ctx.KeyPress(VirtualKey.Escape);
                         ctx.Blackboard.Set("nav_menu_expected", false);
-                        ctx.Blackboard.Set("warp_just_stopped", false);
-                        // Snooze the watchdog for another 15 s
                         ctx.Blackboard.SetCooldown("progress_heartbeat", TimeSpan.FromSeconds(15));
-                        // marker_click cooldown is already expired after 15 s — no need to reset
                         return NodeStatus.Success;
                     })),
 
-                // Right-click next route hop marker
-                new SequenceNode("Right-click route marker",
-                    new ConditionNode("Has markers?", ctx => FirstMarker(ctx) != null),
-                    new ConditionNode("No menu open?", ctx => !ctx.GameState.HasContextMenu),
-                    new ConditionNode("Click cooldown ready?",
-                        ctx => ctx.Blackboard.IsCooldownReady("marker_click")),
+                // Right-click the next route hop marker
+                new SequenceNode("Click route marker",
+                    new ConditionNode("No menu + cooldown?", ctx =>
+                        !ctx.GameState.HasContextMenu &&
+                        ctx.Blackboard.IsCooldownReady("marker_click")),
                     new ActionNode("Right-click marker", ctx =>
                     {
                         var marker = FirstMarker(ctx);
                         if (marker == null) return NodeStatus.Failure;
                         ctx.Blackboard.Set("nav_menu_expected", true);
-                        ctx.Blackboard.Set("warp_just_stopped", false);
-                        ctx.Log("[Travel] Nav: right-clicking next route marker to get Jump/Warp menu");
                         ctx.RightClick(marker);
                         ctx.Blackboard.SetCooldown("marker_click", TimeSpan.FromSeconds(2));
                         return NodeStatus.Success;
                     })),
 
-                // Route panel not yet updated after jump — idle this tick
-                new ActionNode("Wait for route panel", _ => NodeStatus.Success)));
+                // Idle: route panel updating after jump
+                new ActionNode("Idle", _ => NodeStatus.Success)));
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Thin wrapper that unifies a parsed ContextMenuEntry and a raw UITreeNode behind
+    /// a single clickable Node, so the menu handler never branches on source type.
+    /// </summary>
+    private sealed record NavEntry(string? Text, UITreeNodeWithDisplayRegion Node);
+
+    private static NavEntry? AsEntry(ContextMenuEntry? e) =>
+        e == null ? null : new NavEntry(e.Text, e.UINode);
+
+    private static NavEntry? AsEntry(UITreeNodeWithDisplayRegion? n) =>
+        n == null ? null : new NavEntry(
+            n.GetAllContainedDisplayTexts().FirstOrDefault(), n);
 
     private static void CloseSearchResultsWindow(BotContext ctx)
     {
