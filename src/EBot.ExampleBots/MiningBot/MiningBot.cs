@@ -56,6 +56,7 @@ public sealed class MiningBot : IBot
     private readonly ConcurrentDictionary<int, bool>   _beltDepleted = new();
     private readonly ConcurrentDictionary<int, bool>   _beltExcluded = new();
     private int _beltCount = 0;
+    private bool _beltsDiscoveryDone;
 
     public IReadOnlyDictionary<int, string> BeltNames    => _beltNames;
     public IReadOnlyDictionary<int, bool>   BeltDepleted => _beltDepleted;
@@ -99,6 +100,7 @@ public sealed class MiningBot : IBot
         _beltExcluded.Clear();
         _beltNames.Clear();
         _beltCount = 0;
+        _beltsDiscoveryDone = false;
         ctx.Blackboard.Set("last_belt_target", -1);
         // Pre-seed home station if provided so the bot doesn't need to auto-detect
         if (!string.IsNullOrWhiteSpace(HomeStationOverride))
@@ -394,6 +396,7 @@ public sealed class MiningBot : IBot
                 WaitCapRegen(),
                 ReturnToStation(),
                 DroneDefense(),
+                DiscoverBeltsOnce(),
                 MineAtBelt(),
                 WarpToBelt()));
 
@@ -552,18 +555,22 @@ public sealed class MiningBot : IBot
     // ─── 7d. Mine at belt ────────────────────────────────────────────────────
     //
     //  Fires only when asteroids are visible in the current overview tab.
-    //  Inner selector priority:
-    //    1. Lock up to MaxLockedAsteroids targets
-    //    2. Activate inactive TOP-ROW modules (mining lasers are in high slots)
-    //    3. Approach if nearest locked target is beyond laser range
-    //    4. Idle (mining in progress)
+    //  Priority order (critical: approach BEFORE laser activation to avoid
+    //  laser-keeps-returning-Success starving the approach node):
+    //    0. Deploy drones
+    //    1. Lock asteroid (up to one per mining module)
+    //    2. Approach if nearest is too far (or distance unknown → treat as far)
+    //    3. Activate propulsion if too far
+    //    4. Deactivate propulsion when in range
+    //    5. Activate idle mining lasers
+    //    6. Idle (mining in progress)
 
     private IBehaviorNode MineAtBelt() =>
         new SequenceNode("Mine at belt",
             new ConditionNode("Asteroids visible?", ctx => AnyAsteroidsInOverview(ctx)),
             new SelectorNode("Mining actions",
 
-                // Priority 0: Deploy drones on arrival — if any are in bay and none are in space
+                // Priority 0: Deploy drones on arrival
                 new SequenceNode("Deploy drones at belt",
                     new ConditionNode("Drones in bay, none in space?", ctx =>
                         (ctx.GameState.ParsedUI.DronesWindow?.DronesInBay?.QuantityCurrent ?? 0) > 0 &&
@@ -589,7 +596,6 @@ public sealed class MiningBot : IBot
 
                         if (lockPhase == "")
                         {
-                            // Find an asteroid that isn't already locked
                             var lockedNames = ctx.GameState.ParsedUI.Targets
                                 .Select(t => t.TextLabel ?? "")
                                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -630,49 +636,134 @@ public sealed class MiningBot : IBot
                             return NodeStatus.Success;
                         }
 
+                        // Tree-scan fallback: some menus don't register as parsed ContextMenu type
+                        var treeLock = (ctx.GameState.ParsedUI.UITree?
+                            .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                n.GetAllContainedDisplayTexts().Any(t =>
+                                    t.Contains("Lock", StringComparison.OrdinalIgnoreCase) &&
+                                    !t.Contains("Unlock", StringComparison.OrdinalIgnoreCase)))
+                            ?? []).FirstOrDefault();
+                        if (treeLock != null)
+                        {
+                            ctx.Click(treeLock);
+                            ctx.Blackboard.SetCooldown("lock_target", TimeSpan.FromSeconds(6));
+                            return NodeStatus.Success;
+                        }
+
                         ctx.KeyPress(VirtualKey.Escape);
                         ctx.Blackboard.SetCooldown("lock_target", TimeSpan.FromSeconds(3));
                         return NodeStatus.Failure;
                     })),
 
-                // Priority 2: Activate idle mining lasers — one per locked asteroid (in range)
-                new SequenceNode("Activate mining lasers",
-                    new ConditionNode("Has target + idle mining modules?", ctx =>
+                // Priority 2: Approach nearest asteroid BEFORE laser activation.
+                // Root cause of the old approach-never-fires bug: laser activation returned
+                // Success on every tick (finding idle lasers + targets), which starved
+                // approach of execution time. Now approach has higher priority.
+                // Null distance → treat as far and approach anyway.
+                new SequenceNode("Approach asteroid",
+                    new ConditionNode("Nearest too far + cooldown?", ctx =>
                     {
-                        if (!ctx.GameState.HasTargets) return false;
+                        if (!ctx.Blackboard.IsCooldownReady("approach")) return false;
+                        var nearest = AsteroidsInOverview(ctx)
+                            .OrderBy(e => e.DistanceInMeters ?? double.MaxValue)
+                            .FirstOrDefault();
+                        if (nearest == null) return false;
+                        return !nearest.DistanceInMeters.HasValue ||
+                               nearest.DistanceInMeters > DefaultLaserRangeM;
+                    }),
+                    new ActionNode("Approach state machine", ctx =>
+                    {
+                        var ap = ctx.Blackboard.Get<string>("approach_phase") ?? "";
+
+                        if (ap == "")
+                        {
+                            var asteroid = AsteroidsInOverview(ctx)
+                                .OrderBy(e => e.DistanceInMeters ?? double.MaxValue)
+                                .FirstOrDefault();
+                            if (asteroid == null) return NodeStatus.Failure;
+                            ctx.Blackboard.Set("menu_expected", true);
+                            ctx.RightClick(asteroid.UINode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(600));
+                            ctx.Blackboard.Set("approach_phase", "menu");
+                            ctx.Blackboard.SetCooldown("approach", TimeSpan.FromSeconds(15));
+                            return NodeStatus.Running;
+                        }
+
+                        ctx.Blackboard.Set("menu_expected", false);
+                        ctx.Blackboard.Set("approach_phase", "");
+                        if (!ctx.GameState.HasContextMenu) return NodeStatus.Failure;
+
+                        static bool HasApproach(ContextMenuEntry e) =>
+                            e.Text?.Contains("Approach", StringComparison.OrdinalIgnoreCase) == true ||
+                            e.UINode.GetAllContainedDisplayTexts()
+                                .Any(t => t.Contains("Approach", StringComparison.OrdinalIgnoreCase));
+
+                        var approachEntry = ctx.GameState.ParsedUI.ContextMenus
+                            .SelectMany(m => m.Entries)
+                            .FirstOrDefault(HasApproach);
+
+                        if (approachEntry != null)
+                        {
+                            ctx.Log("[Mining] Approaching nearest asteroid");
+                            ctx.Hover(approachEntry.UINode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(150));
+                            ctx.Click(approachEntry.UINode);
+                            if ((ctx.GameState.ParsedUI.DronesWindow?.DronesInBay?.QuantityCurrent ?? 0) > 0 &&
+                                (ctx.GameState.ParsedUI.DronesWindow?.DronesInSpace?.QuantityCurrent ?? 0) == 0)
+                            {
+                                ctx.Wait(TimeSpan.FromMilliseconds(300));
+                                ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
+                                ctx.Log("[Mining] Drones deployed");
+                            }
+                            return NodeStatus.Success;
+                        }
+
+                        // Tree-scan fallback for Approach
+                        var treeApproach = (ctx.GameState.ParsedUI.UITree?
+                            .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                n.GetAllContainedDisplayTexts()
+                                    .Any(t => t.Contains("Approach", StringComparison.OrdinalIgnoreCase)))
+                            ?? []).FirstOrDefault();
+                        if (treeApproach != null)
+                        {
+                            ctx.Hover(treeApproach);
+                            ctx.Wait(TimeSpan.FromMilliseconds(150));
+                            ctx.Click(treeApproach);
+                            return NodeStatus.Success;
+                        }
+
+                        ctx.KeyPress(VirtualKey.Escape);
+                        return NodeStatus.Failure;
+                    })),
+
+                // Priority 3: Activate propulsion when nearest asteroid is beyond laser range
+                new SequenceNode("Activate propulsion",
+                    new ConditionNode("Too far + prop idle + cooldown?", ctx =>
+                    {
+                        var nearest = AsteroidsInOverview(ctx)
+                            .Where(e => e.DistanceInMeters.HasValue)
+                            .OrderBy(e => e.DistanceInMeters!.Value)
+                            .FirstOrDefault();
+                        if (nearest?.DistanceInMeters == null || nearest.DistanceInMeters <= DefaultLaserRangeM) return false;
                         var shipUI = ctx.GameState.ParsedUI.ShipUI;
                         if (shipUI == null) return false;
-                        return GetMiningModules(shipUI)
-                            .Any(m => m.IsActive != true && !m.IsBusy && !m.IsOffline);
+                        var prop = FindPropulsionModule(shipUI);
+                        return prop != null && prop.IsActive != true && !prop.IsBusy && !prop.IsOffline
+                               && ctx.Blackboard.IsCooldownReady("activate_ab");
                     }),
-                    new ConditionNode("Activate cooldown?",
-                        ctx => ctx.Blackboard.IsCooldownReady("activate_modules")),
-                    new ActionNode("Click idle mining modules", ctx =>
+                    new ActionNode("Turn on prop", ctx =>
                     {
                         var shipUI = ctx.GameState.ParsedUI.ShipUI;
                         if (shipUI == null) return NodeStatus.Failure;
-
-                        var idleLasers = GetMiningModules(shipUI)
-                            .Where(m => m.IsActive != true && !m.IsBusy && !m.IsOffline)
-                            .ToList();
-                        var targets = ctx.GameState.ParsedUI.Targets.ToList();
-
-                        // Pair each idle laser with a target: make target active then fire laser
-                        int pairs = Math.Min(idleLasers.Count, targets.Count);
-                        for (int i = 0; i < pairs; i++)
-                        {
-                            ctx.Click(targets[i].UINode);          // make this target active
-                            ctx.Wait(TimeSpan.FromMilliseconds(200));
-                            ctx.Click(idleLasers[i].UINode);       // fire laser on active target
-                            ctx.Wait(TimeSpan.FromMilliseconds(300));
-                            ctx.Log($"[Mining] Laser {i + 1} → '{targets[i].TextLabel}'");
-                        }
-
-                        ctx.Blackboard.SetCooldown("activate_modules", TimeSpan.FromSeconds(5));
-                        return pairs > 0 ? NodeStatus.Success : NodeStatus.Failure;
+                        var prop = FindPropulsionModule(shipUI);
+                        if (prop == null) return NodeStatus.Failure;
+                        ctx.Log("[Mining] Propulsion on — moving to asteroid");
+                        ctx.Click(prop.UINode);
+                        ctx.Blackboard.SetCooldown("activate_ab", TimeSpan.FromSeconds(8));
+                        return NodeStatus.Success;
                     })),
 
-                // Priority 2.5: Deactivate propulsion when nearest asteroid is in mining range
+                // Priority 4: Deactivate propulsion when asteroid is in mining range
                 new SequenceNode("Deactivate propulsion",
                     new ConditionNode("In range + prop active?", ctx =>
                     {
@@ -695,114 +786,229 @@ public sealed class MiningBot : IBot
                         return NodeStatus.Success;
                     })),
 
-                // Priority 2.6: Activate propulsion when nearest asteroid is beyond laser range
-                new SequenceNode("Activate propulsion",
-                    new ConditionNode("Too far + prop idle + cooldown?", ctx =>
+                // Priority 5: Activate idle mining lasers — one per locked asteroid
+                new SequenceNode("Activate mining lasers",
+                    new ConditionNode("Has target + idle mining modules?", ctx =>
                     {
-                        var nearest = AsteroidsInOverview(ctx)
-                            .Where(e => e.DistanceInMeters.HasValue)
-                            .OrderBy(e => e.DistanceInMeters!.Value)
-                            .FirstOrDefault();
-                        if (nearest?.DistanceInMeters == null || nearest.DistanceInMeters <= DefaultLaserRangeM) return false;
+                        if (!ctx.GameState.HasTargets) return false;
                         var shipUI = ctx.GameState.ParsedUI.ShipUI;
                         if (shipUI == null) return false;
-                        var prop = FindPropulsionModule(shipUI);
-                        return prop != null && prop.IsActive != true && !prop.IsBusy && !prop.IsOffline
-                               && ctx.Blackboard.IsCooldownReady("activate_ab");
+                        return GetMiningModules(shipUI)
+                            .Any(m => m.IsActive != true && !m.IsBusy && !m.IsOffline);
                     }),
-                    new ActionNode("Turn on prop", ctx =>
+                    new ConditionNode("Activate cooldown?",
+                        ctx => ctx.Blackboard.IsCooldownReady("activate_modules")),
+                    new ActionNode("Click idle mining modules", ctx =>
                     {
                         var shipUI = ctx.GameState.ParsedUI.ShipUI;
                         if (shipUI == null) return NodeStatus.Failure;
-                        var prop = FindPropulsionModule(shipUI);
-                        if (prop == null) return NodeStatus.Failure;
-                        ctx.Log("[Mining] Propulsion on — approaching asteroid");
-                        ctx.Click(prop.UINode);
-                        ctx.Blackboard.SetCooldown("activate_ab", TimeSpan.FromSeconds(8));
-                        return NodeStatus.Success;
+
+                        var idleLasers = GetMiningModules(shipUI)
+                            .Where(m => m.IsActive != true && !m.IsBusy && !m.IsOffline)
+                            .ToList();
+                        var targets = ctx.GameState.ParsedUI.Targets.ToList();
+
+                        // Pair each idle laser with a target: click target to make active, then fire laser
+                        int pairs = Math.Min(idleLasers.Count, targets.Count);
+                        for (int i = 0; i < pairs; i++)
+                        {
+                            ctx.Click(targets[i].UINode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(200));
+                            ctx.Click(idleLasers[i].UINode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(300));
+                            ctx.Log($"[Mining] Laser {i + 1} → '{targets[i].TextLabel}'");
+                        }
+
+                        ctx.Blackboard.SetCooldown("activate_modules", TimeSpan.FromSeconds(5));
+                        return pairs > 0 ? NodeStatus.Success : NodeStatus.Failure;
                     })),
 
-                // Priority 3: Approach nearest asteroid via overview right-click when beyond laser range
-                new SequenceNode("Approach asteroid",
-                    new ConditionNode("Nearest too far + cooldown?", ctx =>
-                    {
-                        var nearest = AsteroidsInOverview(ctx)
-                            .Where(e => e.DistanceInMeters.HasValue)
-                            .OrderBy(e => e.DistanceInMeters!.Value)
-                            .FirstOrDefault();
-                        return nearest?.DistanceInMeters > DefaultLaserRangeM &&
-                               ctx.Blackboard.IsCooldownReady("approach");
-                    }),
-                    new ActionNode("Approach state machine", ctx =>
-                    {
-                        var ap = ctx.Blackboard.Get<string>("approach_phase") ?? "";
+                // Priority 6: Idle (lasers cycling, waiting for next lock or range close)
+                new ActionNode("Mining in progress", _ => NodeStatus.Success)));
 
-                        if (ap == "")
+    // ─── 7d-pre. Proactive belt discovery ────────────────────────────────────
+    //
+    //  Fires once per session when _beltCount == 0 (list not yet known).
+    //  Opens the space context menu, hovers "Asteroid Belts ▶", reads the list,
+    //  then closes the menu.  Done in ~3 ticks so mining is barely interrupted.
+
+    private IBehaviorNode DiscoverBeltsOnce() =>
+        new SequenceNode("Discover belt list",
+            new ConditionNode("Belt list unknown?", ctx =>
+                !_beltsDiscoveryDone &&
+                _beltCount == 0 &&
+                !ctx.GameState.IsWarping &&
+                ctx.Blackboard.IsCooldownReady("belt_discover_cd")),
+            new ActionNode("Discovery state machine", ctx =>
+            {
+                var phase = ctx.Blackboard.Get<string>("discover_phase") ?? "";
+
+                switch (phase)
+                {
+                    // Phase 1: open the space context menu
+                    case "":
+                        ctx.Blackboard.Set("menu_expected", true);
+                        RightClickInSpace(ctx);
+                        ctx.Wait(TimeSpan.FromMilliseconds(800));
+                        ctx.Blackboard.Set("discover_phase", "space_menu");
+                        ctx.Blackboard.Set("discover_tick", 0);
+                        return NodeStatus.Running;
+
+                    // Phase 2: hover "Asteroid Belts ▶" to expand submenu
+                    case "space_menu":
+                    {
+                        int tick = ctx.Blackboard.Get<int>("discover_tick") + 1;
+                        ctx.Blackboard.Set("discover_tick", tick);
+
+                        if (!ctx.GameState.HasContextMenu)
                         {
-                            // Right-click the nearest asteroid in the overview
-                            var asteroid = AsteroidsInOverview(ctx)
-                                .Where(e => e.DistanceInMeters.HasValue)
-                                .OrderBy(e => e.DistanceInMeters!.Value)
-                                .FirstOrDefault()
-                                ?? AsteroidsInOverview(ctx).FirstOrDefault();
-                            if (asteroid == null) return NodeStatus.Failure;
-                            ctx.Blackboard.Set("menu_expected", true);
-                            ctx.RightClick(asteroid.UINode);
-                            ctx.Wait(TimeSpan.FromMilliseconds(500));
-                            ctx.Blackboard.Set("approach_phase", "menu");
-                            ctx.Blackboard.SetCooldown("approach", TimeSpan.FromSeconds(15));
+                            if (tick > 5) { Abort(ctx, 30); return NodeStatus.Failure; }
+                            return NodeStatus.Running;
+                        }
+                        ctx.Blackboard.Set("discover_tick", 0);
+
+                        ContextMenuEntry? beltsEntry = null;
+                        foreach (var m in ctx.GameState.ParsedUI.ContextMenus)
+                        {
+                            beltsEntry = m.Entries.FirstOrDefault(e =>
+                                e.Text != null && e.Text.Trim().Length < 20 &&
+                                e.Text.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase));
+                            if (beltsEntry != null) break;
+                        }
+
+                        if (beltsEntry == null)
+                        {
+                            // No belts in this system
+                            ctx.Log("[Mining] No Asteroid Belts entry in space menu — system has none");
+                            ctx.KeyPress(VirtualKey.Escape);
+                            ctx.Blackboard.Set("menu_expected", false);
+                            _beltsDiscoveryDone = true;
+                            Abort(ctx, 600);
+                            return NodeStatus.Failure;
+                        }
+
+                        // Store right edge of space menu for X-filtering the belt list
+                        ctx.Blackboard.Set("discover_ref_x",
+                            beltsEntry.UINode.Region.X + beltsEntry.UINode.Region.Width);
+
+                        HoverAndSlide(ctx, beltsEntry.UINode);
+                        ctx.Wait(TimeSpan.FromMilliseconds(600));
+                        ctx.Blackboard.Set("discover_phase", "belt_submenu");
+                        return NodeStatus.Running;
+                    }
+
+                    // Phase 3: capture belt names then close
+                    case "belt_submenu":
+                    {
+                        int tick = ctx.Blackboard.Get<int>("discover_tick") + 1;
+                        ctx.Blackboard.Set("discover_tick", tick);
+
+                        if (!ctx.GameState.HasContextMenu)
+                        {
+                            if (tick > 8) { Abort(ctx, 20); return NodeStatus.Failure; }
                             return NodeStatus.Running;
                         }
 
-                        // "menu": context menu should be open — find Approach entry
-                        ctx.Blackboard.Set("menu_expected", false);
-                        ctx.Blackboard.Set("approach_phase", "");
-                        if (!ctx.GameState.HasContextMenu) return NodeStatus.Failure;
+                        // Try parsed menus first
+                        var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
+                        var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
 
-                        // Check both parsed entries (by text) and raw tree nodes
-                        static bool HasApproach(ContextMenuEntry e) =>
-                            e.Text?.Contains("Approach", StringComparison.OrdinalIgnoreCase) == true ||
-                            e.UINode.GetAllContainedDisplayTexts()
-                                .Any(t => t.Contains("Approach", StringComparison.OrdinalIgnoreCase));
+                        static bool BeltText(ContextMenuEntry e, Func<string, bool> pred)
+                            => e.UINode.GetAllContainedDisplayTexts().Any(pred);
 
-                        var approachEntry = ctx.GameState.ParsedUI.ContextMenus
-                            .SelectMany(m => m.Entries)
-                            .FirstOrDefault(HasApproach);
+                        // Only accept belt entries strictly to the right of the space-menu panel
+                        int discoverRefX = ctx.Blackboard.Get<int>("discover_ref_x");
 
-                        if (approachEntry != null)
+                        var beltEntries = allEntries
+                            .Where(e => e.UINode.Region.X > discoverRefX && BeltText(e, t =>
+                                (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
+                                (t.Length > 8  && (t.Contains("Ore Deposit",  StringComparison.OrdinalIgnoreCase) ||
+                                                   t.Contains("Cluster",      StringComparison.OrdinalIgnoreCase)))))
+                            .OrderBy(e => e.UINode.Region.Y)
+                            .ToList();
+
+                        // Positional fallback: rightmost submenu
+                        if (beltEntries.Count == 0 && allMenus.Count >= 2)
                         {
-                            ctx.Log("[Mining] Approaching asteroid");
-                            ctx.Click(approachEntry.UINode);
-                            // Deploy drones when approach starts
-                            if ((ctx.GameState.ParsedUI.DronesWindow?.DronesInBay?.QuantityCurrent ?? 0) > 0 &&
-                                (ctx.GameState.ParsedUI.DronesWindow?.DronesInSpace?.QuantityCurrent ?? 0) == 0)
-                            {
-                                ctx.Wait(TimeSpan.FromMilliseconds(300));
-                                ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
-                                ctx.Log("[Mining] Drones deployed");
-                            }
-                            return NodeStatus.Success;
+                            var minX   = allMenus.Min(m => m.UINode.Region.X);
+                            var subMnu = allMenus.Where(m => m.UINode.Region.X > minX + 10)
+                                                 .MaxBy(m => m.UINode.Region.X);
+                            if (subMnu?.Entries.Count > 0)
+                                beltEntries = subMnu.Entries.OrderBy(e => e.UINode.Region.Y).ToList();
                         }
 
-                        // Tree-scan fallback for Approach
-                        var treeApproach = (ctx.GameState.ParsedUI.UITree?
-                            .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
-                                n.GetAllContainedDisplayTexts()
-                                    .Any(t => t.Contains("Approach", StringComparison.OrdinalIgnoreCase)))
-                            ?? [])
-                            .FirstOrDefault();
-                        if (treeApproach != null)
+                        // Tree-scan fallback — only nodes to the right of space-menu panel
+                        if (beltEntries.Count == 0)
                         {
-                            ctx.Click(treeApproach);
-                            return NodeStatus.Success;
+                            var treeNodes = (ctx.GameState.ParsedUI.UITree?
+                                .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                    n.Region.X > discoverRefX &&
+                                    n.Region.Height > 3 &&       // height=0 means hidden/collapsed panel
+                                    n.GetAllContainedDisplayTexts().Any(t =>
+                                        t.Length > 14 &&
+                                        t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)))
+                                ?? []).OrderBy(n => n.Region.Y).ToList();
+
+                            if (treeNodes.Count > 0)
+                            {
+                                _beltCount = treeNodes.Count;
+                                for (int i = 0; i < treeNodes.Count; i++)
+                                {
+                                    var txt = treeNodes[i].GetAllContainedDisplayTexts()
+                                        .Where(t => t.Length > 3).OrderByDescending(t => t.Length)
+                                        .FirstOrDefault() ?? $"Belt {i + 1}";
+                                    _beltNames[i] = txt.Trim();
+                                }
+                            }
+                            else if (tick > 8)
+                            {
+                                // Submenu never appeared — re-hover and retry a bit
+                                Abort(ctx, 15);
+                                return NodeStatus.Failure;
+                            }
+                            else
+                            {
+                                return NodeStatus.Running; // wait another tick
+                            }
+                        }
+                        else
+                        {
+                            _beltCount = beltEntries.Count;
+                            for (int i = 0; i < beltEntries.Count; i++)
+                            {
+                                var txt = beltEntries[i].UINode.GetAllContainedDisplayTexts()
+                                    .Where(t => t.Length > 3).OrderByDescending(t => t.Length)
+                                    .FirstOrDefault() ?? beltEntries[i].Text ?? $"Belt {i + 1}";
+                                _beltNames[i] = txt.Trim();
+                            }
                         }
 
                         ctx.KeyPress(VirtualKey.Escape);
-                        return NodeStatus.Failure;
-                    })),
+                        ctx.Blackboard.Set("menu_expected", false);
+                        ctx.Blackboard.Set("discover_phase", "");
+                        ctx.Blackboard.Set("discover_tick", 0);
+                        _beltsDiscoveryDone = true;
 
-                // Priority 4: Idle (lasers cycling, waiting for next cycle or lock)
-                new ActionNode("Mining in progress", _ => NodeStatus.Success)));
+                        if (_beltCount > 0)
+                            ctx.Log($"[Mining] Discovered {_beltCount} asteroid belts");
+
+                        // Return Failure so the SelectorNode continues to MineAtBelt this tick
+                        return NodeStatus.Failure;
+                    }
+
+                    default:
+                        ctx.Blackboard.Set("discover_phase", "");
+                        return NodeStatus.Failure;
+                }
+
+                void Abort(BotContext c, int cooldownSec)
+                {
+                    c.Blackboard.Set("discover_phase", "");
+                    c.Blackboard.Set("discover_tick", 0);
+                    c.Blackboard.Set("menu_expected", false);
+                    c.Blackboard.SetCooldown("belt_discover_cd", TimeSpan.FromSeconds(cooldownSec));
+                }
+            }));
 
     // ─── 7e. Warp to next asteroid belt ─────────────────────────────────────
     //
@@ -840,6 +1046,7 @@ public sealed class MiningBot : IBot
                     ctx.Blackboard.Set("belt_phase", "");
                     ctx.Blackboard.Set("belt_phase_ticks", 0);
                     ctx.Blackboard.Set("menu_expected", false);
+                    ctx.Blackboard.Set("cascade_ref_x", 0); // clear so next attempt starts fresh
                     ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(cooldownSec));
                 }
 
@@ -954,6 +1161,12 @@ public sealed class MiningBot : IBot
                             return NodeStatus.Failure;
                         }
 
+                        // Record the right edge of this menu panel.  Every subsequent cascade level
+                        // must appear strictly to the right of this X — used to filter out stale
+                        // tree nodes that linger from previous cascade interactions at the same coords.
+                        ctx.Blackboard.Set("cascade_ref_x",
+                            beltsEntry.UINode.Region.X + beltsEntry.UINode.Region.Width);
+
                         // L-shaped hover: center → slide right, keeping Y row so bezier
                         // curve stays on the same entry and enters the next panel cleanly
                         HoverAndSlide(ctx, beltsEntry.UINode);
@@ -993,12 +1206,14 @@ public sealed class MiningBot : IBot
                         static bool EntryHasText(ContextMenuEntry e, Func<string, bool> pred)
                             => e.UINode.GetAllContainedDisplayTexts().Any(pred);
 
-                        // Collect ALL belt entries sorted top-to-bottom (menu order) so
-                        // we can cycle through belts by index across successive warp attempts.
-                        int beltTarget = ctx.Blackboard.Get<int>("belt_target");
+                        // Only accept entries to the right of the space-menu panel.
+                        // This rejects stale ghost nodes from previous cascade sessions
+                        // that happen to sit at the same screen coordinates.
+                        int cascadeRefX = ctx.Blackboard.Get<int>("cascade_ref_x");
+                        int beltTarget  = ctx.Blackboard.Get<int>("belt_target");
 
                         var allBeltEntries = allEntries
-                            .Where(e => EntryHasText(e, t =>
+                            .Where(e => e.UINode.Region.X > cascadeRefX && EntryHasText(e, t =>
                                 (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
                                 (t.Length > 8  && (t.Contains("Ore Deposit",  StringComparison.OrdinalIgnoreCase) ||
                                                    t.Contains("Cluster",      StringComparison.OrdinalIgnoreCase)))))
@@ -1071,14 +1286,25 @@ public sealed class MiningBot : IBot
                         {
                             var treeNodes = (ctx.GameState.ParsedUI.UITree?
                                 .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                    n.Region.X > cascadeRefX &&  // must be right of space-menu panel
+                                    n.Region.Height > 3 &&       // height=0 means hidden/collapsed panel
                                     n.GetAllContainedDisplayTexts().Any(t =>
-                                        t.Length > 20 &&
+                                        t.Length > 14 &&
                                         t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)))
                                 ?? [])
                                 .OrderBy(n => n.Region.Y)
                                 .ToList();
                             if (treeNodes.Count > 0)
                             {
+                                // Also save names so the WebUI belt list populates
+                                _beltCount = treeNodes.Count;
+                                for (int i = 0; i < treeNodes.Count; i++)
+                                {
+                                    var tn = treeNodes[i].GetAllContainedDisplayTexts()
+                                        .Where(t => t.Length > 3).OrderByDescending(t => t.Length)
+                                        .FirstOrDefault() ?? $"Belt {i + 1}";
+                                    _beltNames[i] = tn.Trim();
+                                }
                                 beltNodeFromTree = treeNodes[beltTarget % treeNodes.Count];
                                 var txt = beltNodeFromTree.GetAllContainedDisplayTexts()
                                     .FirstOrDefault(t => t.Contains("Asteroid Belt")) ?? "?";
@@ -1102,6 +1328,7 @@ public sealed class MiningBot : IBot
                             return NodeStatus.Running;
                         }
 
+                        var chosenBeltNode = beltEntry?.UINode ?? beltNodeFromTree;
                         if (beltEntry != null)
                         {
                             ctx.Log($"[WarpToBelt] Hovering belt (menu entry): '{beltEntry.Text}'");
@@ -1112,6 +1339,10 @@ public sealed class MiningBot : IBot
                             ctx.Log($"[WarpToBelt] Hovering belt (tree node)");
                             HoverAndSlide(ctx, beltNodeFromTree);
                         }
+                        // Advance the reference X — next level (belt actions) must appear to the right of this panel
+                        if (chosenBeltNode != null)
+                            ctx.Blackboard.Set("cascade_ref_x",
+                                chosenBeltNode.Region.X + chosenBeltNode.Region.Width);
                         ctx.Wait(TimeSpan.FromMilliseconds(500));
                         Progress("await_actions_menu");
                         return NodeStatus.Running;
@@ -1138,11 +1369,16 @@ public sealed class MiningBot : IBot
                         static bool EntryHasText(ContextMenuEntry e, Func<string, bool> pred)
                             => e.UINode.GetAllContainedDisplayTexts().Any(pred);
 
+                        // Only accept entries to the right of the belt-list panel
+                        int cascadeRefX = ctx.Blackboard.Get<int>("cascade_ref_x");
+
                         // "Warp to Within (0 m)" — prefer match with both Warp+Within
                         var warpEntry = allEntries.FirstOrDefault(e =>
+                            e.UINode.Region.X > cascadeRefX &&
                             EntryHasText(e, t => t.Contains("Warp",   StringComparison.OrdinalIgnoreCase)
                                               && t.Contains("Within",  StringComparison.OrdinalIgnoreCase)));
                         warpEntry ??= allEntries.FirstOrDefault(e =>
+                            e.UINode.Region.X > cascadeRefX &&
                             EntryHasText(e, t => t.Contains("Warp", StringComparison.OrdinalIgnoreCase)));
 
                         // Full UI-tree scan fallback for warp action
@@ -1151,6 +1387,8 @@ public sealed class MiningBot : IBot
                         {
                             warpNodeFromTree = (ctx.GameState.ParsedUI.UITree?
                                 .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                    n.Region.X > cascadeRefX &&
+                                    n.Region.Height > 3 &&       // height=0 means hidden/collapsed panel
                                     n.GetAllContainedDisplayTexts().Any(t =>
                                         t.Contains("Warp", StringComparison.OrdinalIgnoreCase)))
                                 ?? [])
@@ -1169,6 +1407,7 @@ public sealed class MiningBot : IBot
                             return NodeStatus.Running;
                         }
 
+                        var chosenWarpNode = warpEntry?.UINode ?? warpNodeFromTree;
                         if (warpEntry != null)
                         {
                             ctx.Log($"[WarpToBelt] Hovering warp (menu entry): '{warpEntry.Text}'");
@@ -1179,6 +1418,10 @@ public sealed class MiningBot : IBot
                             ctx.Log($"[WarpToBelt] Hovering warp (tree node)");
                             HoverAndSlide(ctx, warpNodeFromTree);
                         }
+                        // Advance reference X — distance picker must appear right of this panel
+                        if (chosenWarpNode != null)
+                            ctx.Blackboard.Set("cascade_ref_x",
+                                chosenWarpNode.Region.X + chosenWarpNode.Region.Width);
                         ctx.Wait(TimeSpan.FromMilliseconds(500));
                         Progress("await_warp_distances");
                         return NodeStatus.Running;
@@ -1204,10 +1447,15 @@ public sealed class MiningBot : IBot
                         static bool EntryHasText(ContextMenuEntry e, Func<string, bool> pred)
                             => e.UINode.GetAllContainedDisplayTexts().Any(pred);
 
+                        // Only accept distance entries to the right of the belt-actions panel
+                        int cascadeRefX = ctx.Blackboard.Get<int>("cascade_ref_x");
+
                         var within0 = allEntries.FirstOrDefault(e =>
+                            e.UINode.Region.X > cascadeRefX &&
                             EntryHasText(e, t => t.Contains("Within 0", StringComparison.OrdinalIgnoreCase)));
                         // Fallback: any entry with just "0 m" or "0m" (the 0-distance option)
                         within0 ??= allEntries.FirstOrDefault(e =>
+                            e.UINode.Region.X > cascadeRefX &&
                             EntryHasText(e, t =>
                                 (t.Equals("0 m", StringComparison.OrdinalIgnoreCase) ||
                                  t.Equals("0m",  StringComparison.OrdinalIgnoreCase))));
@@ -1218,6 +1466,8 @@ public sealed class MiningBot : IBot
                         {
                             within0Node = (ctx.GameState.ParsedUI.UITree?
                                 .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
+                                    n.Region.X > cascadeRefX &&
+                                    n.Region.Height > 3 &&       // height=0 means hidden/collapsed panel
                                     n.GetAllContainedDisplayTexts().Any(t =>
                                         t.Contains("Within 0", StringComparison.OrdinalIgnoreCase) ||
                                         t.Equals("0 m", StringComparison.OrdinalIgnoreCase) ||
@@ -1231,8 +1481,10 @@ public sealed class MiningBot : IBot
                         if (within0 != null || within0Node != null)
                         {
                             ctx.Log($"[WarpToBelt] Clicking distance entry");
-                            if (within0 != null) ctx.Click(within0.UINode);
-                            else if (within0Node != null) ctx.Click(within0Node);
+                            var clickNode = within0?.UINode ?? within0Node!;
+                            ctx.Hover(clickNode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(200));
+                            ctx.Click(clickNode);
                             ctx.Blackboard.Set("belt_phase", "");
                             ctx.Blackboard.Set("belt_phase_ticks", 0);
                             ctx.Blackboard.Set("menu_expected", false);
