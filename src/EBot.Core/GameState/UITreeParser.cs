@@ -330,20 +330,48 @@ public sealed partial class UITreeParser
     {
         if (buttons.Count == 0) return new ShipUIModuleButtonRows();
 
-        var centerY = shipUI.Center.Y;
-        var sorted = buttons.OrderBy(b => b.UINode.Region.Y).ToList();
+        // Primary: classify by slot _name (inFlightHighSlot*, inFlightMediumSlot*, inFlightLowSlot*, RigSlot*)
+        static bool IsHighSlot(ShipUIModuleButton b)
+        {
+            var n = b.UINode.Node.GetDictString("_name") ?? "";
+            return n.Contains("HighSlot",      StringComparison.OrdinalIgnoreCase) ||
+                   n.Contains("inFlightHigh",  StringComparison.OrdinalIgnoreCase);
+        }
+        static bool IsMidSlot(ShipUIModuleButton b)
+        {
+            var n = b.UINode.Node.GetDictString("_name") ?? "";
+            return n.Contains("MediumSlot",    StringComparison.OrdinalIgnoreCase) ||
+                   n.Contains("MidSlot",       StringComparison.OrdinalIgnoreCase) ||
+                   n.Contains("inFlightMedium",StringComparison.OrdinalIgnoreCase);
+        }
 
-        // Simple heuristic: split into thirds by Y position
-        var top = sorted.Where(b => b.UINode.Center.Y < centerY - 30).ToList();
-        var bottom = sorted.Where(b => b.UINode.Center.Y > centerY + 30).ToList();
-        var middle = sorted.Except(top).Except(bottom).ToList();
+        var top    = buttons.Where(IsHighSlot).ToList();
+        var middle = buttons.Where(IsMidSlot).ToList();
+        var bottom = buttons.Where(b => !IsHighSlot(b) && !IsMidSlot(b)).ToList();
+
+        // Fallback if names not available: sort by Y, split into thirds
+        if (top.Count == 0 && middle.Count == 0 && buttons.Count > 0)
+        {
+            var sorted = buttons.OrderBy(b => b.UINode.Region.Y).ToList();
+            int third  = Math.Max(1, sorted.Count / 3);
+            top    = sorted.Take(third).ToList();
+            middle = sorted.Skip(third).Take(third).ToList();
+            bottom = sorted.Skip(third * 2).ToList();
+        }
 
         return new ShipUIModuleButtonRows { Top = top, Middle = middle, Bottom = bottom };
     }
 
     private List<Target> FindTargets(UITreeNodeWithDisplayRegion root)
     {
-        return root.FindAll(n => IsType(n, "TargetInBar", "Target"))
+        // Match pythonObjectTypeName only — IsType also checks _name, which picks up
+        // false positives: l_target (LayerCore), canTargetSprite (Sprite).
+        return root.FindAll(n =>
+        {
+            var t = n.Node.PythonObjectTypeName;
+            return t.Equals("TargetInBar", StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("Target",      StringComparison.OrdinalIgnoreCase);
+        })
             .Select(n =>
             {
                 var allTexts = n.GetAllContainedDisplayTexts().ToList();
@@ -461,20 +489,58 @@ public sealed partial class UITreeParser
         // Extract column headers: find the dedicated header row container, collect (name, leftX) pairs
         var headers = new List<(string Name, int X)>();
 
-        var headerRow = overviewNode.FindFirst(n =>
-            n.Node.PythonObjectTypeName.Contains("Header", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(n.Node.GetDictString("_name"), "headers", StringComparison.OrdinalIgnoreCase));
+        // EVE layout: SortHeaders > Container > Header* > EveLabelSmall (_setText=column name)
+        // Each Header has _hint='Icon' etc. — we want _setText/_text from label children only.
+        var sortHeaders = overviewNode.FindFirst(n =>
+            n.Node.PythonObjectTypeName.Contains("SortHeaders", StringComparison.OrdinalIgnoreCase));
 
-        if (headerRow != null)
+        if (sortHeaders != null)
         {
-            foreach (var child in headerRow.Children)
+            // Header nodes may be direct children or wrapped in one Container level
+            var headerNodes = sortHeaders.FindAll(n =>
+                string.Equals(n.Node.PythonObjectTypeName, "Header",
+                    StringComparison.OrdinalIgnoreCase));
+
+            foreach (var headerNode in headerNodes)
             {
-                // Skip glyph-only text (same fix as ContextMenuEntry.Text)
-                var text = (child.GetAllContainedDisplayTexts()
-                                 .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter))
-                           ?? child.GetAllContainedDisplayTexts().FirstOrDefault())?.Trim();
+                // Collect _setText / _text from descendants only — skip _hint (contains "Icon" etc.)
+                var text = headerNode
+                    .FindAll(n => n.Node.GetDictString("_setText") != null ||
+                                  n.Node.GetDictString("_text")    != null)
+                    .Select(n => EveTextUtil.StripTags(
+                                     n.Node.GetDictString("_setText") ??
+                                     n.Node.GetDictString("_text")))
+                    .FirstOrDefault(t => t?.Length >= 2 && t.Any(char.IsLetter));
+
                 if (!string.IsNullOrEmpty(text))
-                    headers.Add((text, child.Region.X));
+                    headers.Add((text!, headerNode.Region.X));
+            }
+        }
+
+        // Fallback: _name="headers" container or any non-window Header type
+        if (headers.Count == 0)
+        {
+            var headerRow = overviewNode.FindFirst(n =>
+                string.Equals(n.Node.GetDictString("_name"), "headers",
+                    StringComparison.OrdinalIgnoreCase));
+            headerRow ??= overviewNode.FindFirst(n =>
+                n.Node.PythonObjectTypeName.Contains("Header",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !n.Node.PythonObjectTypeName.Contains("SmallWindow",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !n.Node.PythonObjectTypeName.Contains("SortHeaders",
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (headerRow != null)
+            {
+                foreach (var child in headerRow.Children)
+                {
+                    var text = (child.GetAllContainedDisplayTexts()
+                                     .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter))
+                               ?? child.GetAllContainedDisplayTexts().FirstOrDefault())?.Trim();
+                    if (!string.IsNullOrEmpty(text))
+                        headers.Add((text, child.Region.X));
+                }
             }
         }
 
