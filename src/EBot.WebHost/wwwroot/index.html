@@ -518,15 +518,20 @@ async function loadInitialState() {
 
 function updateBotState(state, name, desc) {
   const pill = $('state-pill');
-  pill.textContent = state.toUpperCase();
-  pill.className = 'bot-pill ' + state.toLowerCase();
+  const s = (state || 'Idle').charAt(0).toUpperCase() + (state || 'Idle').slice(1).toLowerCase();
+  
+  pill.textContent = s.toUpperCase();
+  pill.className = 'bot-pill ' + s.toLowerCase();
   
   if (name) {
     $('bot-desc').textContent = `${name}: ${desc || ''}`;
-    $('btn-stop').disabled = state === 'Idle';
-    $('btn-pause').disabled = state !== 'Running';
-    $('btn-resume').disabled = state !== 'Paused';
+  } else if (s === 'Idle') {
+    $('bot-desc').textContent = 'No active bot';
   }
+
+  $('btn-stop').disabled   = s === 'Idle';
+  $('btn-pause').disabled  = s !== 'Running';
+  $('btn-resume').disabled = s !== 'Paused';
 }
 
 function renderDashboard(gs) {
