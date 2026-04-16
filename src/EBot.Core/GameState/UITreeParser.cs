@@ -50,6 +50,7 @@ public sealed partial class UITreeParser
             Neocom = FindNeocom(root),
             MessageBoxes = FindMessageBoxes(root),
             StationWindow = FindStationWindow(root),
+            MiningScanResultsWindow = FindMiningScanResultsWindow(root),
         };
     }
 
@@ -503,21 +504,16 @@ public sealed partial class UITreeParser
             .Select(e => BuildOverviewEntry(e, headers))
             .ToList();
 
-        // Extract overview filter tabs
-        var tabs = new List<OverviewTab>();
-        var tabGroup = overviewNode.QueryFirst("@TabGroup") ?? overviewNode.QueryFirst("@OverviewTab");
-        if (tabGroup != null)
-        {
-            foreach (var tab in tabGroup.Children)
-            {
+        var tabs = overviewNode.QueryAll("@OverviewTab")
+            .Select(tab => {
                 var name = tab.GetAllContainedDisplayTexts().FirstOrDefault();
-                if (string.IsNullOrWhiteSpace(name)) continue;
                 bool isActive = tab.Node.GetDictBool("_selected") == true
                     || tab.Node.GetDictBool("selected") == true
                     || (tab.Node.GetDictString("_state") ?? "").Contains("selected", StringComparison.OrdinalIgnoreCase);
-                tabs.Add(new OverviewTab { UINode = tab, Name = name, IsActive = isActive });
-            }
-        }
+                return new OverviewTab { UINode = tab, Name = name, IsActive = isActive };
+            })
+            .Where(t => !string.IsNullOrWhiteSpace(t.Name))
+            .ToList();
 
         return new OverviewWindow
         {
@@ -1040,6 +1036,77 @@ public sealed partial class UITreeParser
         };
     }
 
+    private MiningScanResultsWindow? FindMiningScanResultsWindow(UITreeNodeWithDisplayRegion root)
+    {
+        var node = root.QueryFirst("@MiningScanResultsWindow") ?? root.QueryFirst("@SurveyScanView");
+        if (node == null) return null;
+
+        var entries = new List<MiningScanEntry>();
+        
+        // Find all text-bearing nodes that look like scan entries
+        var listGroups = node.QueryAll("@ListGroup");
+        var individualLabels = node.QueryAll("[_name=entryLabel]");
+        
+        var allNodes = listGroups.Concat(individualLabels).OrderBy(n => n.Region.Y).ToList();
+
+        foreach (var n in allNodes)
+        {
+            var text = n.GetAllContainedDisplayTexts().FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(text)) continue;
+
+            bool isGroup = n.Node.PythonObjectTypeName == "ListGroup";
+            
+            if (isGroup)
+            {
+                // Regex for group header: "Scordite [2] <color=...>113 ISK / m³</color>"
+                var match = Regex.Match(text, @"^(.*)\s+\[(\d+)\]");
+                
+                // Detection: if there are entryLabels below this group before the next group, it's expanded.
+                // Simpler detection: check if it has a child of type TextBody (entryLabel)
+                bool isExpanded = n.QueryFirst("[_name=entryLabel]") != null;
+
+                entries.Add(new MiningScanEntry
+                {
+                    UINode = n,
+                    OreName = match.Success ? match.Groups[1].Value.Trim() : text,
+                    Quantity = match.Success ? int.Parse(match.Groups[2].Value) : null,
+                    IsGroup = true,
+                    IsExpanded = isExpanded,
+                    ExpanderNode = n.QueryFirst("@GlowSprite") ?? n.QueryFirst("@Sprite"),
+                    ValueText = text.Contains("ISK") ? text : null,
+                });
+            }
+            else
+            {
+                // entryLabel: "Name<t><right>Quantity<t><right>Volume m3<t><right>Value ISK<t><right>Distance"
+                var parts = text.Split("<t>");
+                if (parts.Length >= 2)
+                {
+                    var oreName = EveTextUtil.StripTags(parts[0]).Trim();
+                    int.TryParse(EveTextUtil.StripTags(parts[1]).Replace(",", "").Trim(), out var qty);
+                    var distText = parts[^1].Replace("<right>", "").Trim();
+                    
+                    entries.Add(new MiningScanEntry
+                    {
+                        UINode = n,
+                        OreName = oreName,
+                        Quantity = qty,
+                        IsGroup = false,
+                        DistanceInMeters = ParseDistanceText(distText),
+                        ValueText = parts.Length > 3 ? parts[3] : null,
+                    });
+                }
+            }
+        }
+
+        return new MiningScanResultsWindow
+        {
+            UINode = node,
+            ScanButton = node.QueryFirst(":has-text('Scan')") ?? node.QueryFirst("@Button"),
+            Entries = entries,
+        };
+    }
+
     /// <summary>
     /// Finds the undock button in the station lobby. Prefers a Button-type container
     /// over a text-label child so that clicks land on the full clickable region.
@@ -1085,7 +1152,10 @@ public sealed partial class UITreeParser
     private static double? ParseDistanceText(string text)
     {
         var match = DistanceRegex().Match(text);
-        if (!match.Success || !double.TryParse(match.Groups[1].Value.Replace(",", ""), out var value))
+        if (!match.Success) return null;
+        
+        var valGroup = match.Groups[1].Value;
+        if (!double.TryParse(valGroup.Replace(",", ""), out var value))
             return null;
 
         var unit = match.Groups[2].Value.Trim().ToLowerInvariant();

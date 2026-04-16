@@ -26,29 +26,91 @@ public sealed partial class MiningBot
             new ActionNode("Unload state machine", ctx =>
             {
                 var phase = ctx.Blackboard.Get<string>("unload_phase") ?? "";
+                var ticks = ctx.Blackboard.Get<int>("unload_ticks");
+                ctx.Blackboard.Set("unload_ticks", ticks + 1);
+
+                void Progress(string next) { ctx.Blackboard.Set("unload_phase", next); ctx.Blackboard.Set("unload_ticks", 0); }
+
                 switch (phase)
                 {
                     case "":
-                        ctx.KeyPress(VirtualKey.C, VirtualKey.Alt);
-                        ctx.Wait(TimeSpan.FromSeconds(1.5));
-                        ctx.Blackboard.Set("unload_phase", "find_orehold");
+                        if (ctx.GameState.ParsedUI.InventoryWindows.Any())
+                        {
+                            ctx.Log("[Mining] Unload: Inventory already open.");
+                            Progress("find_orehold");
+                        }
+                        else
+                        {
+                            ctx.Log("[Mining] Unload: Opening inventory (Alt+C)");
+                            ctx.KeyPress(VirtualKey.C, VirtualKey.Alt);
+                            ctx.Wait(TimeSpan.FromSeconds(1.5));
+                            Progress("find_orehold");
+                        }
                         return NodeStatus.Running;
 
                     case "find_orehold":
                     {
                         var oreHold = FindOreHoldWindow(ctx);
-                        if (oreHold == null)
+                        if (oreHold != null)
                         {
-                            var link = ctx.GameState.ParsedUI.UITree?.FindFirst(n =>
-                                n.GetAllContainedDisplayTexts()
-                                 .Any(t => t.Contains("Ore Hold",
-                                     StringComparison.OrdinalIgnoreCase))
-                                && n.Region.Width > 10 && n.Region.Height > 6);
-                            if (link != null) { ctx.Click(link); ctx.Wait(TimeSpan.FromMilliseconds(700)); }
+                            ctx.Log($"[Mining] Unload: Found {oreHold.HoldType} hold.");
+                            if (oreHold.Items.Count == 0) { FinishUnload(ctx, 0); return NodeStatus.Success; }
+                            Progress("stack_all");
                             return NodeStatus.Running;
                         }
-                        if (oreHold.Items.Count == 0) { FinishUnload(ctx, 0); return NodeStatus.Success; }
-                        ctx.Blackboard.Set("unload_phase", "stack_all");
+
+                        // Not found. Check if ANY inventory is open.
+                        var anyInv = ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
+                        if (anyInv == null)
+                        {
+                            if (ticks > 5) { ctx.Log("[Mining] Unload: Inventory not found, retrying toggle."); ctx.KeyPress(VirtualKey.C, VirtualKey.Alt); ctx.Blackboard.Set("unload_ticks", 0); }
+                            return NodeStatus.Running;
+                        }
+
+                        // If docked, we might need to expand "Active Ship" or select "Inventory" tab
+                        if (ctx.GameState.IsDocked)
+                        {
+                            var activeShipNode = anyInv.NavEntries.FirstOrDefault(e => 
+                                e.Label?.Contains("Active Ship", StringComparison.OrdinalIgnoreCase) == true ||
+                                e.Label?.Contains("Retriever", StringComparison.OrdinalIgnoreCase) == true ||
+                                e.Label?.Contains("Venture",   StringComparison.OrdinalIgnoreCase) == true);
+                            
+                            if (activeShipNode != null && ctx.Blackboard.IsCooldownReady("expand_ship"))
+                            {
+                                ctx.Log($"[Mining] Unload: Docked. Expanding '{activeShipNode.Label}' in sidebar.");
+                                ctx.Click(activeShipNode.UINode);
+                                ctx.Blackboard.SetCooldown("expand_ship", TimeSpan.FromSeconds(3));
+                                return NodeStatus.Running;
+                            }
+                        }
+
+                        // Inventory is open but Ore Hold not found in sidebar?
+                        var oreEntry = anyInv.NavEntries.FirstOrDefault(e => e.HoldType == InventoryHoldType.Mining);
+                        if (oreEntry != null)
+                        {
+                            ctx.Log($"[Mining] Unload: Clicking '{oreEntry.Label}' in sidebar.");
+                            ctx.Click(oreEntry.UINode);
+                            ctx.Wait(TimeSpan.FromSeconds(1));
+                            return NodeStatus.Running;
+                        }
+
+                        // Try to find a link in the tree as last resort
+                        var link = ctx.GameState.ParsedUI.UITree?.FindFirst(n =>
+                            n.GetAllContainedDisplayTexts().Any(t => t.Contains("Ore Hold", StringComparison.OrdinalIgnoreCase))
+                            && n.Region.Width > 10 && n.Region.Height > 6);
+                        
+                        if (link != null) 
+                        { 
+                            ctx.Log("[Mining] Unload: Clicking Ore Hold link in UI tree.");
+                            ctx.Click(link); 
+                            ctx.Wait(TimeSpan.FromMilliseconds(700)); 
+                        }
+                        else if (ticks > 15)
+                        {
+                            ctx.Log("[Mining] Unload: Cannot find Ore Hold. Giving up on this cycle.");
+                            FinishUnload(ctx, 0);
+                            return NodeStatus.Failure;
+                        }
                         return NodeStatus.Running;
                     }
 
@@ -94,22 +156,40 @@ public sealed partial class MiningBot
                     {
                         ctx.Blackboard.Set("menu_expected", false);
                         if (!ctx.GameState.HasContextMenu)
-                        { ctx.Blackboard.Set("unload_phase", "open_menu"); return NodeStatus.Running; }
+                        { 
+                            if (ticks > 5) Progress("open_menu"); 
+                            return NodeStatus.Running; 
+                        }
+                        
                         var menu  = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
-                        var entry = menu?.Entries.FirstOrDefault(e =>
-                            e.Text?.Contains("hangar",   StringComparison.OrdinalIgnoreCase) == true ||
+                        if (menu == null) { Progress("open_menu"); return NodeStatus.Running; }
+
+                        ctx.Log($"[Mining] Unload: Menu seen with {menu.Entries.Count} entries.");
+                        
+                        // Look for the specific "Item Hangar" or "Station Hangar" target
+                        var targetEntry = menu.Entries.FirstOrDefault(e =>
+                            e.Text?.Contains("Item Hangar", StringComparison.OrdinalIgnoreCase) == true ||
+                            e.Text?.Contains("Station Hangar", StringComparison.OrdinalIgnoreCase) == true);
+                        
+                        // Fallback to "Move To..." or "Move All"
+                        var moveEntry = menu.Entries.FirstOrDefault(e =>
                             e.Text?.Contains("Move To",  StringComparison.OrdinalIgnoreCase) == true ||
                             e.Text?.Contains("Move All", StringComparison.OrdinalIgnoreCase) == true);
+
+                        var entry = targetEntry ?? moveEntry;
+
                         if (entry != null)
                         {
+                            ctx.Log($"[Mining] Unload: Clicking '{entry.Text}'");
                             ctx.Click(entry.UINode);
                             ctx.Wait(TimeSpan.FromSeconds(1));
-                            ctx.Blackboard.Set("unload_phase", "verify");
+                            Progress("verify");
                         }
                         else
                         {
+                            ctx.Log("[Mining] Unload: Could not find move action in menu.");
                             ctx.KeyPress(VirtualKey.Escape);
-                            ctx.Blackboard.Set("unload_phase", "open_menu");
+                            Progress("open_menu");
                         }
                         return NodeStatus.Running;
                     }
@@ -203,6 +283,26 @@ public sealed partial class MiningBot
     private bool IsOreHoldFull(BotContext ctx)
     {
         var w = FindOreHoldWindow(ctx);
-        return w?.CapacityGauge?.FillPercent >= OreHoldFullPercent;
+        if (w == null) return false;
+
+        var pct = w.CapacityGauge?.FillPercent ?? 0;
+        
+        // Log if we are getting close or full
+        if (pct >= 80)
+        {
+            if (ctx.Blackboard.IsCooldownReady("full_hold_log"))
+            {
+                ctx.Log($"[Mining] Mining hold status: {pct:F1}% full");
+                ctx.Blackboard.SetCooldown("full_hold_log", TimeSpan.FromSeconds(30));
+            }
+        }
+
+        if (pct >= OreHoldFullPercent)
+        {
+            ctx.Log($"[Mining] Mining hold is FULL ({pct:F1}%). Ready to unload.");
+            return true;
+        }
+
+        return false;
     }
 }

@@ -76,6 +76,8 @@ public sealed partial class MiningBot
         var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
         if (ov == null) return null;
 
+        ctx.Log($"[Mining] Searching for station in overview. Home set to: '{homeStation ?? "None"}'");
+
         if (!string.IsNullOrEmpty(homeStation))
         {
             var match = ov.Entries.FirstOrDefault(e =>
@@ -84,15 +86,46 @@ public sealed partial class MiningBot
                     .Concat(e.Texts).Concat(e.CellsTexts.Values);
                 return texts.Any(t => t.Contains(homeStation, StringComparison.OrdinalIgnoreCase));
             });
-            if (match != null) return match;
+            if (match != null) 
+            {
+                ctx.Log($"[Mining] Found exact home station match: '{match.Name}'");
+                return match;
+            }
+            
+            // Try partial match if no exact match
+            var partial = ov.Entries.FirstOrDefault(e =>
+            {
+                var texts = new[] { e.Name ?? "", e.ObjectType ?? "" }
+                    .Concat(e.Texts).Concat(e.CellsTexts.Values);
+                return texts.Any(t => homeStation.Contains(t, StringComparison.OrdinalIgnoreCase) || t.Contains(homeStation, StringComparison.OrdinalIgnoreCase));
+            });
+            if (partial != null)
+            {
+                ctx.Log($"[Mining] Found partial home station match: '{partial.Name}'");
+                return partial;
+            }
         }
 
-        return ov.Entries.FirstOrDefault(e =>
+        // Broad fallback
+        var keywords = _stationKeywords.Concat(new[] { "Station", "Structure", "Citadel", "Fortizar", "Keepstar", "Athanor", "Tatara", "Raitaru", "Azbel" }).ToList();
+
+        var firstStation = ov.Entries.FirstOrDefault(e =>
         {
             var texts = new[] { e.Name ?? "", e.ObjectType ?? "" }
                 .Concat(e.Texts).Concat(e.CellsTexts.Values);
-            return texts.Any(t => _stationKeywords.Any(k => t.Contains(k, StringComparison.OrdinalIgnoreCase)));
+            return texts.Any(t => keywords.Any(k => t.Contains(k, StringComparison.OrdinalIgnoreCase)));
         });
+
+        if (firstStation != null)
+        {
+            ctx.Log($"[Mining] No home station match found. Falling back to first available dockable: '{firstStation.Name}' ({firstStation.ObjectType})");
+        }
+        else
+        {
+            ctx.Log("[Mining] No dockable objects found in current overview tab.");
+        }
+
+        return firstStation;
     }
 
     private static bool IsAsteroid(OverviewEntry e)

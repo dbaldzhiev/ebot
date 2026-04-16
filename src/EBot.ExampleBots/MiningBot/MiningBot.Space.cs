@@ -74,11 +74,56 @@ public sealed partial class MiningBot
         new SequenceNode("Mine at belt",
             new ConditionNode("Asteroids visible?", ctx => AnyAsteroidsInOverview(ctx)),
             new SelectorNode("Mining tasks",
+                BT_MaintainSurveyor(),
                 BT_AcquireLaserRange(),
                 BT_ApproachPrimaryAsteroid(),
                 BT_MaintainTargets(),
                 BT_ActivateLasers()
             ));
+
+    private static IBehaviorNode BT_MaintainSurveyor() =>
+        new ActionNode("Maintain Surveyor", ctx =>
+        {
+            var ui = ctx.GameState.ParsedUI;
+            if (ui.MiningScanResultsWindow == null)
+            {
+                if (ctx.Blackboard.IsCooldownReady("surveyor_toggle"))
+                {
+                    ctx.Log("[Mining] Opening Mining Surveyor (M)");
+                    ctx.KeyPress(VirtualKey.M);
+                    ctx.Blackboard.SetCooldown("surveyor_toggle", TimeSpan.FromSeconds(5));
+                }
+                return NodeStatus.Failure;
+            }
+
+            // Window is open. Should we scan? 
+            // Only scan if cooldown is ready AND (window is empty OR 5 minutes passed)
+            bool isEmpty = ui.MiningScanResultsWindow.Entries.Count == 0;
+            bool timerReady = ctx.Blackboard.IsCooldownReady("surveyor_scan");
+            
+            if (timerReady && (isEmpty || ctx.Blackboard.IsCooldownReady("surveyor_scan_long")))
+            {
+                if (ui.MiningScanResultsWindow.ScanButton != null)
+                {
+                    ctx.Log("[Mining] Triggering Mining Surveyor Scan");
+                    ctx.Click(ui.MiningScanResultsWindow.ScanButton);
+                    ctx.Blackboard.SetCooldown("surveyor_scan", TimeSpan.FromSeconds(20)); // Short cooldown for empty
+                    ctx.Blackboard.SetCooldown("surveyor_scan_long", TimeSpan.FromMinutes(5));
+                }
+            }
+
+            // If we have groups, make sure they are expanded
+            var collapsedGroup = ui.MiningScanResultsWindow.Entries.FirstOrDefault(e => e.IsGroup && !e.IsExpanded);
+            if (collapsedGroup != null && collapsedGroup.ExpanderNode != null && ctx.Blackboard.IsCooldownReady("surveyor_expand"))
+            {
+                ctx.Log($"[Mining] Expanding Surveyor group: {collapsedGroup.OreName}");
+                ctx.Click(collapsedGroup.ExpanderNode);
+                ctx.Blackboard.SetCooldown("surveyor_expand", TimeSpan.FromSeconds(2));
+                return NodeStatus.Running;
+            }
+
+            return NodeStatus.Failure;
+        });
 
     // ─── Sub-Tree: Laser Range ───────────────────────────────────────────────
 

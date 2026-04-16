@@ -51,6 +51,9 @@ public sealed class ParsedUI
     /// <summary>Probe scanner window.</summary>
     public ProbeScannerWindow? ProbeScannerWindow { get; init; }
 
+    /// <summary>Mining survey results window.</summary>
+    public MiningScanResultsWindow? MiningScanResultsWindow { get; init; }
+
     /// <summary>Fleet window.</summary>
     public FleetWindow? FleetWindow { get; init; }
 }
@@ -337,6 +340,28 @@ public sealed class MessageBox
 public sealed class ProbeScannerWindow
 {
     public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
+}
+
+// ─── Mining Surveyor ────────────────────────────────────────────────────────
+
+public sealed class MiningScanResultsWindow
+{
+    public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
+    public UITreeNodeWithDisplayRegion? ScanButton { get; init; }
+    public IReadOnlyList<MiningScanEntry> Entries { get; init; } = [];
+}
+
+public sealed class MiningScanEntry
+{
+    public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
+    public string? OreName { get; init; }
+    public int? Quantity { get; init; }
+    public double? Volume { get; init; }
+    public string? ValueText { get; init; }
+    public double? DistanceInMeters { get; init; }
+    public bool IsGroup { get; init; }
+    public bool IsExpanded { get; init; }
+    public UITreeNodeWithDisplayRegion? ExpanderNode { get; init; }
 }
 
 public sealed class FleetWindow

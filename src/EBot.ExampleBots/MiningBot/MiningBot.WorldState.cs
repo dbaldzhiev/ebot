@@ -63,6 +63,8 @@ public sealed partial class MiningBot
         // 3. Asteroids & Targets
         var targets = ui.Targets.Where(IsAsteroid).ToList();
         var currentAsteroids = AsteroidsInOverview(ctx).ToList();
+        var surveyorEntries = ui.MiningScanResultsWindow?.Entries ?? [];
+        var intendedTargetName = ctx.Blackboard.Get<string>("intended_target_name");
 
         state.Asteroids.Clear();
         foreach (var ov in currentAsteroids)
@@ -76,19 +78,45 @@ public sealed partial class MiningBot
                     t.TextLabel.Contains(ov.Name, StringComparison.OrdinalIgnoreCase)
                 ));
             
+            // Try to find matching entry in surveyor for better value estimation
+            var surveyorMatch = surveyorEntries.FirstOrDefault(s => !s.IsGroup && s.OreName != null && ov.Name != null &&
+                (ov.Name.Contains(s.OreName, StringComparison.OrdinalIgnoreCase) || s.OreName.Contains(ov.Name, StringComparison.OrdinalIgnoreCase)));
+
+            var value = OreValueOf(ov);
+            if (surveyorMatch != null)
+            {
+                // Boost value if surveyor confirms high quantity or specific grade
+                value += (surveyorMatch.Quantity ?? 0) / 1000;
+            }
+
             var entity = new AsteroidEntity
             {
                 Name = ov.Name ?? "Unknown",
                 DistanceText = ov.DistanceText ?? "???",
                 DistanceM = dist,
-                Value = OreValueOf(ov),
+                Value = value,
                 IsLocked = isLocked,
                 UINode = ov.UINode
             };
             state.Asteroids.Add(entity);
         }
 
-        state.PrimaryTarget = state.Asteroids.OrderByDescending(a => a.Value).ThenBy(a => a.DistanceM).FirstOrDefault();
+        // Target selection: 
+        // 1. Prefer the target we ALREADY decided to mine
+        // 2. Prefer already locked asteroids
+        // 3. Prefer higher value (surveyor enriched)
+        // 4. Prefer closest
+        state.PrimaryTarget = state.Asteroids
+            .OrderByDescending(a => intendedTargetName != null && a.Name.Equals(intendedTargetName, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(a => a.IsLocked) 
+            .ThenByDescending(a => a.Value)
+            .ThenBy(a => a.DistanceM)
+            .FirstOrDefault();
+
+        if (state.PrimaryTarget != null)
+        {
+            ctx.Blackboard.Set("intended_target_name", state.PrimaryTarget.Name);
+        }
 
         // 4. Persistence & Velocity (Optional refinement)
         if (state.PrimaryTarget != null && state.ShipSpeed > 5)

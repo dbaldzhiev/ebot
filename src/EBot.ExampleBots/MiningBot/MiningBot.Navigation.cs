@@ -40,6 +40,7 @@ public sealed partial class MiningBot
                         var station = FindStationInOverview(ctx);
                         if (station != null)
                         {
+                            ctx.Log($"[Mining] Found station '{station.Name}' in overview. Warping to dock.");
                             ctx.Blackboard.Set("menu_expected", true);
                             ctx.RightClick(station.UINode);
                             ctx.Wait(TimeSpan.FromMilliseconds(500));
@@ -52,10 +53,42 @@ public sealed partial class MiningBot
                                 .InfoPanelRoute?.RouteElementMarkers.FirstOrDefault();
                             if (route != null)
                             {
+                                ctx.Log("[Mining] No station in overview, using route panel destination.");
                                 ctx.Blackboard.Set("menu_expected", true);
                                 ctx.RightClick(route);
                                 ctx.Wait(TimeSpan.FromMilliseconds(500));
                                 ctx.Blackboard.Set("return_phase", "warp_menu");
+                            }
+                            else
+                            {
+                                // If we are here, we can't find a station. Try toggling overview tabs.
+                                if (ctx.Blackboard.IsCooldownReady("return_tab_toggle"))
+                                {
+                                    var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
+                                    if (ov != null && ov.Tabs.Count > 1)
+                                    {
+                                        // Find a tab that isn't active and looks like it might have stations
+                                        var nextTab = ov.Tabs.FirstOrDefault(t => !t.IsActive && 
+                                            (t.Name?.Contains("General", StringComparison.OrdinalIgnoreCase) == true ||
+                                             t.Name?.Contains("Station", StringComparison.OrdinalIgnoreCase) == true ||
+                                             t.Name?.Contains("Warp",    StringComparison.OrdinalIgnoreCase) == true));
+                                        
+                                        // Fallback: just pick the next tab
+                                        nextTab ??= ov.Tabs.FirstOrDefault(t => !t.IsActive);
+
+                                        if (nextTab != null)
+                                        {
+                                            ctx.Log($"[Mining] No station found. Switching overview to '{nextTab.Name}' tab.");
+                                            ctx.Click(nextTab.UINode);
+                                            ctx.Blackboard.SetCooldown("return_tab_toggle", TimeSpan.FromSeconds(5));
+                                        }
+                                    }
+                                    else
+                                    {
+                                        ctx.Log("[Mining] WARNING: Cannot find station or route. Please set home station or add it to overview.");
+                                        ctx.Blackboard.SetCooldown("return_tab_toggle", TimeSpan.FromSeconds(10));
+                                    }
+                                }
                             }
                         }
                         return NodeStatus.Running;
