@@ -56,6 +56,7 @@ public static class Program
         var pidStr = GetArgValue(args, "--pid");
         var exePath = GetArgValue(args, "--exe") ?? "read-memory-64-bit.exe";
         var tickStr = GetArgValue(args, "--tick");
+        var debugMode = args.Any(a => a.Equals("--debug", StringComparison.OrdinalIgnoreCase));
 
         IBot bot = botName.ToLowerInvariant() switch
         {
@@ -65,6 +66,7 @@ public static class Program
 
         var settings = bot.GetDefaultSettings();
         settings.Sanderling.ExecutablePath = exePath;
+        if (debugMode) settings.LogMemoryReadings = true;
 
         if (pidStr != null && int.TryParse(pidStr, out var pid))
             settings.Sanderling.ProcessId = pid;
@@ -250,6 +252,7 @@ public static class Program
         Console.WriteLine("    --pid <pid>    EVE process ID (default: auto-detect)");
         Console.WriteLine("    --exe <path>   Path to read-memory-64-bit.exe");
         Console.WriteLine("    --tick <ms>    Tick interval in milliseconds");
+        Console.WriteLine("    --debug        Enable frame/screenshot logging");
         Console.WriteLine();
         Console.WriteLine("  list-processes   List running EVE Online clients");
         Console.WriteLine();

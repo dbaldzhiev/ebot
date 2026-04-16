@@ -15,4 +15,4 @@ echo [EBot] Starting on http://localhost:5000
 echo [EBot] Open browser: http://localhost:5000
 echo [EBot] Press Ctrl+C to stop.
 echo.
-dotnet run --project src/EBot.WebHost/EBot.WebHost.csproj -c Release --no-build
+dotnet run --project src/EBot.WebHost/EBot.WebHost.csproj -c Release --no-build --debug

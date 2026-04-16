@@ -60,7 +60,9 @@ public sealed class BotOrchestrator : IDisposable
     public static readonly IReadOnlyList<IBot> AvailableBots =
     [
         new MiningBot(),
-        new TravelBot(),   // shown in dropdown; destination set at start time
+        new MiningBotScripted(),
+        new TravelBot(),
+        new TravelBotScripted(),
     ];
 
     // ─── State ──────────────────────────────────────────────────────────────
@@ -79,6 +81,12 @@ public sealed class BotOrchestrator : IDisposable
     public bool IsMonitoring => _isMonitorMode;
 
     public bool SurvivalEnabled { get; private set; } = false;
+
+    /// <summary>Access to the underlying runner for diagnostic tools.</summary>
+    public BotRunner? Runner => _runner;
+
+    /// <summary>Manually trigger a diagnostic dump via the runner.</summary>
+    public void TriggerEmergencyDump(string reason) => _runner?.TriggerEmergencyDump(reason);
 
     /// <summary>Returns the active MiningBot instance if one is running, otherwise null.</summary>
     public MiningBot? ActiveMiningBot => _activeBot as MiningBot;
@@ -636,7 +644,7 @@ public sealed class BotOrchestrator : IDisposable
                     w.CapacityGauge.Used, w.CapacityGauge.Maximum,
                     (w.Items ?? []).Select(i => new CargoItemDto(i.Name, i.Quantity)).ToList());
             }
-            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache));
+            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache, TicksPerMinute));
         };
 
         runner.OnError += ex =>
@@ -658,7 +666,7 @@ public sealed class BotOrchestrator : IDisposable
         State.ToString(),
         CurrentBotName,
         _activeBot?.Description,
-        _lastContext != null ? DtoMapper.ToDto(_lastContext, _holdCache) : null,
+        _lastContext != null ? DtoMapper.ToDto(_lastContext, _holdCache, TicksPerMinute) : null,
         port,
         SurvivalEnabled);
 

@@ -3,855 +3,474 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EBot – EVE Command &amp; Control</title>
+  <title>EBot Dashboard // Command & Control</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:          #080c10;
-      --bg2:         #0d1117;
-      --bg3:         #131920;
-      --border:      #1e3a52;
-      --accent:      #4fc3f7;
-      --accent2:     #00bcd4;
-      --text:        #c9d8e8;
-      --text-dim:    #5a7a99;
-      --green:       #4caf7d;
-      --yellow:      #f9a825;
-      --red:         #ef5350;
-      --orange:      #ff7043;
-      --purple:      #ce93d8;
-      --glow:        0 0 8px rgba(79,195,247,.35);
-      --glow-green:  0 0 8px rgba(76,175,125,.4);
+      --bg:          #06090f;
+      --panel:       #0d1117;
+      --panel-hdr:   #161b22;
+      --border:      #30363d;
+      --border-brt:  #484f58;
+      --accent:      #58a6ff;
+      --accent-dim:  #1f6feb;
+      --cyan:        #39c5bb;
+      --text:        #c9d1d9;
+      --text-dim:    #8b949e;
+      --green:       #3fb950;
+      --yellow:      #d29922;
+      --red:         #f85149;
+      --orange:      #db6d28;
+      --purple:      #bc8cff;
+      --glow:        0 0 10px rgba(88,166,255,.3);
     }
 
-    html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; }
-    body {
-      background: var(--bg); color: var(--text);
-      display: grid; grid-template-rows: auto 1fr;
-      height: 100vh; overflow: hidden;
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+
+    .app-container {
+      display: grid;
+      grid-template-columns: 280px 1fr 340px;
+      grid-template-rows: 100vh;
+      height: 100vh;
     }
 
-    /* ── Header ── */
-    header {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 16px; background: var(--bg2);
-      border-bottom: 1px solid var(--border); flex-wrap: wrap;
+    /* ─── Sidebar ────────────────────────────────────────────────────────── */
+    aside {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      overflow-y: auto;
     }
-    .logo { font-size: 1.3rem; font-weight: 700; letter-spacing: 2px; color: var(--accent); text-shadow: var(--glow); }
-    .logo span { color: var(--text-dim); font-weight: 300; }
-    #conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); flex-shrink: 0; transition: background .3s; }
-    #conn-dot.ok { background: var(--green); box-shadow: var(--glow-green); }
 
-    .state-pill { padding: 3px 10px; border-radius: 12px; font-size: .72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; background: #1a2a3a; color: var(--text-dim); border: 1px solid var(--border); }
-    .state-pill.running { background: #0d2a1a; color: var(--green); border-color: var(--green); }
-    .state-pill.paused  { background: #2a2000; color: var(--yellow); border-color: var(--yellow); }
+    aside.launcher-sidebar {
+      border-right: none;
+      border-left: 1px solid var(--border);
+      padding: 15px;
+    }
 
-    .controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .btn { padding: 4px 12px; border-radius: 6px; border: 1px solid; font-size: .76rem; font-weight: 600; cursor: pointer; transition: all .15s; white-space: nowrap; background: transparent; }
-    .btn-primary { color: var(--accent);    border-color: var(--accent);  background: #0a2a3a; }
-    .btn-primary:hover { background: #143a4a; box-shadow: var(--glow); }
-    .btn-danger  { color: var(--red);       border-color: var(--red);     background: #2a0a0a; }
-    .btn-danger:hover  { background: #3a1010; }
-    .btn-warn    { color: var(--yellow);    border-color: var(--yellow);  background: #2a1f00; }
-    .btn-warn:hover    { background: #3a2a00; }
-    .btn-muted   { color: var(--text-dim);  border-color: var(--border);  background: var(--bg3); }
-    .btn-muted:hover   { border-color: var(--text-dim); color: var(--text); }
-    .btn-green   { color: var(--green);     border-color: var(--green);   background: #0a2a1a; }
-    .btn-green:hover   { background: #143a24; }
-    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .ap-result-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; transition: all .12s; font-size: 0.75rem; }
+    .ap-result-item:hover { background: #1c2128; border-color: var(--border); }
+    .ap-result-item.selected { background: rgba(88,166,255,0.1); border-color: var(--accent); }
+    .ap-result-name { font-weight: 600; color: var(--text); }
+    .ap-result-sys  { font-size: 0.65rem; color: var(--text-dim); }
 
-    .toggle-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-    .toggle-label  { font-size: .76rem; color: var(--text-dim); white-space: nowrap; }
-    .toggle { position: relative; display: inline-block; width: 44px; height: 22px; flex-shrink: 0; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .toggle-slider { position: absolute; inset: 0; border-radius: 22px; background: #1a2a3a; border: 1px solid var(--border); cursor: pointer; transition: background .25s; }
-    .toggle-slider::before { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; left: 2px; top: 2px; background: var(--text-dim); transition: transform .25s, background .25s; }
-    .toggle input:checked + .toggle-slider { background: #0d2a3a; border-color: var(--accent2); }
-    .toggle input:checked + .toggle-slider::before { transform: translateX(22px); background: var(--accent); }
-    .toggle.survival input:checked + .toggle-slider { background: #2a1500; border-color: var(--orange); }
-    .toggle.survival input:checked + .toggle-slider::before { background: var(--orange); }
+    input[type=text], input[type=number] {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); 
+      border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; outline: none;
+    }
+    input[type=text]:focus { border-color: var(--accent); }
 
-    #dpi-info { font-size: .7rem; color: var(--text-dim); white-space: nowrap; }
-    #dpi-scale-input { width: 48px; font-size: .76rem; padding: 3px 5px; text-align: center; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+    input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
-    /* ── Main 4-column layout ── */
-    main { display: grid; grid-template-columns: 300px 1fr 300px 300px; overflow: hidden; min-width: 0; }
-
-    .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
-    .panel:last-child { border-right: none; }
-    .panel-title { padding: 7px 12px; font-size: .68rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    .panel-body { flex: 1; overflow-y: auto; padding: 10px 12px; }
-    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-    /* ── Section headers ── */
-    .sec { font-size: .62rem; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent2); padding: 8px 0 3px; opacity: .75; }
-    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #111d28; font-size: .8rem; }
-    .stat-row:last-child { border-bottom: none; }
-    .stat-key { color: var(--text-dim); }
-    .bar-wrap { display: flex; align-items: center; gap: 5px; width: 120px; }
-    .bar-track { flex: 1; height: 6px; border-radius: 3px; background: #1a2a3a; overflow: hidden; }
-    .bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease, background .5s; }
-    .bar-fill.shield { background: var(--accent); } .bar-fill.armor { background: var(--yellow); }
-    .bar-fill.struct { background: var(--orange); } .bar-fill.cap   { background: var(--accent2); }
-    .bar-fill.cargo  { background: var(--purple); } .bar-fill.low   { background: var(--red) !important; }
-    .bar-pct { font-size: .7rem; color: var(--text-dim); width: 26px; text-align: right; }
-
-    /* ── Quick actions ── */
-    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 4px 0; }
-
-    /* ── Modules / cargo ── */
-    .module-grid { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0; }
-    .module-btn { width: 30px; height: 30px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg3); display: flex; align-items: center; justify-content: center; font-size: .62rem; font-weight: 600; color: var(--text-dim); transition: all .3s; position: relative; cursor: default; }
-    .module-btn.active     { border-color: var(--green);  background: #0a2a1a; color: var(--green);  box-shadow: 0 0 6px rgba(76,175,125,.35); }
-    .module-btn.overloaded { border-color: var(--red);    background: #2a0808; color: var(--red);    box-shadow: 0 0 6px rgba(239,83,80,.4); }
-    .module-btn.busy       { border-color: var(--yellow); background: #2a1f00; color: var(--yellow); }
-    .module-btn.offline    { border-color: #333; background: #111; color: #333; opacity: .5; }
-    .module-btn.hilite     { box-shadow: 0 0 0 2px var(--accent2); }
-    .module-state-dot { position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%; }
-    .module-state-dot.ov   { background: var(--red); }
-    .module-state-dot.busy { background: var(--yellow); }
-
-    .cargo-item { display: flex; justify-content: space-between; font-size: .75rem; padding: 2px 0; border-bottom: 1px solid #0d151e; }
-    .cargo-item:last-child { border-bottom: none; }
-    .cargo-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
-    .cargo-qty  { color: var(--text-dim); flex-shrink: 0; }
-
-    /* ── Tags / misc ── */
-    .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: .66rem; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
-    .tag.space  { background: #0a2a1a; color: var(--green); }
-    .tag.docked { background: #0a1a2a; color: var(--accent); }
-    .tag.warp   { background: #1a1a00; color: var(--yellow); }
-    .empty { color: var(--text-dim); font-style: italic; font-size: .78rem; padding: 6px 0; }
-    .context-entry { font-size: .73rem; color: var(--yellow); padding: 1px 0; }
-
-    /* ── Centre panel ── */
-    .center-panel { display: grid; grid-template-rows: 55% 45%; overflow: hidden; }
-    .bottom-panels { display: grid; grid-template-columns: 38% 62%; overflow: hidden; border-top: 1px solid var(--border); }
-
-    table { width: 100%; border-collapse: collapse; font-size: .78rem; }
-    th { text-align: left; padding: 4px 7px; color: var(--text-dim); font-size: .68rem; letter-spacing: .8px; border-bottom: 1px solid var(--border); }
-    td { padding: 4px 7px; border-bottom: 1px solid #101820; }
-    tr:last-child td { border-bottom: none; }
-    tr.attacking td { color: var(--red); }
-    tr.attacking td:first-child::before { content: '⚠ '; }
-
-    /* ── Log ── */
-    .log-entry { display: grid; grid-template-columns: 52px 34px 1fr; gap: 3px; padding: 2px 0; font-size: .73rem; line-height: 1.5; border-bottom: 1px solid #0d151e; }
-    .log-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-    .log-level { font-weight: 700; }
-    .log-level.Info  { color: var(--green); } .log-level.Warn  { color: var(--yellow); }
-    .log-level.Error, .log-level.Crit { color: var(--red); }
-    .log-level.Dbug, .log-level.Trce { color: var(--text-dim); }
-
-    .action-entry { display: grid; grid-template-columns: 48px 1fr; gap: 3px; padding: 2px 0; font-size: .71rem; line-height: 1.4; border-bottom: 1px solid #0a1218; font-family: 'Consolas', monospace; }
-    .action-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-    .action-desc { color: var(--accent); }
-
-    /* ── Diag overlay ── */
-    #diag-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.82); z-index:9999; overflow:auto; padding:24px; }
-    .diag-box { max-width:860px; margin:auto; background:#0d1117; border:1px solid #1e3a52; border-radius:8px; padding:20px; }
-
-    /* ── Autopilot panel ── */
-    .ap-search-row { display: flex; gap: 6px; margin: 6px 0; }
-    .ap-search-row input { flex: 1; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: .82rem; outline: none; }
-    .ap-search-row input:focus { border-color: var(--accent); }
-    .ap-search-row button { flex-shrink: 0; }
-
-    .ap-result-list { margin: 4px 0 2px; }
-    .ap-result-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; transition: all .12s; }
-    .ap-result-item:hover { background: #0d1e2c; border-color: var(--border); }
-    .ap-result-item.selected { background: #0a2035; border-color: var(--accent2); }
-    .ap-result-item input[type=radio] { accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
-    .ap-result-icon { width: 24px; height: 24px; border-radius: 3px; object-fit: contain; flex-shrink: 0; background: #111; }
-    .ap-result-icon-placeholder { width: 24px; height: 24px; border-radius: 3px; background: #1a2a3a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: .55rem; color: var(--text-dim); }
-    .ap-result-info { flex: 1; min-width: 0; }
-    .ap-result-name { font-size: .78rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ap-result-sys  { font-size: .67rem; color: var(--text-dim); }
-    .ap-result-save { font-size: .65rem; padding: 1px 6px; flex-shrink: 0; }
-
-    .ap-dest-list { margin: 2px 0; }
-    .ap-dest-item { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; transition: all .12s; }
-    .ap-dest-item:hover { background: #0d1e2c; border-color: var(--border); }
-    .ap-dest-item.selected { background: #0a2035; border-color: var(--accent2); }
-    .ap-dest-item input[type=radio] { accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
-    .ap-dest-icon { width: 22px; height: 22px; border-radius: 3px; object-fit: contain; flex-shrink: 0; background: #111; }
-    .ap-dest-icon-placeholder { width: 22px; height: 22px; border-radius: 3px; background: #1a2a3a; flex-shrink: 0; }
-    .ap-dest-info { flex: 1; min-width: 0; }
-    .ap-dest-name { font-size: .77rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ap-dest-sys  { font-size: .66rem; color: var(--text-dim); }
-    .ap-dest-del  { font-size: .65rem; color: var(--text-dim); cursor: pointer; padding: 1px 5px; border-radius: 3px; }
-    .ap-dest-del:hover { color: var(--red); background: #2a0808; }
-
-    .ap-dock-group { display: flex; flex-direction: column; gap: 5px; margin: 4px 0; }
-    .ap-radio-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; cursor: pointer; }
-    .ap-radio-row:hover { background: #0d1e2c; }
-    .ap-radio-row input[type=radio] { accent-color: var(--accent); cursor: pointer; }
-    .ap-radio-label { font-size: .8rem; }
-    .ap-radio-row.disabled { opacity: .4; cursor: not-allowed; }
-    .ap-radio-badge { font-size: .6rem; padding: 1px 5px; border-radius: 10px; background: #1a2a3a; color: var(--text-dim); letter-spacing: .5px; }
-
-    .ap-launch-row { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-    .ap-launch-row button { flex: 1; padding: 7px; font-size: .82rem; }
-
-    .search-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-left: 4px; vertical-align: middle; }
+    .search-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-left: 4px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: 2px; color: var(--accent); margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+    .logo-ebot { font-style: italic; }
+    .logo-version { font-size: 0.7rem; color: var(--text-dim); font-weight: 400; letter-spacing: normal; }
+
+    .engine-status { margin-bottom: 24px; padding: 12px; background: var(--panel-hdr); border-radius: 8px; border: 1px solid var(--border); }
+    .engine-rpm { font-family: monospace; font-size: 1.2rem; color: var(--cyan); text-shadow: 0 0 5px rgba(57,197,187,0.4); }
+    .engine-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+
+    .bot-pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--border); margin-bottom: 8px; }
+    .bot-pill.running { border-color: var(--green); color: var(--green); background: rgba(63,185,80,0.1); }
+    .bot-pill.idle { border-color: var(--text-dim); color: var(--text-dim); }
+    .bot-pill.paused { border-color: var(--yellow); color: var(--yellow); background: rgba(210,153,34,0.1); }
+
+    .nav-section { margin-bottom: 24px; }
+    .nav-title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1.5px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+
+    .btn { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-hdr); color: var(--text); font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; justify-content: center; }
+    .btn:hover:not(:disabled) { border-color: var(--accent); background: #1c2128; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent); }
+    .btn-danger { color: var(--red); border-color: rgba(248,81,73,0.3); }
+    .btn-danger:hover:not(:disabled) { background: rgba(248,81,73,0.15); border-color: var(--red); }
+
+    .client-info { font-size: 0.7rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border); }
+
+    /* ─── Main Content ───────────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    /* Row 1: HUD */
+    .hud-row {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      gap: 1px;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .hud-panel { background: var(--panel); padding: 15px; }
+
+    /* HP Bars */
+    .ship-bars { display: flex; flex-direction: column; gap: 10px; }
+    .bar-container { position: relative; }
+    .bar-label { font-size: 0.65rem; color: var(--text-dim); display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .bar-track { height: 8px; background: #161b22; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+    .bar-fill { height: 100%; transition: width 0.4s ease-out; border-radius: 4px; }
+    .bar-shield { background: var(--accent); box-shadow: 0 0 10px rgba(88,166,255,0.3); }
+    .bar-armor  { background: var(--yellow); }
+    .bar-hull   { background: var(--red); }
+    .bar-cap    { background: var(--cyan); }
+
+    /* Targets */
+    .targets-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; height: 100%; }
+    .target-card { 
+      min-width: 140px; background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 6px; padding: 8px;
+      display: flex; flex-direction: column; gap: 6px; transition: transform 0.2s, border-color 0.2s;
+    }
+    .target-card.active { border-color: var(--orange); box-shadow: 0 0 8px rgba(219,109,40,0.2); transform: translateY(-2px); }
+    .target-name { font-size: 0.75rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
+    .target-dist { font-size: 0.65rem; color: var(--text-dim); }
+    .target-mini-bars { display: flex; gap: 2px; height: 3px; }
+    .target-mini-bar { flex: 1; height: 100%; background: #21262d; border-radius: 1px; }
+
+    /* Row 2: Info panels */
+    .info-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border);
+    }
+
+    /* Row 3: Tables and Logs */
+    .content-row {
+      display: grid; grid-template-columns: 1fr 340px; gap: 1px; background: var(--border); overflow: hidden;
+    }
+    .main-table-container { background: var(--panel); overflow-y: auto; position: relative; }
+    .side-panel { background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; color: var(--text); }
+    thead { position: sticky; top: 0; background: var(--panel-hdr); z-index: 10; }
+    th { text-align: left; padding: 10px 15px; color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
+    td { padding: 8px 15px; border-bottom: 1px solid #161b22; vertical-align: middle; }
+    tr:hover { background: rgba(88,166,255,0.03); }
+    tr.danger td { color: var(--red); font-weight: 600; }
+    tr.active td { background: rgba(219,109,40,0.05); }
+
+    /* Row 4: Footer / Engine Thought */
+    footer {
+      background: var(--panel-hdr); border-top: 1px solid var(--border); padding: 8px 20px;
+      display: flex; align-items: center; gap: 15px; font-family: monospace; font-size: 0.75rem;
+    }
+    .thought-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.65rem; font-weight: 700; }
+    .thought-path { color: var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+    /* Components */
+    .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; }
+    .badge-space { background: rgba(57,197,187,0.15); color: var(--cyan); }
+    .badge-docked { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .badge-warp { background: rgba(210,153,34,0.15); color: var(--yellow); }
+
+    .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 6px; }
+    .module-slot { 
+      aspect-ratio: 1; background: #161b22; border: 1px solid var(--border); border-radius: 4px; 
+      display: flex; align-items: center; justify-content: center; font-size: 0.65rem; position: relative;
+      transition: all 0.2s;
+    }
+    .module-slot.active { border-color: var(--green); box-shadow: 0 0 5px rgba(63,185,80,0.3); color: var(--green); }
+    .module-slot.busy { border-color: var(--yellow); color: var(--yellow); }
+    .module-slot.hot { border-color: var(--red); color: var(--red); }
+    .module-ramp { 
+      position: absolute; inset: 2px; border: 2px solid transparent; border-top-color: var(--green); 
+      border-radius: 50%; opacity: 0; pointer-events: none;
+    }
+    .module-slot.active .module-ramp { opacity: 0.4; animation: rotate 2s linear infinite; }
+    @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    .log-feed { flex: 1; padding: 10px; font-family: monospace; font-size: 0.75rem; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+    .log-entry { margin-bottom: 4px; line-height: 1.4; border-bottom: 1px solid #161b22; padding-bottom: 2px; }
+    .log-time { color: var(--text-dim); margin-right: 8px; }
+    .log-cat  { color: var(--purple); font-weight: 700; margin-right: 8px; }
+    .log-msg  { color: var(--text); }
+    .log-Error .log-msg { color: var(--red); }
+    .log-Warn  .log-msg { color: var(--yellow); }
+
+    .holds-container { display: flex; flex-direction: column; gap: 12px; }
+    .hold-card { background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+    .hold-title { font-size: 0.75rem; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; }
+    
+    #conn-status { position: fixed; top: 10px; right: 20px; z-index: 100; display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--text-dim); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+    .dot.ok { background: var(--green); box-shadow: 0 0 5px var(--green); }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-brt); }
 
   </style>
 </head>
 <body>
 
-<!-- ═══════ HEADER ════════════════════════════════════════════════════════ -->
-<header>
-  <span class="logo">EBot<span> // C&amp;C</span></span>
-  <div id="conn-dot" title="Disconnected"></div>
-  <span id="state-pill" class="state-pill">Idle</span>
-  <span id="bot-desc-badge" style="font-size:.7rem;color:var(--text-dim);margin-left:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;"></span>
-
-  <div class="controls">
-    <button class="btn btn-warn"    id="btn-pause"  disabled>&#9646;&#9646; Pause</button>
-    <button class="btn btn-muted"   id="btn-resume" disabled>&#9654; Resume</button>
-    <button class="btn btn-danger"  id="btn-stop"   disabled>&#9632; Stop</button>
-    <button class="btn btn-muted"   id="btn-save-frame" title="Save current UI JSON frame to logs/frames/">&#128190; Frame</button>
-    <button class="btn btn-danger"  id="btn-kill"   title="Shut down EBot server" style="opacity:.7;">&#9211; Kill</button>
-  </div>
-
-  <div class="toggle-group">
-    <span class="toggle-label">Survival</span>
-    <label class="toggle survival"><input type="checkbox" id="toggle-survival"><span class="toggle-slider"></span></label>
-    <span id="dpi-info" title="System DPI"></span>
-    <input type="number" id="dpi-scale-input" min="0.1" max="4" step="0.01" placeholder="1.0" title="Coordinate scale">
-    <button class="btn btn-muted" id="btn-dpi-apply" style="font-size:.7rem;padding:2px 7px;">Scale</button>
-    <button class="btn btn-muted" id="btn-diagnose"  style="font-size:.7rem;padding:2px 7px;margin-left:4px;">Diag</button>
-    <button class="btn btn-muted" id="btn-diag-input" style="font-size:.7rem;padding:2px 7px;">Input</button>
-  </div>
-</header>
-
-<!-- ═══ Diag overlay ════════════════════════════════════════════════════════ -->
-<div id="diag-overlay">
-  <div class="diag-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <span style="color:#4fc3f7;font-weight:700;letter-spacing:1px;">DIAGNOSTICS</span>
-      <button onclick="document.getElementById('diag-overlay').style.display='none'" style="background:none;border:none;color:#5a7a99;font-size:1.1rem;cursor:pointer;">✕</button>
-    </div>
-    <pre id="diag-report" style="white-space:pre-wrap;font-size:.76rem;color:#c9d8e8;line-height:1.5;"></pre>
-    <details style="margin-top:12px;">
-      <summary style="cursor:pointer;color:#5a7a99;font-size:.7rem;">JSON preview</summary>
-      <pre id="diag-json" style="white-space:pre-wrap;font-size:.68rem;color:#4fc3f7;margin-top:6px;max-height:280px;overflow:auto;"></pre>
-    </details>
-  </div>
+<div id="conn-status">
+  <span id="conn-text">Disconnected</span>
+  <div id="conn-dot" class="dot"></div>
 </div>
 
-<!-- ═══════ MAIN ═══════════════════════════════════════════════════════════ -->
-<main>
+<div class="app-container">
+  <!-- ─── Sidebar ──────────────────────────────────────────────────────── -->
+  <aside>
+    <div class="logo">
+      <span class="logo-ebot">EBOT</span>
+      <span class="logo-cc">// C&amp;C</span>
+      <span class="logo-version">v2.1</span>
+    </div>
 
-  <!-- ── Col 1: Controls + Stats ── -->
-  <div class="panel">
-    <div class="panel-title">Status &amp; Controls</div>
-    <div style="flex-shrink:0;padding:8px 12px;border-bottom:1px solid var(--border);" id="left-controls">
-      <div class="sec">Quick Actions</div>
-      <div class="action-grid">
-        <button class="btn btn-green" id="btn-undock" onclick="apiClick('/api/undock')" disabled>&#9650; Undock</button>
-        <button class="btn btn-warn"  id="btn-dock"   onclick="apiClick('/api/dock')">&#9660; Dock</button>
-        <button class="btn btn-muted" style="grid-column:span 2;" onclick="apiClick('/api/clear-destination')">&#10007; Clear Route</button>
-        <button class="btn btn-muted" onclick="apiClick('/api/open-cargo')">&#128230; Open Cargo</button>
-        <button class="btn btn-muted" onclick="apiClick('/api/scan-holds')">&#128269; Scan Holds</button>
+    <div class="engine-status">
+      <div class="engine-label">Engine RPM</div>
+      <div class="engine-rpm" id="engine-rpm">0.0</div>
+      <div id="state-pill" class="bot-pill idle">IDLE</div>
+      <div id="bot-desc" style="font-size: 0.65rem; color: var(--text-dim); margin-top: 4px;">No active bot</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-title">Mission Control</div>
+      <button class="btn btn-muted" id="btn-pause" disabled>⏸ Pause Engine</button>
+      <button class="btn btn-muted" id="btn-resume" disabled>▶ Resume Engine</button>
+      <button class="btn btn-danger" id="btn-stop" disabled>⏹ Stop Active Bot</button>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-title">Quick Actions</div>
+      <button class="btn" onclick="apiClick('/api/undock')">Undock Ship</button>
+      <button class="btn" onclick="apiClick('/api/dock')">Dock At Nearest</button>
+      <button class="btn" onclick="apiClick('/api/open-cargo')">Toggle Inventory</button>
+      <button class="btn" onclick="apiClick('/api/scan-holds')">Sync All Holds</button>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-title">System Tools</div>
+      <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <span style="font-size: 0.75rem; font-weight: 600;">Survival Protocol</span>
+        <input type="checkbox" id="toggle-survival" onchange="api('POST','/api/survival',{enabled:this.checked})">
+      </div>
+      <button class="btn" onclick="api('POST','/api/save-frame')">💾 Capture Frame</button>
+      <button class="btn btn-danger" onclick="if(confirm('Kill EBot Server?'))api('POST','/api/kill')">☢ Terminate Server</button>
+    </div>
+
+    <div class="client-info">
+      <span id="info-system">System: Unknown</span>
+      <span id="info-dpi">DPI: 100%</span>
+      <span id="info-ticks">Ticks: 0</span>
+    </div>
+  </aside>
+
+  <!-- ─── Main ─────────────────────────────────────────────────────────── -->
+  <main>
+    <!-- Row 1: Ship HUD -->
+    <div class="hud-row">
+      <div class="hud-panel ship-bars">
+        <div class="bar-container">
+          <div class="bar-label"><span>SHIELD</span><span id="val-shield">100%</span></div>
+          <div class="bar-track"><div id="bar-shield" class="bar-fill bar-shield" style="width: 100%"></div></div>
+        </div>
+        <div class="bar-container">
+          <div class="bar-label"><span>ARMOR</span><span id="val-armor">100%</span></div>
+          <div class="bar-track"><div id="bar-armor" class="bar-fill bar-armor" style="width: 100%"></div></div>
+        </div>
+        <div class="bar-container">
+          <div class="bar-label"><span>HULL</span><span id="val-hull">100%</span></div>
+          <div class="bar-track"><div id="bar-hull" class="bar-fill bar-hull" style="width: 100%"></div></div>
+        </div>
+        <div class="bar-container">
+          <div class="bar-label"><span>CAPACITOR</span><span id="val-cap">100%</span></div>
+          <div class="bar-track"><div id="bar-cap" class="bar-fill bar-cap" style="width: 100%"></div></div>
+        </div>
+      </div>
+
+      <div class="hud-panel" style="border-left: 1px solid var(--border); border-right: 1px solid var(--border);">
+        <div class="nav-title" style="margin-bottom: 10px;">Targets In Range</div>
+        <div class="targets-list" id="targets-list">
+          <div class="empty" style="margin: auto;">No targets locked</div>
+        </div>
+      </div>
+
+      <div class="hud-panel">
+        <div class="nav-title" style="margin-bottom: 8px;">Selected Object</div>
+        <div id="selected-item" class="empty">Nothing selected</div>
       </div>
     </div>
-    <div class="panel-body" id="left-stats">
-      <div class="empty">Waiting for EVE client…</div>
-    </div>
-  </div>
 
-  <!-- ── Col 2: Overview + Actions/Log ── -->
-  <div class="center-panel">
-    <div class="panel" style="border-right:none; border-bottom:1px solid var(--border);">
-      <div class="panel-title">
-        Overview <span id="overview-count" style="color:var(--text-dim);font-weight:400;font-size:.68rem"></span>
+    <!-- Row 2: Modules, Drones, Holds -->
+    <div class="info-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+      <div class="hud-panel" style="border-right: 1px solid var(--border);">
+        <div class="nav-title">Modules</div>
+        <div class="module-grid" id="module-grid"></div>
       </div>
-      <div class="panel-body" style="padding:0;">
+      <div class="hud-panel" style="border-right: 1px solid var(--border);">
+        <div class="nav-title" id="drones-space-title">Drones In Space</div>
+        <div id="drones-space-list" style="font-size: 0.7rem;"></div>
+      </div>
+      <div class="hud-panel" style="border-right: 1px solid var(--border);">
+        <div class="nav-title" id="drones-bay-title">Drones In Bay</div>
+        <div id="drones-bay-list" style="font-size: 0.7rem;"></div>
+      </div>
+      <div class="hud-panel">
+        <div class="nav-title">Holds</div>
+        <div id="holds-list" class="holds-container"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Overview & Holds -->
+    <div class="content-row">
+      <div class="main-table-container">
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th style="text-align:right">Distance</th></tr></thead>
+          <thead>
+            <tr>
+              <th style="width: 40px"></th>
+              <th>Name</th>
+              <th>Type</th>
+              <th style="text-align: right">Distance</th>
+            </tr>
+          </thead>
           <tbody id="overview-body">
-            <tr><td colspan="3" class="empty" style="padding:8px">No data</td></tr>
+            <tr><td colspan="4" class="empty" style="padding:40px; text-align:center;">Scanning Overview...</td></tr>
           </tbody>
         </table>
       </div>
-    </div>
-    <div class="bottom-panels">
-      <div class="panel" style="border-right:1px solid var(--border);">
-        <div class="panel-title" style="color:var(--accent2);">Actions</div>
-        <div class="panel-body" id="action-body" style="padding:3px 7px;"></div>
-      </div>
-      <div class="panel" style="border-right:none;">
-        <div class="panel-title">Log</div>
-        <div class="panel-body" id="log-body" style="padding:3px 10px;"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Col 3: Autopilot ── -->
-  <div class="panel">
-    <div class="panel-title">Autopilot</div>
-    <div class="panel-body" id="autopilot-body">
-
-      <!-- Station Search -->
-      <div class="sec" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>Station Search</span>
-        <span id="ap-sde-badge" style="font-size:.6rem;padding:1px 6px;border-radius:10px;background:#1a2a3a;color:var(--text-dim);">Loading SDE…</span>
-      </div>
-      <div class="ap-search-row">
-        <input type="text" id="ap-search-input" placeholder="Station or system name…" maxlength="80"
-               oninput="onSdeInput(this.value)"
-               onkeydown="if(event.key==='Enter')doSdeSearch()">
-        <button class="btn btn-muted" id="ap-search-btn"
-                onclick="doSdeSearch()" style="padding:5px 10px;font-size:.76rem;">&#128269;</button>
-      </div>
-      <div id="ap-sde-progress" style="display:none;margin:4px 0;">
-        <div style="height:3px;background:#1a2a3a;border-radius:2px;overflow:hidden;">
-          <div id="ap-sde-bar" style="height:100%;background:var(--accent);width:0%;transition:width .4s;"></div>
+      <div class="side-panel">
+        <div class="panel-hdr" style="padding: 10px 15px; background: var(--panel-hdr); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid var(--border);">
+          Event Log
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
-          <span id="ap-sde-msg" style="font-size:.66rem;color:var(--text-dim);"></span>
-          <button class="btn btn-muted" onclick="sdeRefresh()" style="font-size:.6rem;padding:1px 6px;" title="Force re-download SDE">&#8635; Re-download</button>
+        <div class="log-feed" id="log-body">
+          <div class="empty">Waiting for logs...</div>
         </div>
       </div>
-      <div id="ap-sde-error" style="display:none;font-size:.68rem;color:var(--red);padding:3px 0 0;">
-        <span id="ap-sde-error-msg"></span>
-        <span style="color:var(--text-dim)"> — run <code>python setup_sde.py</code></span>
-      </div>
-      <div id="ap-search-results" class="ap-result-list"></div>
-
-      <!-- Saved Destinations -->
-      <div class="sec" style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-        <span>Saved Destinations</span>
-        <button class="btn btn-muted" id="ap-save-btn" onclick="saveSelectedDest()"
-                style="font-size:.65rem;padding:2px 7px;" disabled title="Select a search result to save">+ Save</button>
-      </div>
-      <div id="ap-dest-list" class="ap-dest-list">
-        <div class="empty">No saved destinations</div>
-      </div>
-
-      <!-- Docking Method -->
-      <div class="sec" style="margin-top:4px;">Docking Method</div>
-      <div class="ap-dock-group">
-        <label class="ap-radio-row">
-          <input type="radio" name="dock-method" value="auto" checked>
-          <span class="ap-radio-label">Route Marker <span class="ap-radio-badge">auto</span></span>
-        </label>
-        <label class="ap-radio-row disabled" title="Coming soon">
-          <input type="radio" name="dock-method" value="bookmark" disabled>
-          <span class="ap-radio-label">Bookmark <span class="ap-radio-badge">soon</span></span>
-        </label>
-      </div>
-
-      <!-- Launch -->
-      <div class="ap-launch-row">
-        <button class="btn btn-primary" id="ap-start-btn" onclick="startAutopilot()">&#9654; Start Autopilot</button>
-        <button class="btn btn-danger"  id="ap-stop-btn"  onclick="api('POST','/api/stop')" disabled style="flex:0 0 auto;padding:7px 14px;">&#9632;</button>
-      </div>
-      <div id="ap-status-line" style="font-size:.71rem;color:var(--text-dim);padding:4px 0;min-height:18px;"></div>
-
     </div>
-  </div>
 
-  <!-- ── Col 4: Mining Bot ── -->
-  <div class="panel" style="border-right:none;">
-    <div class="panel-title">Mining Bot</div>
-    <div class="panel-body" id="mining-body">
+    <!-- Row 4: Thought Process -->
+    <footer>
+      <span class="thought-label">Thinking:</span>
+      <span class="thought-path" id="thought-path">Awaiting Decision...</span>
+      <span id="runtime-display" style="color: var(--text-dim); margin-left: auto;">00:00:00</span>
+    </footer>
+  </main>
 
-      <!-- Live stats -->
-      <div class="sec">Session Stats</div>
-      <div id="mb-stats" style="font-size:.72rem;color:var(--text-dim);padding:2px 0 6px;">
-        Idle
+  <!-- ─── Right Launcher Sidebar ───────────────────────────────────────── -->
+  <aside class="launcher-sidebar">
+    <!-- Travel Bot -->
+    <div class="nav-section">
+      <div class="nav-title" style="display:flex; justify-content: space-between; align-items: center;">
+        <span>Travel Autopilot</span>
+        <span id="ap-sde-badge" class="badge" style="font-size:0.5rem; background:rgba(0,0,0,0.2);">SDE...</span>
       </div>
-
-      <!-- Belt registry -->
-      <div class="sec" style="margin-top:6px;">Asteroid Belts</div>
-      <div id="mb-belts" style="font-size:.72rem;color:var(--text-dim);padding:2px 0 4px;">
-        <span style="color:var(--text-dim)">No belts discovered yet</span>
+      <div style="display:flex; gap:6px; margin-bottom:10px;">
+        <input type="text" id="ap-search-input" placeholder="Search system/station..." oninput="onSdeInput(this.value)">
       </div>
-
-      <!-- Docking Bookmark -->
-      <div class="sec">Docking Bookmark</div>
-      <input type="text" id="mb-bookmark" placeholder="Bookmark or station name for home dock…" maxlength="120"
-             style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);
-                    border-radius:4px;padding:5px 8px;font-size:.76rem;margin-bottom:6px;"
-             title="Exact name of an in-game bookmark or station to use as the home docking point">
-
-      <!-- Thresholds -->
-      <div class="sec">Thresholds</div>
-
-      <div style="display:flex;flex-direction:column;gap:6px;padding-bottom:4px;">
-
-        <div class="stat-row" style="align-items:center;gap:8px;">
-          <span class="stat-key" style="flex:0 0 130px;">Ore hold return %</span>
-          <input type="range" id="mb-ore-pct" min="50" max="99" value="95"
-                 oninput="$('mb-ore-val').textContent=this.value+'%'"
-                 style="flex:1;">
-          <span id="mb-ore-val" style="font-size:.72rem;color:var(--accent);width:36px;text-align:right;">95%</span>
-        </div>
-
-        <div class="stat-row" style="align-items:center;gap:8px;">
-          <span class="stat-key" style="flex:0 0 130px;">Shield escape %</span>
-          <input type="range" id="mb-shield-pct" min="0" max="50" value="25"
-                 oninput="$('mb-shield-val').textContent=this.value+'%'"
-                 style="flex:1;">
-          <span id="mb-shield-val" style="font-size:.72rem;color:var(--red);width:36px;text-align:right;">25%</span>
-        </div>
-      </div>
-
-      <!-- Launch -->
-      <div class="ap-launch-row" style="margin-top:8px;">
-        <button class="btn btn-primary" id="mb-start-btn" onclick="startMining()">&#9654; Start Mining</button>
-        <button class="btn btn-danger"  id="mb-stop-btn"  onclick="api('POST','/api/stop')" disabled style="flex:0 0 auto;padding:7px 14px;">&#9632;</button>
-      </div>
-      <div id="mb-status-line" style="font-size:.71rem;color:var(--text-dim);padding:4px 0;min-height:18px;"></div>
-
+      <div id="ap-search-results" style="max-height: 200px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid var(--border);"></div>
+      <button class="btn btn-primary" id="ap-start-btn" onclick="startAutopilot()">Start Autopilot</button>
+      <div id="ap-status-line" style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">No destination selected</div>
     </div>
-  </div>
 
-</main>
+    <!-- Mining Bot -->
+    <div class="nav-section" style="margin-top: 30px;">
+      <div class="nav-title">Mining Operations</div>
+      <div class="bar-label"><span>Docking Bookmark</span></div>
+      <input type="text" id="mb-bookmark" placeholder="Home station name..." style="margin-bottom:12px;">
+      
+      <div class="bar-label"><span>Ore Hold Return %</span><span id="mb-ore-val">95%</span></div>
+      <input type="range" id="mb-ore-pct" min="50" max="99" value="95" oninput="$('mb-ore-val').textContent=this.value+'%'" style="margin-bottom:12px;">
+
+      <div class="bar-label"><span>Shield Escape %</span><span id="mb-shield-val">25%</span></div>
+      <input type="range" id="mb-shield-pct" min="0" max="50" value="25" oninput="$('mb-shield-val').textContent=this.value+'%'" style="margin-bottom:12px;">
+
+      <button class="btn btn-primary" id="mb-start-btn" onclick="startMining()">Start Mining</button>
+      <div id="mb-status-line" style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;"></div>
+    </div>
+
+    <!-- SDE Progress -->
+    <div id="ap-sde-progress" style="display:none; margin-top: auto; padding:10px; background:var(--panel-hdr); border-radius:6px;">
+      <div class="engine-label" id="ap-sde-msg">Updating SDE...</div>
+      <div class="bar-track"><div id="ap-sde-bar" class="bar-fill" style="width: 0%; background:var(--accent);"></div></div>
+    </div>
+  </aside>
+</div>
 
 <script>
-// ════════════════════════════════════════════════════════════════════════════
-//  EBot C&C – frontend
-// ════════════════════════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-let botState = 'Idle', botName = null, botDesc = null;
+let lastGs = null;
 
 // Autopilot state
-let apSearchResults  = [];   // [{id,name,systemName,typeId,iconUrl}, ...]
-let apDestinations   = [];   // saved destinations from /api/destinations
-let apSelectedSearch = null; // currently selected search result (object)
-let apSelectedDest   = null; // currently selected saved destination (object)
+let apSearchResults  = [];
+let apSelectedSearch = null;
 let apSearchBusy     = false;
-
-// ── SignalR ───────────────────────────────────────────────────────────────
-const conn = new signalR.HubConnectionBuilder()
-  .withUrl('/botHub')
-  .withAutomaticReconnect()
-  .build();
-
-conn.onreconnecting(() => $('conn-dot').classList.remove('ok'));
-conn.onreconnected(() => { $('conn-dot').classList.add('ok'); loadInitialState(); });
-conn.on('StateChanged', state => {
-  botState = state;
-  fetch('/api/status').then(r => r.json()).then(s => {
-    botName = s.botName; botDesc = s.botDescription; refreshUI();
-  }).catch(() => refreshUI());
-});
-conn.on('SurvivalChanged', en => { $('toggle-survival').checked = en; });
-conn.on('TickUpdate', gs => {
-  renderGameState(gs);
-  if (botName === 'Mining Bot') { pollMiningStats(); pollMiningBelts(); }
-});
-conn.on('LogEntry',    e => addLogEntry(e));
-conn.on('ActionLog',   e => addActionEntry(e));
-conn.on('EmergencyStop', () => {
-  addLogEntry({ time: new Date().toISOString(), level: 'Warn', message: '⛔ EMERGENCY STOP – input released (Pause/Break)' });
-});
-
-async function startConnection() {
-  try { await conn.start(); $('conn-dot').classList.add('ok'); await loadInitialState(); }
-  catch(e) { setTimeout(startConnection, 3000); }
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────
-async function loadInitialState() {
-  try {
-    const s = await fetch('/api/status').then(r => r.json());
-    botState = s.state; botName = s.botName; botDesc = s.botDescription;
-    $('toggle-survival').checked = s.survivalEnabled;
-    if (s.gameState) renderGameState(s.gameState);
-    refreshUI();
-  } catch(e) {}
-  loadDpiInfo();
-  loadDestinations();
-}
-
-// ── Game state rendering ──────────────────────────────────────────────────
-function renderGameState(gs) {
-  if (!gs) return;
-
-  const locTag = gs.isWarping ? '<span class="tag warp">Warping</span>'
-               : gs.isDocked  ? '<span class="tag docked">Docked</span>'
-               : gs.isInSpace ? '<span class="tag space">Space</span>'
-               :                '<span class="tag">Unknown</span>';
-
-  const secColor = s => {
-    if (!s) return 'var(--text-dim)';
-    const n = parseFloat(s);
-    return n >= 0.5 ? 'var(--green)' : n >= 0.1 ? 'var(--yellow)' : 'var(--red)';
-  };
-
-  const sys   = gs.systemName     ? esc(gs.systemName) : '–';
-  const sec   = gs.securityStatus ? `<span style="color:${secColor(gs.securityStatus)};margin-left:5px;font-size:.73rem">${esc(gs.securityStatus)}</span>` : '';
-  const jumps = gs.routeJumpsRemaining ?? 0;
-
-  const menuHtml = gs.hasContextMenu && (gs.contextMenuEntries || []).length
-    ? `<div class="sec">Context Menu</div>` + gs.contextMenuEntries.map(e => `<div class="context-entry">▸ ${esc(e)}</div>`).join('')
-    : '';
-
-  const speedHtml = gs.speedText
-    ? `<div class="stat-row"><span class="stat-key">Speed</span><span>${esc(gs.speedText)}</span></div>`
-    : '';
-
-  const mods = gs.moduleButtons || [];
-  const modHtml = mods.length ? mods.map((m, i) => {
-    let cls = '', stateLabel = 'Idle';
-    if (m.isOverloaded)   { cls = 'overloaded'; stateLabel = 'OVERLOADED'; }
-    else if (m.isActive)  { cls = 'active';     stateLabel = 'ACTIVE'; }
-    else if (m.isBusy)    { cls = 'busy';       stateLabel = 'ACTIVATING'; }
-    else if (m.isOffline) { cls = 'offline';    stateLabel = 'OFFLINE'; }
-    if (m.isHiliteVisible) cls += ' hilite';
-    const dot = m.isOverloaded ? '<span class="module-state-dot ov"></span>'
-              : m.isBusy       ? '<span class="module-state-dot busy"></span>'
-              : '';
-    const tip = `Slot ${i+1}${m.name ? ' – ' + m.name : ''} – ${stateLabel}`;
-    return `<div class="module-btn ${cls.trim()}" title="${esc(tip)}">${i+1}${dot}</div>`;
-  }).join('') : '<div class="empty">No modules detected</div>';
-
-  function holdHtml(hold) {
-    const usedM3 = hold?.usedM3, maxM3 = hold?.maxM3, items = hold?.items || [];
-    if (maxM3 == null || maxM3 <= 0) return '';
-    const pct  = Math.min(100, (usedM3 / maxM3) * 100);
-    const used = usedM3 != null ? usedM3.toFixed(1) : '–';
-    const max  = maxM3.toFixed(1);
-    let html = `<div class="stat-row" style="margin-bottom:4px;">
-      <span class="stat-key">Volume</span>
-      <div class="bar-wrap">
-        <div class="bar-track"><div class="bar-fill cargo${pct > 90 ? ' low' : ''}" style="width:${pct.toFixed(1)}%"></div></div>
-        <span class="bar-pct" style="width:auto;font-size:.68rem">${used}/${max} m³</span>
-      </div></div>`;
-    if (items.length) {
-      html += items.slice(0, 20).map(it =>
-        `<div class="cargo-item"><span class="cargo-name">${esc(it.name || '–')}</span><span class="cargo-qty">${it.quantity != null ? 'x'+it.quantity : ''}</span></div>`
-      ).join('');
-      if (items.length > 20) html += `<div class="empty">…and ${items.length-20} more</div>`;
-    } else {
-      html += '<div class="empty">Empty</div>';
-    }
-    return html;
-  }
-
-  const holds = gs.holds || [];
-  const holdsHtml = holds.length
-    ? holds.map(h => `
-        <div class="sec" style="display:flex;align-items:center;justify-content:space-between;">
-          <span>${esc(h.name || h.holdType)}</span>
-          <button class="btn" style="padding:1px 7px;font-size:.68rem;" onclick="switchHold('${esc(h.holdType)}')">View</button>
-        </div>
-        ${holdHtml(h)}`).join('')
-    : `<div class="sec">Inventory</div><div class="empty">Not open – click Open Cargo or Scan Holds</div>`;
-
-  const undockBtn = $('btn-undock'), dockBtn = $('btn-dock');
-  if (undockBtn) undockBtn.disabled = !gs.isDocked;
-  if (dockBtn)   dockBtn.disabled   = gs.isDocked;
-
-  $('left-stats').innerHTML = `
-    <div class="sec">Navigation</div>
-    <div class="stat-row"><span class="stat-key">System</span><span>${sys}${sec}</span></div>
-    <div class="stat-row"><span class="stat-key">Status</span>${locTag}</div>
-    ${jumps > 0 ? `<div class="stat-row"><span class="stat-key">Route</span><span>${jumps} jump${jumps!==1?'s':''}</span></div>` : ''}
-    ${menuHtml}
-    <div class="sec">Ship</div>
-    <div class="stat-row"><span class="stat-key">Tick</span><span>${gs.tickCount}</span></div>
-    <div class="stat-row"><span class="stat-key">Runtime</span><span>${gs.runtime}</span></div>
-    <div class="stat-row"><span class="stat-key">Targets</span><span>${gs.targetCount}</span></div>
-    ${speedHtml}
-    ${gs.shieldPercent    != null ? bar('Shield',    gs.shieldPercent,    'shield') : ''}
-    ${gs.armorPercent     != null ? bar('Armor',     gs.armorPercent,     'armor')  : ''}
-    ${gs.structurePercent != null ? bar('Structure', gs.structurePercent, 'struct') : ''}
-    ${gs.capacitorPercent != null ? bar('Cap',       gs.capacitorPercent, 'cap')    : ''}
-    <div class="sec">Modules – ${mods.filter(m=>m.isActive).length} active, ${mods.filter(m=>m.isOverloaded).length} hot / ${mods.length}</div>
-    <div class="module-grid">${modHtml}</div>
-    ${holdsHtml}
-  `;
-
-  const entries = gs.overview || [];
-  $('overview-count').textContent = entries.length ? `(${entries.length})` : '';
-  $('overview-body').innerHTML = entries.length
-    ? entries.map(e => `<tr class="${e.isAttackingMe?'attacking':''}">
-        <td>${esc(e.name||'–')}</td>
-        <td style="color:var(--text-dim)">${esc(e.objectType||'')}</td>
-        <td style="text-align:right;color:var(--text-dim)">${esc(e.distance||'')}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="3" class="empty" style="padding:8px">Empty</td></tr>';
-}
-
-let miningStats = { totalM3: 0, cycles: 0 };
-let _miningPollBusy = false;
-async function pollMiningStats() {
-  if (_miningPollBusy) return;
-  _miningPollBusy = true;
-  try { const s = await fetch('/api/mining-stats').then(r=>r.json()); miningStats = {totalM3:s.total_m3,cycles:s.cycles}; updateMbStats(); }
-  catch(e) {}
-  _miningPollBusy = false;
-}
-
-let _beltPollBusy = false;
-async function pollMiningBelts() {
-  if (_beltPollBusy) return;
-  _beltPollBusy = true;
-  try {
-    const d = await fetch('/api/mining/belts').then(r=>r.json());
-    renderBelts(d);
-  } catch(e) {}
-  _beltPollBusy = false;
-}
-
-function renderBelts(data) {
-  const el = $('mb-belts');
-  if (!el) return;
-  const belts = data?.belts ?? [];
-  if (!belts.length) { el.innerHTML = '<span style="color:var(--text-dim)">No belts discovered yet</span>'; return; }
-  el.innerHTML = belts.map(b => {
-    const cls = b.excluded ? 'color:var(--red)' : b.depleted ? 'color:var(--text-dim);text-decoration:line-through' : 'color:var(--text)';
-    const badge = b.excluded ? ' <span style="color:var(--red);font-size:.65rem">[excl]</span>'
-                : b.depleted ? ' <span style="color:var(--text-dim);font-size:.65rem">[empty]</span>' : '';
-    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
-      <span style="flex:1;${cls}">${esc(b.name)}${badge}</span>
-      <button onclick="toggleBelt(${b.index})" style="font-size:.65rem;padding:1px 6px;background:var(--bg3);border:1px solid var(--border);color:${b.excluded?'var(--red)':'var(--text-dim)'};border-radius:3px;cursor:pointer;">${b.excluded?'enable':'disable'}</button>
-    </div>`;
-  }).join('');
-}
-
-async function toggleBelt(idx) {
-  try { await fetch('/api/mining/belts/'+idx+'/toggle', {method:'POST'}); await pollMiningBelts(); }
-  catch(e) {}
-}
-
-function bar(label, pct, cls) {
-  const w = Math.max(0, Math.min(100, pct));
-  return `<div class="stat-row"><span class="stat-key">${label}</span>
-    <div class="bar-wrap">
-      <div class="bar-track"><div class="bar-fill ${cls}${w<25?' low':''}" style="width:${w}%"></div></div>
-      <span class="bar-pct">${pct}%</span>
-    </div></div>`;
-}
-
-// ── Autopilot panel ───────────────────────────────────────────────────────
-
-let sdeReady = false;
-let _sdeInputTimer = null;
+let _sdeInputTimer   = null;
 
 function onSdeInput(q) {
   if (_sdeInputTimer) clearTimeout(_sdeInputTimer);
   q = q.trim();
-  if (q.length < 2) { $('ap-search-results').innerHTML = ''; return; }
+  if (q.length < 3) { $('ap-search-results').innerHTML = ''; return; }
   _sdeInputTimer = setTimeout(() => doSdeSearch(), 300);
-}
-
-// Poll SDE status until ready, then stop polling
-async function pollSdeStatus() {
-  try {
-    const s = await fetch('/api/stations/sde-status').then(r => r.json());
-    const badge    = $('ap-sde-badge');
-    const prog     = $('ap-sde-progress');
-    const bar      = $('ap-sde-bar');
-    const msg      = $('ap-sde-msg');
-    const errPanel = $('ap-sde-error');
-    const errMsg   = $('ap-sde-error-msg');
-
-    sdeReady = s.ready;
-
-    const failed = !s.ready && !s.downloading && s.status &&
-      (s.status.includes('not found') || s.status.includes('error') ||
-       s.status.includes('failed') || s.status.includes('empty'));
-
-    if (badge) {
-      badge.textContent = s.status || '…';
-      badge.style.color = s.ready ? 'var(--green)' : failed ? 'var(--red)' : s.downloading ? 'var(--yellow)' : 'var(--text-dim)';
-      badge.style.background = s.ready ? '#0a2a1a' : failed ? '#2a0808' : '#1a2a3a';
-    }
-    if (prog) {
-      prog.style.display = s.downloading ? 'block' : 'none';
-      if (s.downloading && s.progress >= 0 && bar && msg) {
-        bar.style.width = s.progress.toFixed(1) + '%';
-        msg.textContent = `Downloading SDE… ${s.progress.toFixed(0)}%`;
-      }
-    }
-    if (errPanel && errMsg) {
-      errPanel.style.display = failed ? 'block' : 'none';
-      if (failed) errMsg.textContent = s.status;
-    }
-
-    // Keep polling while downloading or not yet ready
-    if (!s.ready || s.downloading) setTimeout(pollSdeStatus, s.downloading ? 1500 : 5000);
-  } catch(e) {
-    setTimeout(pollSdeStatus, 10000);
-  }
-}
-
-async function sdeRefresh() {
-  try {
-    await fetch('/api/stations/sde-refresh', { method: 'POST' });
-    const errPanel = $('ap-sde-error');
-    if (errPanel) errPanel.style.display = 'none';
-    const badge = $('ap-sde-badge');
-    if (badge) { badge.textContent = 'Re-downloading…'; badge.style.color = 'var(--yellow)'; badge.style.background = '#1a2a3a'; }
-    setTimeout(pollSdeStatus, 2000);
-  } catch(e) {}
 }
 
 async function doSdeSearch() {
   const q = ($('ap-search-input').value || '').trim();
-  if (q.length < 3) { $('ap-search-results').innerHTML = '<div class="empty">Type at least 3 characters</div>'; return; }
+  if (q.length < 3) return;
   if (apSearchBusy) return;
   apSearchBusy = true;
-  const btn = $('ap-search-btn');
-  btn.innerHTML = '<span class="search-spinner"></span>';
-  btn.disabled = true;
-  $('ap-search-results').innerHTML = '<div class="empty">Searching…</div>';
+  
+  $('ap-search-results').innerHTML = '<div class="empty">Searching...</div>';
   try {
     const resp = await fetch('/api/stations/search?q=' + encodeURIComponent(q)).then(r => r.json());
-    if (resp.ready === false) {
-      $('ap-search-results').innerHTML = `<div class="empty">${esc(resp.status || 'SDE not ready yet')}</div>`;
-    } else {
-      apSearchResults = Array.isArray(resp.results) ? resp.results : [];
-      renderSearchResults();
-    }
-  } catch(e) {
-    $('ap-search-results').innerHTML = '<div class="empty" style="color:var(--red)">Search failed</div>';
-  }
-  btn.innerHTML = '&#128269;';
-  btn.disabled = false;
+    apSearchResults = Array.isArray(resp.results) ? resp.results : [];
+    renderSearchResults();
+  } catch(e) { console.error(e); }
   apSearchBusy = false;
-}
-
-function secColor(s) {
-  if (s == null) return 'var(--text-dim)';
-  if (s >= 0.5)  return 'var(--green)';
-  if (s >= 0.1)  return 'var(--yellow)';
-  return 'var(--red)';
 }
 
 function renderSearchResults() {
   const el = $('ap-search-results');
   if (!apSearchResults.length) { el.innerHTML = '<div class="empty">No results</div>'; return; }
   el.innerHTML = apSearchResults.map((r, i) => {
-    const sel     = apSelectedSearch && apSelectedSearch.id === r.id ? ' selected' : '';
-    const typeTag = r.isStation ? '&#x1F3DB;' : '&#x1F311;'; // station vs system icon
-    const sec     = r.security != null
-      ? `<span style="color:${secColor(r.security)};font-size:.68rem;">${r.security.toFixed(1)}</span>`
-      : '';
-    const region  = r.regionName
-      ? `<span style="color:var(--text-dim);font-size:.68rem;">${esc(r.regionName)}</span>`
-      : '';
-    const subLine = r.isStation && r.systemName
-      ? `<div style="font-size:.68rem;color:var(--text-dim);">${esc(r.systemName)}</div>`
-      : '';
-    return `<div class="ap-result-item${sel}" onclick="selectSearchResult(${i})" ondblclick="selectSearchResult(${i});saveSelectedDest()">
-      <input type="radio" name="ap-search-radio" ${sel?' checked':''}>
-      <span style="font-size:.9rem;flex-shrink:0;">${typeTag}</span>
-      <div class="ap-result-info" style="flex:1;min-width:0;">
-        <div class="ap-result-name">${esc(r.name||'—')}</div>
-        ${subLine}
+    const sel = apSelectedSearch && apSelectedSearch.id === r.id ? ' selected' : '';
+    return `<div class="ap-result-item${sel}" onclick="selectSearchResult(${i})">
+      <div class="ap-result-info">
+        <div class="ap-result-name">${esc(r.name)}</div>
+        <div class="ap-result-sys">${esc(r.systemName || '')}</div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0;">${sec}${region}</div>
     </div>`;
   }).join('');
 }
 
 function selectSearchResult(i) {
   apSelectedSearch = apSearchResults[i] || null;
-  apSelectedDest   = null;    // deselect saved
   renderSearchResults();
-  renderDestinations();
-  $('ap-save-btn').disabled = !apSelectedSearch;
-  updateApStatus();
-}
-
-async function saveSelectedDest() {
-  if (!apSelectedSearch) return;
-  try {
-    const list = await fetch('/api/destinations', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(apSelectedSearch),
-    }).then(r => r.json());
-    apDestinations = Array.isArray(list) ? list : [];
-    apSelectedDest = apSelectedSearch;
-    apSelectedSearch = null;
-    renderDestinations();
-    renderSearchResults();
-    $('ap-save-btn').disabled = true;
-  } catch(e) {}
-}
-
-async function loadDestinations() {
-  try { apDestinations = await fetch('/api/destinations').then(r => r.json()) || []; }
-  catch(e) { apDestinations = []; }
-  renderDestinations();
-}
-
-function renderDestinations() {
-  const el = $('ap-dest-list');
-  if (!apDestinations.length) { el.innerHTML = '<div class="empty">No saved destinations</div>'; return; }
-  el.innerHTML = apDestinations.map((d, i) => {
-    const sel = apSelectedDest && apSelectedDest.id === d.id ? ' selected' : '';
-    const icon = d.iconUrl
-      ? `<img class="ap-dest-icon" src="${esc(d.iconUrl)}" onerror="this.style.display='none'">`
-      : `<div class="ap-dest-icon-placeholder"></div>`;
-    const sys = d.systemName ? `<div class="ap-dest-sys">${esc(d.systemName)}</div>` : '';
-    return `<div class="ap-dest-item${sel}" onclick="selectDest(${i})">
-      <input type="radio" name="ap-dest-radio" ${sel?' checked':''}>
-      ${icon}
-      <div class="ap-dest-info">
-        <div class="ap-dest-name">${esc(d.name||'—')}</div>
-        ${sys}
-      </div>
-      <span class="ap-dest-del" onclick="event.stopPropagation();deleteDest('${esc(d.id)}')" title="Remove">✕</span>
-    </div>`;
-  }).join('');
-}
-
-function selectDest(i) {
-  apSelectedDest   = apDestinations[i] || null;
-  apSelectedSearch = null;  // deselect search result
-  renderDestinations();
-  renderSearchResults();
-  $('ap-save-btn').disabled = true;
-  updateApStatus();
-}
-
-async function deleteDest(id) {
-  try {
-    const list = await fetch('/api/destinations/' + encodeURIComponent(id), {method:'DELETE'}).then(r => r.json());
-    apDestinations = Array.isArray(list) ? list : [];
-    if (apSelectedDest && apSelectedDest.id === id) apSelectedDest = null;
-    renderDestinations();
-    updateApStatus();
-  } catch(e) {}
-}
-
-function getSelectedDestination() {
-  // Returns the best destination object: search result if selected, else saved dest
-  return apSelectedSearch || apSelectedDest || null;
-}
-
-function updateApStatus() {
-  const d = getSelectedDestination();
   const sl = $('ap-status-line');
-  if (d) sl.textContent = `Selected: ${d.name}${d.systemName ? ' (' + d.systemName + ')' : ''}`;
-  else sl.textContent = 'No destination selected — bot will use in-game route';
+  if (apSelectedSearch) sl.textContent = `Selected: ${apSelectedSearch.name}`;
+}
+
+async function pollSdeStatus() {
+  try {
+    const s = await fetch('/api/stations/sde-status').then(r => r.json());
+    const badge = $('ap-sde-badge');
+    if (badge) {
+      badge.textContent = s.status || '...';
+      badge.style.color = s.ready ? 'var(--green)' : 'var(--text-dim)';
+    }
+    const prog = $('ap-sde-progress');
+    if (prog) {
+      prog.style.display = s.downloading ? 'block' : 'none';
+      if (s.downloading) $('ap-sde-bar').style.width = (s.progress || 0) + '%';
+    }
+    if (!s.ready || s.downloading) setTimeout(pollSdeStatus, 3000);
+  } catch(e) { setTimeout(pollSdeStatus, 10000); }
 }
 
 async function startAutopilot() {
-  const dest = getSelectedDestination();
   const body = { botName: 'Travel Bot' };
-  if (dest) body.destination = dest.name;
-  try {
-    const r = await fetch('/api/start', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed to start'); }
-  } catch(e) { console.error(e); }
+  if (apSelectedSearch) body.destination = apSelectedSearch.name;
+  api('POST', '/api/start', body);
 }
 
 async function startMining() {
@@ -863,125 +482,204 @@ async function startMining() {
       shieldEscape: parseInt($('mb-shield-pct').value),
     },
   };
+  api('POST', '/api/start', body);
+}
+
+// ─── SignalR ───────────────────────────────────────────────────────────────
+const conn = new signalR.HubConnectionBuilder()
+  .withUrl('/botHub')
+  .withAutomaticReconnect()
+  .build();
+
+conn.onreconnecting(() => { $('conn-text').textContent = 'Reconnecting...'; $('conn-dot').classList.remove('ok'); });
+conn.onreconnected(() => { $('conn-text').textContent = 'Connected'; $('conn-dot').classList.add('ok'); });
+conn.on('TickUpdate', gs => { renderDashboard(gs); });
+conn.on('LogEntry', e => addLogEntry(e));
+conn.on('ActionLog', e => addActionEntry(e));
+conn.on('StateChanged', state => { updateBotState(state); });
+
+async function startConnection() {
+  try { 
+    await conn.start(); 
+    $('conn-text').textContent = 'Connected'; 
+    $('conn-dot').classList.add('ok'); 
+    loadInitialState();
+  } catch(e) { setTimeout(startConnection, 3000); }
+}
+
+async function loadInitialState() {
   try {
-    const r = await fetch('/api/start', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.message || 'Failed to start'); }
-  } catch(e) { console.error(e); }
+    const s = await fetch('/api/status').then(r => r.json());
+    updateBotState(s.state, s.botName, s.botDescription);
+    if (s.gameState) renderDashboard(s.gameState);
+    $('toggle-survival').checked = s.survivalEnabled;
+  } catch(e) {}
 }
 
-function updateMbStats() {
-  const sl = $('mb-status-line');
-  const statsDiv = $('mb-stats');
-  const isMining = botState !== 'Idle' && botName === 'Mining Bot';
-  if (!isMining) {
-    if (statsDiv) statsDiv.textContent = 'Idle';
-    if (sl) sl.textContent = '';
-    return;
-  }
-  const m3 = miningStats.totalM3 || 0;
-  const cyc = miningStats.cycles || 0;
-  if (statsDiv) statsDiv.innerHTML =
-    `<span style="color:var(--purple)">${m3.toFixed(1)} m³</span> mined &nbsp;·&nbsp; ` +
-    `<span style="color:var(--accent)">${cyc}</span> cycle${cyc!==1?'s':''}`;
-  if (sl) sl.textContent = isMining ? `Running — ${m3.toFixed(1)} m³ mined` : '';
-}
-
-// ── Misc ──────────────────────────────────────────────────────────────────
-
-async function apiClick(url) {
-  try { const r = await fetch(url,{method:'POST'}); if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.message||'Failed');} } catch(e) {}
-}
-async function switchHold(holdType) {
-  try { const r = await fetch('/api/switch-hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdType})}); if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.message||'Failed');} } catch(e) {}
-}
-
-// ── Log ───────────────────────────────────────────────────────────────────
-function addLogEntry(e) {
-  const t = new Date(e.time).toLocaleTimeString('en-GB',{hour12:false});
-  const lvl = (e.level||'').slice(0,4);
-  const el = document.createElement('div'); el.className = 'log-entry';
-  el.innerHTML = `<span class="log-time">${t}</span><span class="log-level ${e.level}">${lvl}</span><span>${esc(e.message)}</span>`;
-  const body = $('log-body'); body.prepend(el);
-  while (body.children.length > 200) body.removeChild(body.lastChild);
-}
-function addActionEntry(e) {
-  const t = new Date(e.time).toLocaleTimeString('en-GB',{hour12:false});
-  const el = document.createElement('div'); el.className = 'action-entry';
-  el.innerHTML = `<span class="action-time">${t}</span><span class="action-desc">${esc(e.description)}</span>`;
-  const body = $('action-body'); body.prepend(el);
-  while (body.children.length > 150) body.removeChild(body.lastChild);
-}
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-// ── UI state machine ──────────────────────────────────────────────────────
-function refreshUI() {
-  const running = botState==='Running', paused = botState==='Paused', idle = botState==='Idle';
+function updateBotState(state, name, desc) {
   const pill = $('state-pill');
-  pill.textContent = botState;
-  pill.className = 'state-pill' + (running?' running':paused?' paused':'');
-  $('btn-stop').disabled   = idle;
-  $('btn-pause').disabled  = !running;
-  $('btn-resume').disabled = !paused;
-  $('bot-desc-badge').textContent = (!idle && botDesc) ? botDesc : '';
-  // Autopilot launch buttons
-  $('ap-start-btn').disabled = !idle;
-  $('ap-stop-btn').disabled  = idle;
-  updateApStatus();
-  // Mining launch buttons
-  $('mb-start-btn').disabled = !idle;
-  $('mb-stop-btn').disabled  = idle;
-  updateMbStats();
+  pill.textContent = state.toUpperCase();
+  pill.className = 'bot-pill ' + state.toLowerCase();
+  
+  if (name) {
+    $('bot-desc').textContent = `${name}: ${desc || ''}`;
+    $('btn-stop').disabled = state === 'Idle';
+    $('btn-pause').disabled = state !== 'Running';
+    $('btn-resume').disabled = state !== 'Paused';
+  }
 }
 
-// ── Controls ──────────────────────────────────────────────────────────────
-$('btn-stop').addEventListener('click',   () => api('POST','/api/stop'));
-$('btn-pause').addEventListener('click',  () => api('POST','/api/pause'));
-$('btn-resume').addEventListener('click', () => api('POST','/api/resume'));
-$('btn-save-frame').addEventListener('click', async () => {
-  try {
-    const r = await fetch('/api/save-frame',{method:'POST'});
-    const j = await r.json().catch(()=>({}));
-    if (r.ok) { $('btn-save-frame').textContent='✓ Saved'; setTimeout(()=>{$('btn-save-frame').innerHTML='&#128190; Frame';},2000); }
-    else alert(j.message||'Save frame failed');
-  } catch(e) { alert('Error: '+e.message); }
-});
-$('btn-kill').addEventListener('click', () => { if(confirm('Shut down the EBot server?')) api('POST','/api/kill'); });
-$('toggle-survival').addEventListener('change', e => api('POST','/api/survival',{enabled:e.target.checked}));
+function renderDashboard(gs) {
+  if (!gs) return;
+  lastGs = gs;
+
+  // 1. Sidebar & Engine
+  $('engine-rpm').textContent = gs.engineRpm.toFixed(1);
+  $('info-ticks').textContent = `Ticks: ${gs.tickCount}`;
+  $('info-system').textContent = `System: ${gs.systemName || 'Unknown'} (${gs.securityStatus || '?'})`;
+  $('runtime-display').textContent = gs.runtime;
+
+  // 2. HUD Bars
+  const updateBar = (id, val) => {
+    const v = val ?? 100;
+    $(id).style.width = v + '%';
+    $(`val-${id.split('-')[1]}`).textContent = v + '%';
+    if (v < 25) $(id).style.background = 'var(--red)';
+    else if (id === 'bar-shield') $(id).style.background = 'var(--accent)';
+  };
+  updateBar('bar-shield', gs.shieldPercent);
+  updateBar('bar-armor', gs.armorPercent);
+  updateBar('bar-hull', gs.structurePercent);
+  updateBar('bar-cap', gs.capacitorPercent);
+
+  // 3. Targets
+  const targetList = $('targets-list');
+  if (gs.targets && gs.targets.length > 0) {
+    targetList.innerHTML = gs.targets.map(t => `
+      <div class="target-card ${t.isActive ? 'active' : ''}">
+        <div class="target-name" title="${esc(t.name)}">${esc(t.name)}</div>
+        <div class="target-dist">${esc(t.distanceText)}</div>
+        <div class="target-mini-bars">
+          <div class="target-mini-bar" style="background:var(--accent); width:${t.shieldPercent}%"></div>
+          <div class="target-mini-bar" style="background:var(--yellow); width:${t.armorPercent}%"></div>
+          <div class="target-mini-bar" style="background:var(--red); width:${t.structurePercent}%"></div>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    targetList.innerHTML = '<div class="empty" style="margin: auto;">No targets locked</div>';
+  }
+
+  // 4. Selected Item
+  const selPanel = $('selected-item');
+  if (gs.selectedItem) {
+    selPanel.innerHTML = `
+      <div style="color:var(--orange); font-weight:700; font-size:0.8rem;">${esc(gs.selectedItem.name)}</div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:8px;">
+        ${gs.selectedItem.actions.map(a => `<span class="badge" style="background:#1c2128; border:1px solid var(--border); color:var(--text-dim); font-size:0.55rem;">${esc(a)}</span>`).join('')}
+      </div>
+    `;
+    selPanel.className = '';
+  } else {
+    selPanel.innerHTML = 'Nothing selected';
+    selPanel.className = 'empty';
+  }
+
+  // 5. Modules
+  $('module-grid').innerHTML = gs.moduleButtons.map(m => {
+    let cls = '';
+    if (m.isOverloaded) cls = 'hot';
+    else if (m.isActive) cls = 'active';
+    else if (m.isBusy) cls = 'busy';
+    else if (m.isOffline) cls = 'offline';
+    return `<div class="module-slot ${cls}" title="${esc(m.name)}">
+      ${m.slotIndex + 1}
+      <div class="module-ramp"></div>
+    </div>`;
+  }).join('');
+
+  // 6. Drones
+  const renderDrones = (group, listId, titleId) => {
+    const list = $(listId);
+    const title = $(titleId);
+    if (group && group.drones.length > 0) {
+      title.textContent = `${group.header || 'Drones'} (${group.current}/${group.max})`;
+      list.innerHTML = group.drones.map(d => `
+        <div style="font-size:0.7rem; display:flex; justify-content:space-between; padding:2px 0;">
+          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px;">${esc(d.name)}</span>
+          <div style="display:flex; gap:2px; width:60px; height:4px; margin-top:4px;">
+            <div style="flex:1; background:var(--accent); opacity:${(d.shield??100)/100}"></div>
+            <div style="flex:1; background:var(--yellow); opacity:${(d.armor??100)/100}"></div>
+            <div style="flex:1; background:var(--red); opacity:${(d.structure??100)/100}"></div>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      title.textContent = titleId.includes('space') ? 'Drones In Space' : 'Drones In Bay';
+      list.innerHTML = '<div class="empty" style="padding:10px;">None</div>';
+    }
+  };
+  renderDrones(gs.dronesInSpace, 'drones-space-list', 'drones-space-title');
+  renderDrones(gs.dronesInBay, 'drones-bay-list', 'drones-bay-title');
+
+  // 7. Overview
+  $('overview-body').innerHTML = gs.overview.map(e => `
+    <tr class="${e.isAttackingMe ? 'danger' : ''}">
+      <td style="text-align:center;">${e.isAttackingMe ? '⚠' : ''}</td>
+      <td>${esc(e.name)}</td>
+      <td style="color:var(--text-dim)">${esc(e.objectType)}</td>
+      <td style="text-align:right; font-family:monospace; color:var(--cyan);">${esc(e.distance)}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="4" class="empty">Empty space</td></tr>';
+
+  // 8. Holds
+  $('holds-list').innerHTML = gs.holds.map(h => {
+    const pct = h.maxM3 > 0 ? (h.usedM3 / h.maxM3 * 100) : 0;
+    return `
+      <div class="hold-card">
+        <div class="hold-title"><span>${esc(h.name)}</span><span style="color:var(--text-dim)">${h.usedM3?.toFixed(1)} / ${h.maxM3?.toFixed(1)} m³</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${pct > 90 ? 'var(--red)' : 'var(--purple)'}"></div></div>
+      </div>
+    `;
+  }).join('') || '<div class="empty">Sync holds to view</div>';
+
+  // 9. Thought Path
+  $('thought-path').textContent = gs.thoughtProcess || 'Idle';
+}
+
+function addLogEntry(e) {
+  const body = $('log-body');
+  if (body.querySelector('.empty')) body.innerHTML = '';
+  
+  const el = document.createElement('div');
+  el.className = `log-entry log-${e.level}`;
+  const time = new Date(e.time).toLocaleTimeString();
+  el.innerHTML = `<span class="log-time">[${time}]</span><span class="log-cat">${e.category}</span><span class="log-msg">${esc(e.message)}</span>`;
+  body.prepend(el);
+  
+  while (body.children.length > 100) body.removeChild(body.lastChild);
+}
+
+function addActionEntry(e) {
+  // Actions are now highlighted in the log as 'Action' category
+  addLogEntry({ time: e.time, level: 'Info', category: 'Action', message: e.description });
+}
 
 async function api(method, url, body) {
   try {
-    const res = await fetch(url, { method, headers: body?{'Content-Type':'application/json'}:{}, body: body?JSON.stringify(body):undefined });
-    if (!res.ok) { const j = await res.json().catch(()=>({})); alert(j.message||'Request failed: '+res.status); }
+    await fetch(url, { method, headers: body?{'Content-Type':'application/json'}:{}, body: body?JSON.stringify(body):undefined });
   } catch(e) { console.error(e); }
 }
 
-// ── DPI ───────────────────────────────────────────────────────────────────
-async function loadDpiInfo() {
-  try { const d = await fetch('/api/dpi').then(r=>r.json()); $('dpi-info').textContent=`DPI ${d.system_dpi}`; $('dpi-scale-input').value=d.coordinate_scale; } catch(e) {}
+async function apiClick(url) {
+  api('POST', url);
 }
-$('btn-dpi-apply').addEventListener('click', async () => {
-  const scale = parseFloat($('dpi-scale-input').value);
-  if (isNaN(scale)||scale<0.1||scale>4) { alert('Scale 0.1–4.0'); return; }
-  try { await fetch('/api/dpi/scale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scale})}); await loadDpiInfo(); } catch(e) {}
-});
 
-// ── Diagnostics ───────────────────────────────────────────────────────────
-$('btn-diagnose').addEventListener('click', async () => {
-  $('diag-report').textContent='Running…'; $('diag-json').textContent=''; $('diag-overlay').style.display='block';
-  try { const d=await fetch('/api/debug/reader').then(r=>r.json()); $('diag-report').textContent=d.report||'(no report)'; $('diag-json').textContent=d.json_preview||'(no JSON)'; }
-  catch(e) { $('diag-report').textContent='Fetch error: '+e.message; }
-});
-$('btn-diag-input').addEventListener('click', async () => {
-  $('diag-report').textContent='Testing SendInput…'; $('diag-json').textContent=''; $('diag-overlay').style.display='block';
-  try { const d=await fetch('/api/debug/input').then(r=>r.json()); $('diag-report').textContent=d.report||'(no report)'; $('diag-json').textContent=d.passed?'✓ SendInput working':'✗ SendInput FAILED'; }
-  catch(e) { $('diag-report').textContent='Fetch error: '+e.message; }
-});
+// Controls
+$('btn-stop').addEventListener('click', () => api('POST','/api/stop'));
+$('btn-pause').addEventListener('click', () => api('POST','/api/pause'));
+$('btn-resume').addEventListener('click', () => api('POST','/api/resume'));
 
-// ── Boot ──────────────────────────────────────────────────────────────────
 startConnection();
 pollSdeStatus();
 </script>

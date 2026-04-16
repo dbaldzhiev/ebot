@@ -205,10 +205,37 @@ public sealed class UITreeNodeWithDisplayRegion
     public List<UITreeNodeWithDisplayRegion> Children { get; init; } = [];
 
     /// <summary>
+    /// Gets a stable identifier for this node based on its type and name.
+    /// Addresses are not always stable across frames, but names often are.
+    /// </summary>
+    public string StableId => $"{Node.PythonObjectTypeName}:{Node.GetDictString("_name") ?? "noname"}";
+
+    /// <summary>
+    /// Checks if the node has a valid display region (non-zero size).
+    /// </summary>
+    public bool IsVisible => Region.Width > 0 && Region.Height > 0;
+
+    /// <summary>
     /// Gets the center point of this node's display region  (useful for clicking).
     /// </summary>
     public (int X, int Y) Center =>
         (Region.X + Region.Width / 2, Region.Y + Region.Height / 2);
+
+    /// <summary>
+    /// Finds the first descendant matching a query, or null.
+    /// </summary>
+    public UITreeNodeWithDisplayRegion? QueryFirst(string selector)
+    {
+        return UIQuery.Parse(selector).MatchFirst(this);
+    }
+
+    /// <summary>
+    /// Finds all descendants matching a query.
+    /// </summary>
+    public IEnumerable<UITreeNodeWithDisplayRegion> QueryAll(string selector)
+    {
+        return UIQuery.Parse(selector).MatchAll(this);
+    }
 
     /// <summary>
     /// Recursively finds all descendant nodes matching a predicate.

@@ -34,7 +34,14 @@ public sealed record GameStateSummary(
     // All detected inventory holds (currently-visible + orchestrator hold cache)
     IReadOnlyList<HoldInfoDto> Holds,
     // Nav entries (clickable holds in the left panel)
-    IReadOnlyList<HoldNavEntryDto> HoldNavEntries);
+    IReadOnlyList<HoldNavEntryDto> HoldNavEntries,
+    // Decision / Engine
+    string? ThoughtProcess,
+    double EngineRpm,
+    // Expanded UI
+    DroneGroupDto? DronesInBay,
+    DroneGroupDto? DronesInSpace,
+    SelectedItemDto? SelectedItem);
 
 public sealed record TargetDto(
     string? Name,
@@ -62,6 +69,22 @@ public sealed record ModuleButtonDto(
     int? RampRotationMilli);
 
 public sealed record CargoItemDto(string? Name, int? Quantity);
+
+public sealed record DroneDto(
+    string? Name,
+    int? Shield,
+    int? Armor,
+    int? Structure);
+
+public sealed record DroneGroupDto(
+    string? Header,
+    int? Current,
+    int? Max,
+    IReadOnlyList<DroneDto> Drones);
+
+public sealed record SelectedItemDto(
+    string? Name,
+    IReadOnlyList<string> Actions);
 
 /// <summary>Inventory hold data (capacity + items) for one hold type.</summary>
 public sealed record HoldInfoDto(
@@ -130,7 +153,8 @@ public static class DtoMapper
     /// </summary>
     public static GameStateSummary ToDto(
         EBot.Core.DecisionEngine.BotContext ctx,
-        IReadOnlyDictionary<string, HoldInfoDto>? holdCache = null)
+        IReadOnlyDictionary<string, HoldInfoDto>? holdCache = null,
+        double engineRpm = 0)
     {
         var gs = ctx.GameState;
         var ui = gs.ParsedUI;
@@ -200,6 +224,16 @@ public static class DtoMapper
             .Select(e => new HoldNavEntryDto(e.Label ?? e.HoldType.ToString(), e.HoldType.ToString(), e.IsSelected))
             .ToList() ?? [];
 
+        // ── Expanded UI ──────────────────────────────────────────────────────
+        
+        static DroneGroupDto? MapDroneGroup(DronesGroup? g) => g == null ? null : new DroneGroupDto(
+            g.HeaderText, g.QuantityCurrent, g.QuantityMaximum,
+            g.Drones.Select(d => new DroneDto(d.Name, d.HitpointsPercent?.Shield, d.HitpointsPercent?.Armor, d.HitpointsPercent?.Structure)).ToList());
+
+        var selectedItem = ui.SelectedItemWindow == null ? null : new SelectedItemDto(
+            ui.SelectedItemWindow.UINode.GetAllContainedDisplayTexts().FirstOrDefault(),
+            ui.SelectedItemWindow.ActionButtons.Select(b => b.Node.GetDictString("_hint") ?? b.Node.PythonObjectTypeName).ToList());
+
         return new GameStateSummary(
             gs.IsInSpace,
             gs.IsDocked,
@@ -221,7 +255,12 @@ public static class DtoMapper
             gs.HasContextMenu,
             contextMenuEntries,
             holds,
-            navEntries);
+            navEntries,
+            string.Join(" > ", ctx.ActiveNodes.Reverse()),
+            engineRpm,
+            MapDroneGroup(ui.DronesWindow?.DronesInBay),
+            MapDroneGroup(ui.DronesWindow?.DronesInSpace),
+            selectedItem);
     }
 
     private static string FormatDistance(double meters)

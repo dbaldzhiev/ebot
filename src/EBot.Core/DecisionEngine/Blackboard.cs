@@ -10,7 +10,17 @@ public sealed class Blackboard
     private readonly Dictionary<string, DateTimeOffset> _cooldowns = new();
 
     /// <summary>
-    /// Gets a typed value from the blackboard, or default if not found.
+    /// Gets a typed value from the blackboard, or a provided default if not found.
+    /// </summary>
+    public T Get<T>(string key, T defaultValue)
+    {
+        if (_data.TryGetValue(key, out var value) && value is T typed)
+            return typed;
+        return defaultValue;
+    }
+
+    /// <summary>
+    /// Gets a typed value from the blackboard, or default(T) if not found.
     /// </summary>
     public T? Get<T>(string key)
     {

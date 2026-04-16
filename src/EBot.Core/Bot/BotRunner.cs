@@ -1,8 +1,12 @@
+#pragma warning disable CA1416 // Windows only
+
 using EBot.Core.DecisionEngine;
 using EBot.Core.Execution;
 using EBot.Core.GameState;
 using EBot.Core.MemoryReading;
 using Microsoft.Extensions.Logging;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace EBot.Core.Bot;
 
@@ -225,10 +229,11 @@ public sealed class BotRunner : IDisposable
                 LastRawJson = readResult.Json;
                 var parsedUI = _parser.Parse(readResult.Json!);
 
-                // Optionally log the raw JSON
+                // Optionally log the raw JSON and screenshot
                 if (_settings.LogMemoryReadings)
                 {
                     await LogMemoryReading(readResult.Json!, ct);
+                    CaptureScreenshot();
                 }
 
                 // STEP 3: Create snapshot
@@ -244,9 +249,23 @@ public sealed class BotRunner : IDisposable
                 _context.GameState = snapshot;
                 _context.TickCount++;
 
-                // STEP 4: Run the behavior tree
+                // STEP 4: Run the behavior tree with a watchdog
                 _context.Actions.Clear();
-                _behaviorTree?.Tick(_context);
+                _context.ActiveNodes.Clear();
+                
+                try 
+                {
+                    // Note: BT is currently synchronous, so this CTS is for documentation/future async use.
+                    // To truly break a sync hang, we'd need a separate thread or async BT nodes.
+                    _behaviorTree?.Tick(_context);
+                }
+                catch (Exception ex)
+                {
+                    var trace = string.Join(" -> ", _context.ActiveNodes.Reverse());
+                    _logger.LogError(ex, "Behavior tree crashed during tick {Tick}. Trace: {Trace}", _context.TickCount, trace);
+                    EmergencyDiagnosticDump($"NodeCrash_{_context.ActiveNodes.Peek()}");
+                    throw;
+                }
 
                 // STEP 5: Execute queued actions
                 if (!_context.Actions.IsEmpty)
@@ -290,14 +309,48 @@ public sealed class BotRunner : IDisposable
         }
     }
 
+    /// <summary>
+    /// Manually trigger an emergency diagnostic dump (screenshot + frame).
+    /// </summary>
+    public void TriggerEmergencyDump(string reason) => EmergencyDiagnosticDump(reason);
+
+    private void EmergencyDiagnosticDump(string reason)
+    {
+        try
+        {
+            var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd_HHmmss");
+            Directory.CreateDirectory(_settings.LogDirectory);
+
+            if (LastRawJson != null)
+            {
+                var jsonPath = Path.Combine(_settings.LogDirectory, $"emergency_{reason}_{timestamp}.json");
+                File.WriteAllText(jsonPath, LastRawJson);
+            }
+
+            CaptureScreenshot(); // This uses internal naming, but it's enough
+            _logger.LogInformation("Emergency diagnostic dump completed (Reason: {Reason})", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to perform emergency dump: {Msg}", ex.Message);
+        }
+    }
+
     private nint GetEveWindowHandle()
     {
-        var client = _settings.Sanderling.ProcessId > 0
-            ? EveProcessFinder.FindEveClients()
-                .FirstOrDefault(c => c.ProcessId == _settings.Sanderling.ProcessId)
-            : EveProcessFinder.FindFirstClient();
+        if (_settings.Sanderling.ProcessId <= 0)
+        {
+            var client = EveProcessFinder.FindFirstClient();
+            if (client != null)
+                _settings.Sanderling.ProcessId = client.ProcessId;
+        }
 
-        return client?.MainWindowHandle ?? 0;
+        var clients = EveProcessFinder.FindEveClients();
+        var target = _settings.Sanderling.ProcessId > 0
+            ? clients.FirstOrDefault(c => c.ProcessId == _settings.Sanderling.ProcessId)
+            : clients.FirstOrDefault();
+
+        return target?.MainWindowHandle ?? 0;
     }
 
     private async Task LogMemoryReading(string json, CancellationToken ct)
@@ -312,6 +365,43 @@ public sealed class BotRunner : IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to log memory reading");
+        }
+    }
+
+    private void CaptureScreenshot()
+    {
+        try
+        {
+            var hWnd = GetEveWindowHandle();
+            if (hWnd == 0) return;
+
+            if (!NativeMethods.GetWindowRect(hWnd, out var rect)) return;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            using var bmp = new Bitmap(rect.Width, rect.Height, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                var hdcDest = g.GetHdc();
+                var hdcSrc = NativeMethods.GetWindowDC(hWnd);
+                try
+                {
+                    NativeMethods.BitBlt(hdcDest, 0, 0, rect.Width, rect.Height, hdcSrc, 0, 0, NativeMethods.SRCCOPY);
+                }
+                finally
+                {
+                    g.ReleaseHdc(hdcDest);
+                    NativeMethods.ReleaseDC(hWnd, hdcSrc);
+                }
+            }
+
+            Directory.CreateDirectory(_settings.LogDirectory);
+            var filename = Path.Combine(_settings.LogDirectory,
+                $"screenshot_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss}_{_snapshotSequence}.png");
+            bmp.Save(filename, ImageFormat.Png);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to capture screenshot: {Msg}", ex.Message);
         }
     }
 

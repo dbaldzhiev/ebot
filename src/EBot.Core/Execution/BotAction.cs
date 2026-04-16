@@ -56,11 +56,17 @@ public abstract record BotAction
     public TimeSpan PreDelay { get; init; } = TimeSpan.Zero;
 }
 
-/// <summary>Left-click at screen coordinates.</summary>
-public sealed record ClickAction(int X, int Y) : BotAction;
+/// <summary>Left-click at screen coordinates, optionally with modifiers (Ctrl, Shift).</summary>
+public sealed record ClickAction(int X, int Y, VirtualKey[] Modifiers) : BotAction
+{
+    public ClickAction(int x, int y) : this(x, y, []) { }
+}
 
-/// <summary>Right-click at screen coordinates.</summary>
-public sealed record RightClickAction(int X, int Y) : BotAction;
+/// <summary>Right-click at screen coordinates, optionally with modifiers.</summary>
+public sealed record RightClickAction(int X, int Y, VirtualKey[] Modifiers) : BotAction
+{
+    public RightClickAction(int x, int y) : this(x, y, []) { }
+}
 
 /// <summary>Double-click at screen coordinates.</summary>
 public sealed record DoubleClickAction(int X, int Y) : BotAction;

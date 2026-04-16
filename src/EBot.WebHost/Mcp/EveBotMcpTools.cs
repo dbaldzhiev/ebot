@@ -245,6 +245,39 @@ public sealed class EveBotMcpTools(BotOrchestrator orchestrator)
         return Serialize(result);
     }
 
+    [McpServerTool(Name = "get_bt_state")]
+    [Description("Get the current execution path of the behavior tree and the world state synthesis.")]
+    public string GetBTState()
+    {
+        var runner = orchestrator.Runner;
+        if (runner == null) return "Bot not running.";
+
+        var ctx = orchestrator.LastContext;
+        var trace = ctx != null ? string.Join(" -> ", ctx.ActiveNodes.Reverse()) : "N/A";
+        var world = ctx?.Blackboard.Get<object>("world"); // Generic object for serialization
+
+        return Serialize(new
+        {
+            trace,
+            tick = ctx?.TickCount ?? 0,
+            world_state = world
+        });
+    }
+
+    [McpServerTool(Name = "trigger_diagnostic_dump")]
+    [Description("Manually trigger a full diagnostic dump (JSON frame + Screenshot).")]
+    public string TriggerDump(
+        [Description("Reason for the dump (e.g. 'Stuck', 'ManualCheck')")] string reason = "Manual")
+    {
+        var runner = orchestrator.Runner;
+        if (runner == null) return "Bot not running.";
+
+        // Use reflection or make internal method public? 
+        // Let's assume we can add a public method to orchestrator to trigger this.
+        orchestrator.TriggerEmergencyDump(reason);
+        return $"Diagnostic dump triggered with reason: {reason}. Check the logs folder.";
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────────
 
     private static string Serialize(object obj) =>

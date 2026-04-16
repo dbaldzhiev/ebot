@@ -61,8 +61,12 @@ public sealed class ActionExecutor
         // Build description and fire event before executing
         var desc = action switch
         {
-            ClickAction c        => $"Click ({c.X}, {c.Y})",
-            RightClickAction rc  => $"RightClick ({rc.X}, {rc.Y})",
+            ClickAction c        => c.Modifiers is { Length: > 0 }
+                                       ? $"Click ({c.X}, {c.Y}) + {string.Join("+", c.Modifiers)}"
+                                       : $"Click ({c.X}, {c.Y})",
+            RightClickAction rc  => rc.Modifiers is { Length: > 0 }
+                                       ? $"RightClick ({rc.X}, {rc.Y}) + {string.Join("+", rc.Modifiers)}"
+                                       : $"RightClick ({rc.X}, {rc.Y})",
             DoubleClickAction dc => $"DoubleClick ({dc.X}, {dc.Y})",
             DragAction d         => $"Drag ({d.FromX},{d.FromY})→({d.ToX},{d.ToY})",
             MoveMouseAction mm   => $"MoveMouse ({mm.X}, {mm.Y})",
@@ -79,11 +83,11 @@ public sealed class ActionExecutor
         switch (action)
         {
             case ClickAction click:
-                await _input.Click(click.X, click.Y, ct);
+                await _input.Click(click.X, click.Y, ct, click.Modifiers);
                 break;
 
             case RightClickAction rightClick:
-                await _input.RightClick(rightClick.X, rightClick.Y, ct);
+                await _input.RightClick(rightClick.X, rightClick.Y, ct, rightClick.Modifiers);
                 break;
 
             case DoubleClickAction doubleClick:
