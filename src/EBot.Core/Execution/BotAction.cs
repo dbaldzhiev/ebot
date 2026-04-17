@@ -93,6 +93,11 @@ public sealed record TypeTextAction(string Text) : BotAction;
 public sealed record MoveMouseAction(int X, int Y) : BotAction;
 
 /// <summary>
+/// Scroll the mouse wheel. Negative delta = scroll down, positive = scroll up.
+/// </summary>
+public sealed record ScrollAction(int Delta) : BotAction;
+
+/// <summary>
 /// A queue of bot actions to be executed by the execution engine.
 /// </summary>
 public sealed class ActionQueue

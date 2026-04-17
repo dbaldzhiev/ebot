@@ -21,6 +21,10 @@ public sealed partial class MiningBot
                         ctx.Blackboard.Set("needs_unload", true);
                         StopAllModules(ctx);
                         RecallDrones(ctx);
+                        // Reset per-cycle menu-type probing (home_menu_type persists across cycles once learned)
+                        ctx.Blackboard.Set("return_tried_stations",   false);
+                        ctx.Blackboard.Set("return_tried_structures",  false);
+                        ctx.Blackboard.Set("return_current_menu",     "");
                         ctx.Blackboard.Set("return_phase", "await_drones");
                         ctx.Blackboard.SetCooldown("return_drone_timeout", TimeSpan.FromSeconds(25));
                         return NodeStatus.Running;
@@ -37,59 +41,186 @@ public sealed partial class MiningBot
 
                     case "find_station":
                     {
-                        var station = FindStationInOverview(ctx);
-                        if (station != null)
+                        if (ctx.GameState.IsDocked) { ctx.Blackboard.Set("return_phase", ""); return NodeStatus.Success; }
+                        
+                        ctx.Log("[Mining] Initiating menu-based docking. Right-clicking in space.");
+                        ctx.Blackboard.Set("menu_expected", true);
+                        RightClickInSpace(ctx);
+                        ctx.Wait(TimeSpan.FromMilliseconds(800));
+                        ctx.Blackboard.Set("return_phase", "space_menu_dock");
+                        ctx.Blackboard.Set("return_tick", 0);
+                        return NodeStatus.Running;
+                    }
+
+                    case "space_menu_dock":
+                    {
+                        if (ctx.GameState.IsDocked) { ctx.Blackboard.Set("return_phase", ""); return NodeStatus.Success; }
+                        int tick = ctx.Blackboard.Get<int>("return_tick") + 1;
+                        ctx.Blackboard.Set("return_tick", tick);
+
+                        if (!ctx.GameState.HasContextMenu)
                         {
-                            ctx.Log($"[Mining] Found station '{station.Name}' in overview. Warping to dock.");
-                            ctx.Blackboard.Set("menu_expected", true);
-                            ctx.RightClick(station.UINode);
-                            ctx.Wait(TimeSpan.FromMilliseconds(500));
-                            ctx.Blackboard.Set("return_phase", "warp_menu");
+                            if (tick > 5) { ctx.Blackboard.Set("return_phase", "find_station"); }
+                            return NodeStatus.Running;
+                        }
+
+                        var menu = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
+
+                        // Determine which submenu category to hover.
+                        // If we already learned where the home station lives, go straight there.
+                        // Otherwise probe: try "Stations" first, then "Structures" if Stations failed.
+                        var homeMenuType     = ctx.Blackboard.Get<string>("home_menu_type") ?? "";
+                        bool triedStations   = ctx.Blackboard.Get<bool>("return_tried_stations");
+                        bool triedStructures = ctx.Blackboard.Get<bool>("return_tried_structures");
+
+                        ContextMenuEntry? entry = null;
+                        if (!string.IsNullOrEmpty(homeMenuType))
+                        {
+                            // Remembered from a previous dock this session — use it directly
+                            entry = menu?.Entries.FirstOrDefault(e =>
+                                string.Equals(e.Text?.Trim(), homeMenuType, StringComparison.OrdinalIgnoreCase));
+                        }
+                        else if (!triedStations)
+                        {
+                            entry = menu?.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Stations", StringComparison.OrdinalIgnoreCase) == true &&
+                                e.Text?.Contains("Structures", StringComparison.OrdinalIgnoreCase) != true);
+                        }
+                        else if (!triedStructures)
+                        {
+                            entry = menu?.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Structures", StringComparison.OrdinalIgnoreCase) == true);
+                        }
+
+                        if (entry != null)
+                        {
+                            ctx.Log($"[Mining] Found '{entry.Text}' in menu. Hovering.");
+                            ctx.Blackboard.Set("return_current_menu", entry.Text?.Trim() ?? "");
+                            ctx.Blackboard.Set("return_parent_x", entry.UINode.Region.X + entry.UINode.Region.Width);
+                            HoverAndSlide(ctx, entry.UINode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(600));
+                            ctx.Blackboard.Set("return_phase", "station_submenu");
+                            ctx.Blackboard.Set("return_tick", 0);
                         }
                         else
                         {
-                            // Try route panel as fallback
-                            var route = ctx.GameState.ParsedUI.InfoPanelContainer?
-                                .InfoPanelRoute?.RouteElementMarkers.FirstOrDefault();
-                            if (route != null)
+                            // Fallback to route panel if neither Stations nor Structures is in the menu
+                            var route = ctx.GameState.ParsedUI.InfoPanelContainer?.InfoPanelRoute?.RouteElementMarkers.FirstOrDefault();
+                            if (route != null && tick > 3)
                             {
-                                ctx.Log("[Mining] No station in overview, using route panel destination.");
-                                ctx.Blackboard.Set("menu_expected", true);
+                                ctx.Log("[Mining] Station/Structure category not in menu, using route panel fallback.");
                                 ctx.RightClick(route);
                                 ctx.Wait(TimeSpan.FromMilliseconds(500));
                                 ctx.Blackboard.Set("return_phase", "warp_menu");
                             }
-                            else
+                            else if (tick > 6)
                             {
-                                // If we are here, we can't find a station. Try toggling overview tabs.
-                                if (ctx.Blackboard.IsCooldownReady("return_tab_toggle"))
-                                {
-                                    var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
-                                    if (ov != null && ov.Tabs.Count > 1)
-                                    {
-                                        // Find a tab that isn't active and looks like it might have stations
-                                        var nextTab = ov.Tabs.FirstOrDefault(t => !t.IsActive && 
-                                            (t.Name?.Contains("General", StringComparison.OrdinalIgnoreCase) == true ||
-                                             t.Name?.Contains("Station", StringComparison.OrdinalIgnoreCase) == true ||
-                                             t.Name?.Contains("Warp",    StringComparison.OrdinalIgnoreCase) == true));
-                                        
-                                        // Fallback: just pick the next tab
-                                        nextTab ??= ov.Tabs.FirstOrDefault(t => !t.IsActive);
-
-                                        if (nextTab != null)
-                                        {
-                                            ctx.Log($"[Mining] No station found. Switching overview to '{nextTab.Name}' tab.");
-                                            ctx.Click(nextTab.UINode);
-                                            ctx.Blackboard.SetCooldown("return_tab_toggle", TimeSpan.FromSeconds(5));
-                                        }
-                                    }
-                                    else
-                                    {
-                                        ctx.Log("[Mining] WARNING: Cannot find station or route. Please set home station or add it to overview.");
-                                        ctx.Blackboard.SetCooldown("return_tab_toggle", TimeSpan.FromSeconds(10));
-                                    }
-                                }
+                                ctx.KeyPress(VirtualKey.Escape);
+                                ctx.Blackboard.Set("return_phase", "find_station");
                             }
+                        }
+                        return NodeStatus.Running;
+                    }
+
+                    case "station_submenu":
+                    {
+                        if (ctx.GameState.IsDocked) { ctx.Blackboard.Set("return_phase", ""); return NodeStatus.Success; }
+                        int tick = ctx.Blackboard.Get<int>("return_tick") + 1;
+                        ctx.Blackboard.Set("return_tick", tick);
+
+                        if (!ctx.GameState.HasContextMenu)
+                        {
+                            if (tick > 5) { ctx.Blackboard.Set("return_phase", "find_station"); }
+                            return NodeStatus.Running;
+                        }
+
+                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+
+                        // The station submenu is any menu to the right of the leftmost (main) menu.
+                        // Avoid the X-coordinate-based filter which breaks when menu origin shifts.
+                        var mainMenuX = allMenus.Count > 0 ? allMenus.Min(m => m.UINode.Region.X) : 0;
+                        var subMenu = allMenus.FirstOrDefault(m => m.UINode.Region.X > mainMenuX && m.Entries.Count > 0);
+
+                        // Fallback: original X-offset approach in case all menus share the same X
+                        if (subMenu == null)
+                        {
+                            int parentX = ctx.Blackboard.Get<int>("return_parent_x");
+                            subMenu = allMenus.FirstOrDefault(m => m.UINode.Region.X > parentX - 10);
+                        }
+
+                        if (subMenu == null || subMenu.Entries.Count == 0)
+                        {
+                            // Don't wait indefinitely for a submenu that never appears
+                            if (tick > 8)
+                            {
+                                MarkCurrentMenuTried(ctx);
+                                ctx.KeyPress(VirtualKey.Escape);
+                                ctx.Blackboard.Set("return_phase", "find_station");
+                                ctx.Blackboard.Set("return_tick", 0);
+                            }
+                            return NodeStatus.Running;
+                        }
+
+                        var homeName = ctx.Blackboard.Get<string>("home_station");
+                        
+                        // Try to find home station, or fallback to first station
+                        var target = subMenu.Entries.FirstOrDefault(e => 
+                            !string.IsNullOrEmpty(homeName) && 
+                            e.Text?.Contains(homeName, StringComparison.OrdinalIgnoreCase) == true);
+                        
+                        target ??= subMenu.Entries.FirstOrDefault();
+
+                        if (target != null)
+                        {
+                            ctx.Log($"[Mining] Target station '{target.Text}' found. Hovering.");
+                            ctx.Blackboard.Set("return_parent_x", target.UINode.Region.X + target.UINode.Region.Width);
+                            HoverAndSlide(ctx, target.UINode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(600));
+                            ctx.Blackboard.Set("return_phase", "station_action_menu");
+                            ctx.Blackboard.Set("return_tick", 0);
+                        }
+                        else if (tick > 8)
+                        {
+                            MarkCurrentMenuTried(ctx);
+                            ctx.KeyPress(VirtualKey.Escape);
+                            ctx.Blackboard.Set("return_phase", "find_station");
+                            ctx.Blackboard.Set("return_tick", 0);
+                        }
+                        return NodeStatus.Running;
+                    }
+
+                    case "station_action_menu":
+                    {
+                        if (ctx.GameState.IsDocked) { ctx.Blackboard.Set("return_phase", ""); return NodeStatus.Success; }
+                        int tick = ctx.Blackboard.Get<int>("return_tick") + 1;
+                        ctx.Blackboard.Set("return_tick", tick);
+
+                        if (!ctx.GameState.HasContextMenu)
+                        {
+                            if (tick > 5) { ctx.Blackboard.Set("return_phase", "find_station"); }
+                            return NodeStatus.Running;
+                        }
+
+                        var allMenus = ctx.GameState.ParsedUI.ContextMenus;
+                        int parentX = ctx.Blackboard.Get<int>("return_parent_x");
+                        var actionMenu = allMenus.OrderByDescending(m => m.UINode.Region.X).FirstOrDefault();
+
+                        var dockEntry = actionMenu?.Entries.FirstOrDefault(e => 
+                            e.Text?.Equals("Dock", StringComparison.OrdinalIgnoreCase) == true);
+
+                        if (dockEntry != null)
+                        {
+                            ctx.Log("[Mining] 'Dock' command found. Clicking.");
+                            ctx.Click(dockEntry.UINode);
+                            ctx.Blackboard.Set("menu_expected", false);
+                            ctx.Blackboard.Set("return_phase", "waiting_to_dock");
+                            ctx.Blackboard.Set("return_tick", 0);
+                            ctx.Wait(TimeSpan.FromSeconds(5));
+                        }
+                        else if (tick > 6)
+                        {
+                            ctx.KeyPress(VirtualKey.Escape);
+                            ctx.Blackboard.Set("return_phase", "find_station");
                         }
                         return NodeStatus.Running;
                     }
@@ -103,7 +234,7 @@ public sealed partial class MiningBot
                         var dock = menu?.Entries.FirstOrDefault(e =>
                             string.Equals(e.Text?.Trim(), "Dock", StringComparison.OrdinalIgnoreCase));
                         if (dock != null)
-                        { ctx.Click(dock.UINode); ctx.Blackboard.Set("return_phase", ""); return NodeStatus.Running; }
+                        { ctx.Click(dock.UINode); ctx.Blackboard.Set("return_phase", "waiting_to_dock"); ctx.Blackboard.Set("return_tick", 0); return NodeStatus.Running; }
                         var warp = menu?.Entries.FirstOrDefault(e =>
                             e.Text?.Contains("Warp", StringComparison.OrdinalIgnoreCase) == true &&
                             (e.Text.Contains(" 0") || e.Text.Contains("0 m")));
@@ -139,9 +270,29 @@ public sealed partial class MiningBot
                         var dock = menu?.Entries.FirstOrDefault(e =>
                             e.Text?.Contains("Dock", StringComparison.OrdinalIgnoreCase) == true);
                         if (dock != null)
-                        { ctx.Click(dock.UINode); ctx.Blackboard.Set("return_phase", ""); }
+                        { ctx.Click(dock.UINode); ctx.Blackboard.Set("return_phase", "waiting_to_dock"); ctx.Blackboard.Set("return_tick", 0); }
                         else
                         { ctx.KeyPress(VirtualKey.Escape); ctx.Blackboard.Set("return_phase", "at_station"); }
+                        return NodeStatus.Running;
+                    }
+
+                    case "waiting_to_dock":
+                    {
+                        if (ctx.GameState.IsDocked)
+                        {
+                            // Memorise which top-level menu category led to a successful dock
+                            var wonMenu = ctx.Blackboard.Get<string>("return_current_menu") ?? "";
+                            if (!string.IsNullOrEmpty(wonMenu))
+                            {
+                                ctx.Blackboard.Set("home_menu_type", wonMenu);
+                                ctx.Log($"[Mining] Home station is under '{wonMenu}' — remembered for this session.");
+                            }
+                            ctx.Blackboard.Set("return_phase", "");
+                            return NodeStatus.Success;
+                        }
+                        int tick = ctx.Blackboard.Get<int>("return_tick") + 1;
+                        ctx.Blackboard.Set("return_tick", tick);
+                        if (tick > 60) { ctx.Blackboard.Set("return_phase", "find_station"); ctx.Blackboard.Set("return_tick", 0); }
                         return NodeStatus.Running;
                     }
 
@@ -150,6 +301,18 @@ public sealed partial class MiningBot
                         return NodeStatus.Running;
                 }
             }));
+
+    // Marks whichever top-level menu category ("Stations"/"Structures") was tried and failed,
+    // so the next space_menu_dock iteration tries the other one.
+    private static void MarkCurrentMenuTried(BotContext ctx)
+    {
+        var current = ctx.Blackboard.Get<string>("return_current_menu") ?? "";
+        if (current.Contains("Station", StringComparison.OrdinalIgnoreCase))
+            ctx.Blackboard.Set("return_tried_stations", true);
+        else if (current.Contains("Structure", StringComparison.OrdinalIgnoreCase))
+            ctx.Blackboard.Set("return_tried_structures", true);
+        ctx.Log($"[Mining] '{current}' submenu did not contain home station — will try the other category.");
+    }
 
     // ─── 7d-pre. Proactive belt discovery ────────────────────────────────────
 
@@ -386,7 +549,7 @@ public sealed partial class MiningBot
                             {
                                 ctx.Log("[Mining] All belts depleted or excluded — resetting belt depletion and retrying");
                                 _beltDepleted.Clear();
-                                curIdx = ctx.Blackboard.Get<int>("belt_index");
+                                curIdx = 0;
                             }
                         }
 

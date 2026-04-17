@@ -82,10 +82,56 @@ public sealed partial class MiningBot : IBot
         _beltCount = 0;
         _beltsDiscoveryDone = false;
         ctx.Blackboard.Set("last_belt_target", -1);
+
+        // Reset all state-machine phases and transient flags so stale blackboard
+        // state from a previous session never causes the bot to take unexpected action.
+        // NOTE: needs_unload is intentionally NOT reset — if the ore hold was full when
+        // the bot stopped, it should remain queued for unload on the next session.
+        ctx.Blackboard.Set("return_phase",            "");
+        ctx.Blackboard.Set("return_tick",             0);
+        ctx.Blackboard.Set("home_menu_type",          "");   // re-learned each session
+        ctx.Blackboard.Set("return_tried_stations",   false);
+        ctx.Blackboard.Set("return_tried_structures", false);
+        ctx.Blackboard.Set("return_current_menu",     "");
+        ctx.Blackboard.Set("unload_phase",   "");
+        ctx.Blackboard.Set("unload_ticks",   0);
+        ctx.Blackboard.Set("belt_phase",     "");
+        ctx.Blackboard.Set("belt_phase_ticks", 0);
+        ctx.Blackboard.Set("discover_phase", "");
+        ctx.Blackboard.Set("discover_tick",  0);
+        ctx.Blackboard.Set("menu_expected",  false);
+
         if (!string.IsNullOrWhiteSpace(HomeStationOverride))
         {
             ctx.Blackboard.Set("home_station",     HomeStationOverride);
             ctx.Blackboard.Set("home_station_set", true);
+        }
+        else if (ctx.GameState.IsDocked)
+        {
+            // Priority 1: Info panel "Nearest Location" (most reliable for structures)
+            var name = ctx.GameState.ParsedUI.InfoPanelContainer?.InfoPanelLocationInfo?.NearestLocationName;
+            
+            // Priority 2: Station window content texts with strict filtering
+            if (string.IsNullOrEmpty(name))
+            {
+                name = ctx.GameState.ParsedUI.StationWindow?.UINode
+                    .GetAllContainedDisplayTexts()
+                    .Where(t => t.Length is > 5 and < 60 && 
+                                !t.All(char.IsDigit) &&
+                                !t.Equals("Undock", StringComparison.OrdinalIgnoreCase) &&
+                                !t.Contains("Access your", StringComparison.OrdinalIgnoreCase) &&
+                                !t.Contains("hangars",    StringComparison.OrdinalIgnoreCase) &&
+                                !t.Contains("Leave the",   StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(t => t.Length)
+                    .FirstOrDefault();
+            }
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                ctx.Blackboard.Set("home_station",     name);
+                ctx.Blackboard.Set("home_station_set", true);
+                ctx.Log($"[Mining] Bot started while docked. Set home station to: '{name}'");
+            }
         }
         SyncStats(ctx);
     }
@@ -142,7 +188,8 @@ public sealed partial class MiningBot : IBot
                 StopAllModules(ctx);
                 RecallDrones(ctx);
                 ctx.Blackboard.Set("needs_unload", true);
-                ctx.Blackboard.Set("return_phase", "find_station");
+                ctx.Blackboard.Set("return_phase", "await_drones");
+                ctx.Blackboard.SetCooldown("return_drone_timeout", TimeSpan.FromSeconds(15));
                 return NodeStatus.Running;
             }));
 

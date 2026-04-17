@@ -19,8 +19,9 @@ ebot/
 │   │   └── Bot/             # BotRunner (tick loop), IBot interface
 │   │
 │   ├── EBot.ExampleBots/    # Concrete bot implementations
-│   │   ├── MiningBot/       # Mine asteroids, dock when full
+│   │   ├── MiningBot/       # Mine asteroids, dock when full (6 partial files)
 │   │   ├── AutopilotBot/    # Warp-to-0 autopilot along a route
+│   │   ├── TravelBot/       # Scripted travel variant
 │   │   ├── SurvivalNodes.cs # Reusable emergency-tank behavior tree wrapper
 │   │   └── IdleBot.cs       # Monitor-only bot (no actions)
 │   │
@@ -29,13 +30,24 @@ ebot/
 │   │   ├── Program.cs          # REST endpoints, DI, startup
 │   │   ├── Hubs/BotHub.cs      # SignalR hub — pushes TickUpdate, StateChanged, LogEntry
 │   │   ├── Mcp/                # MCP tool server (AI agent interface)
+│   │   ├── Services/           # ChatService (Claude), OllamaChatService
+│   │   ├── Terminal/           # Spectre.Console TUI dashboard
 │   │   └── wwwroot/index.html  # Single-page web UI
 │   │
 │   └── EBot.Runner/         # Minimal console runner (alternative to WebHost)
 │
-├── read-memory-64/          # Viir/bots read-memory-64-bit binaries (separate assemblies)
+├── tests/EBot.Tests/        # xUnit test project
+├── read-memory-64/          # Viir/bots read-memory-64-bit binaries
 │   └── read-memory-64-bit.dll   # Key DLL: EveOnline64.* API
-└── AGENTS.md                # This file
+├── ref/                     # Read-only reference repositories (not in git)
+│   ├── botimplement/        # Elm reference bot implementations (Viir/bots)
+│   │   ├── eve-online-mining-bot/
+│   │   ├── eve-online-warp-to-0-autopilot/
+│   │   └── eve-online-combat-anomaly-bot/
+│   └── (Sanderling/ if cloned separately)
+├── AGENTS.md                # This file
+├── CLAUDE.md                # Claude Code context
+└── GEMINI.md                # Gemini context
 ```
 
 **Target framework:** .NET 9, Windows only (uses Win32 P/Invokes).
@@ -62,11 +74,12 @@ UITreeParser.Parse(json)
        ▼
 BehaviorTree.Tick(BotContext)
   └─ Reads ctx.GameState.ParsedUI
-  └─ Enqueues actions into ctx.Actions  (Click, RightClick, KeyPress, Wait, TypeText)
+  └─ Enqueues actions into ctx.Actions  (see BotAction types below)
        │
        ▼
 ActionExecutor.ExecuteAllAsync(actions, windowHandle)
   └─ InputSimulator: SetCursorPos + mouse_event / keybd_event (Win32)
+  └─ Bézier-curved humanized mouse movement, randomized delays, coordinate jitter
        │
        ▼
 BotRunner fires OnTick → BotOrchestrator → SignalR TickUpdate → Web UI / MCP
@@ -98,8 +111,30 @@ check filters out the stub and finds the live instance.
 |---|---|
 | `UITreeNode` | Raw deserialized JSON node. Dict entries accessed via `GetDictString`, `GetDictDouble`, `GetDictBool`, `GetDictColor`. |
 | `UITreeNodeWithDisplayRegion` | Annotated node with absolute screen `Region` (X,Y,W,H) and `Center`. Has `FindAll` / `FindFirst` helpers. |
-| `ParsedUI` | Fully typed top-level model. Properties: `ShipUI`, `ContextMenus`, `Targets`, `InfoPanelContainer`, `OverviewWindows`, `InventoryWindows`, `StationWindow`, `MessageBoxes`, … |
+| `ParsedUI` | Fully typed top-level model (see full property list below). |
 | `GameStateSnapshot` | Wraps `ParsedUI` + timestamp + computed helpers (`IsInSpace`, `IsDocked`, `IsWarping`, `CapacitorPercent`, `RouteJumpsRemaining`, …). |
+
+**`ParsedUI` properties — complete list:**
+
+| Property | Type | Notes |
+|---|---|---|
+| `UITree` | `UITreeNodeWithDisplayRegion?` | Root of the annotated tree |
+| `ContextMenus` | `IReadOnlyList<ContextMenu>` | Right-click menus currently visible |
+| `ShipUI` | `ShipUI?` | Modules, capacitor, HP, speed |
+| `Targets` | `IReadOnlyList<Target>` | Locked targets |
+| `InfoPanelContainer` | `InfoPanelContainer?` | Left panel: location info, route |
+| `OverviewWindows` | `IReadOnlyList<OverviewWindow>` | Space objects; each has `Tabs`, `ColumnHeaders`, `Entries` |
+| `SelectedItemWindow` | `SelectedItemWindow?` | Action buttons when an object is selected |
+| `DronesWindow` | `DronesWindow?` | Drones in bay / in space with HP |
+| `InventoryWindows` | `IReadOnlyList<InventoryWindow>` | Cargo/ore hold windows with capacity gauge and nav entries |
+| `ChatWindowStacks` | `IReadOnlyList<ChatWindowStack>` | Local, corp, fleet chat |
+| `ModuleButtonTooltip` | `ModuleButtonTooltip?` | Tooltip shown on hover over a module button |
+| `Neocom` | `Neocom?` | Sidebar neocom |
+| `MessageBoxes` | `IReadOnlyList<MessageBox>` | Modal dialogs |
+| `StationWindow` | `StationWindow?` | Undock button when docked |
+| `ProbeScannerWindow` | `ProbeScannerWindow?` | Probe scanning results |
+| `MiningScanResultsWindow` | `MiningScanResultsWindow?` | Survey scanner results with ore entries |
+| `FleetWindow` | `FleetWindow?` | Fleet member list |
 
 **JSON format from the DLL:**
 - `long` / `ulong` values → JSON **strings** (`"42"`, not `42`). `GetDictDouble` handles this.
@@ -117,14 +152,125 @@ check filters out the stub and finds the live instance.
 | `SequenceNode` | AND — runs children in order, stops on first Failure |
 | `ConditionNode` | Wraps a `Func<BotContext, bool>` |
 | `ActionNode` | Wraps a `Func<BotContext, NodeStatus>` |
-| `BotContext` | Passed to every node. Contains `GameState`, `Blackboard`, `Actions`. Helpers: `ctx.Click(node)`, `ctx.RightClick(node)`, `ctx.KeyPress(key, mods)`, `ctx.TypeText(text)`, `ctx.Wait(ts)`. |
+| `InverterNode` | Decorator — inverts child's Success/Failure |
+| `AlwaysSucceedNode` | Decorator — always returns Success regardless of child |
+| `BotContext` | Passed to every node. See full API below. |
 | `Blackboard` | Key-value store persisting between ticks. `Get<T>`, `Set`, `IsCooldownReady`, `SetCooldown`. |
+
+**`BotContext` full API:**
+
+```csharp
+// State
+ctx.GameState          // GameStateSnapshot — current tick's parsed UI
+ctx.Blackboard         // Persists across ticks
+ctx.Actions            // ActionQueue — enqueue BotAction instances here
+ctx.TickCount          // long — ticks since bot start
+ctx.StartTime          // DateTimeOffset
+ctx.RunDuration        // TimeSpan since start
+ctx.ActiveNodes        // Stack<string> — currently executing nodes (debug)
+
+// Action helpers (enqueue into ctx.Actions)
+ctx.Click(node)                          // Left-click node center
+ctx.Click(node, VirtualKey.Control)      // Ctrl+click (e.g. lock target)
+ctx.RightClick(node)                     // Right-click node center
+ctx.ClickAt(x, y)                        // Left-click at absolute coords
+ctx.Hover(node)                          // Mouse move only (for submenu hover)
+ctx.Scroll(node, delta)                  // Move to node then scroll wheel
+ctx.KeyPress(key, modifiers)             // Key press with optional modifiers
+ctx.TypeText(text)                       // Type a string
+ctx.Wait(TimeSpan)                       // Insert delay in action queue
+ctx.ClickMenuEntry(text)                 // Click first context menu entry matching text
+
+// Diagnostics
+ctx.Log(message)                         // Emit a per-tick diagnostic log message
+
+// Self-termination
+ctx.RequestStop()                        // Signal BotRunner to return to idle after this tick
+ctx.StopRequested                        // bool — checked by BotRunner after Decide phase
+```
+
+### BotAction types (all records derived from `BotAction`)
+
+| Type | Parameters | Notes |
+|---|---|---|
+| `ClickAction` | `X, Y, Modifiers` | Left-click; optional `VirtualKey[]` modifiers |
+| `RightClickAction` | `X, Y, Modifiers` | Right-click |
+| `DoubleClickAction` | `X, Y` | Double left-click |
+| `DragAction` | `FromX, FromY, ToX, ToY` | Click-drag |
+| `KeyPressAction` | `Key, Modifiers` | Key press with optional modifiers |
+| `WaitAction` | `Duration` | Pause execution for a `TimeSpan` |
+| `TypeTextAction` | `Text` | Type a string character by character |
+| `MoveMouseAction` | `X, Y` | Mouse move (no click) — for hover-triggered submenus |
+| `ScrollAction` | `Delta` | Mouse wheel (negative = down, positive = up) |
+
+All `BotAction` records have an optional `PreDelay` (`TimeSpan`) property.
+
+**`VirtualKey` enum** — full set available: `Shift`, `Control`, `Alt`, `F1`–`F12`,
+`Escape`, `Tab`, `Enter`, `Space`, `Backspace`, `Delete`, arrow keys, `A`–`Z`, `D0`–`D9`.
 
 ### Orchestration
 
 `BotOrchestrator` is a singleton that owns one perpetual `BotRunner`. The runner
 loops forever. Bots are hot-swapped via `SwapBot()` without interrupting the read
 cycle. When no real bot is active, `IdleBot` runs (reads + broadcasts, no actions).
+
+---
+
+## ParsedUI — Selected Type Details
+
+### `InventoryWindow`
+```
+InventoryWindow
+├── SubCaptionLabelText  // "Ore Hold", "Cargo Hold", etc.
+├── HoldType             // InventoryHoldType enum (Unknown/Cargo/Mining/Fleet/Item/…)
+├── CapacityGauge        // { Used, Maximum, FillPercent }
+├── Items[]              // { Name, Quantity, UINode }
+├── ButtonToStackAll     // UINode of the "Stack All" button
+└── NavEntries[]         // Left-panel hold entries { Label, HoldType, IsSelected, UINode }
+```
+
+**`InventoryHoldType` enum:** `Unknown`, `Cargo`, `Mining`, `Infrastructure`, `ShipMaintenance`, `Fleet`, `Fuel`, `Item`
+
+### `ShipUI`
+```
+ShipUI
+├── Capacitor         // { LevelPercent }
+├── HitpointsPercent  // { Shield, Armor, Structure }
+├── Indication        // { ManeuverType } — "Warp", "Approach", "Orbit", etc.
+├── ModuleButtons[]   // { IsActive, IsBusy, IsOverloaded, IsOffline, IsHiliteVisible, RampRotationMilli, Name }
+├── ModuleButtonsRows // { Top[], Middle[], Bottom[] }
+├── StopButton        // UINode
+├── MaxSpeedButton    // UINode
+└── SpeedText         // "324 m/s"
+```
+
+### `OverviewWindow`
+```
+OverviewWindow
+├── ColumnHeaders[]   // Header label strings, left-to-right
+├── Tabs[]            // { Name, IsActive, UINode }
+└── Entries[]
+    ├── Name, ObjectType, DistanceText, DistanceInMeters
+    ├── IsAttackingMe
+    ├── CellsTexts    // Dictionary<string, string> — column header → cell text
+    └── Texts[]       // All display texts in entry (fallback)
+```
+
+### `MiningScanResultsWindow`
+```
+MiningScanResultsWindow
+├── ScanButton    // UINode of the "Scan" button
+└── Entries[]
+    ├── OreName, Quantity, Volume, ValueText, ValuePerM3, DistanceInMeters
+    ├── IsGroup, IsExpanded
+    └── ExpanderNode   // UINode of the expand/collapse toggle
+```
+
+### `ContextMenu`
+```
+ContextMenu
+└── Entries[]   // { Text, IsHighlighted, UINode }
+```
 
 ---
 
@@ -143,6 +289,7 @@ cycle. When no real bot is active, `IdleBot` runs (reads + broadcasts, no action
 | GET | `/api/log?count=50` | Recent log entries |
 | GET | `/api/dpi` | System DPI and current coordinate scale |
 | POST | `/api/dpi/scale` | `{ "scale": 1.0 }` — override coordinate scale |
+| GET | `/api/save-frame` | Capture current raw UI JSON to disk (for parser regression tests) |
 | **GET** | **`/api/debug/reader`** | **Live diagnostic — EVE process, JSON length, parse results, root children types** |
 | GET | `/api/debug/infopanel` | Dumps InfoPanelLocationInfo node tree (names, texts, hints) |
 
@@ -208,7 +355,7 @@ public sealed class MyBot : IBot
 }
 ```
 
-Register in `BotOrchestrator.AvailableBots`:
+Register in `BotOrchestrator.AvailableBots` (in `Program.cs` or `BotOrchestrator.cs`):
 
 ```csharp
 public static readonly IReadOnlyList<IBot> AvailableBots =
@@ -221,6 +368,72 @@ public static readonly IReadOnlyList<IBot> AvailableBots =
 
 Wrap with `SurvivalNodes.Wrap(myBot.BuildBehaviorTree())` for emergency tank behaviour
 (already applied automatically when `SurvivalEnabled = true` in the orchestrator).
+
+### Blackboard patterns
+
+```csharp
+// Rate-limit an action to once per 30 seconds
+if (ctx.Blackboard.IsCooldownReady("undock"))
+{
+    ctx.Click(stationWindow.UndockButton);
+    ctx.Blackboard.SetCooldown("undock", TimeSpan.FromSeconds(30));
+    return NodeStatus.Success;
+}
+
+// Store persistent state between ticks
+ctx.Blackboard.Set("targetId", selectedEntry.UINode.Address);
+var id = ctx.Blackboard.Get<long>("targetId");
+```
+
+### Context menu cascade pattern
+
+```csharp
+// Right-click overview entry, then click a menu item
+new SequenceNode("Mine asteroid",
+    new ActionNode("Right-click", ctx =>
+    {
+        ctx.RightClick(asteroidEntry.UINode);
+        return NodeStatus.Success;
+    }),
+    new ActionNode("Click Mine", ctx =>
+    {
+        ctx.ClickMenuEntry("Mine");
+        return NodeStatus.Success;
+    }))
+```
+
+---
+
+## Reference Implementations (Elm)
+
+`ref/botimplement/` contains the upstream **Viir/bots** Elm framework — the same
+logical design EBot is based on, but in a different language. These are read-only
+references; do **not** modify them.
+
+| Bot | Location | What to read |
+|---|---|---|
+| Mining bot | `ref/botimplement/eve-online-mining-bot/Bot.elm` | Complete mining logic: ore hold detection, belt navigation, dock/undock cycle, drone management, afterburner use, fleet hangar unload |
+| Autopilot bot | `ref/botimplement/eve-online-warp-to-0-autopilot/Bot.elm` | Route hop logic, gate jumping, warp-to-0 sequence |
+| Combat anomaly bot | `ref/botimplement/eve-online-combat-anomaly-bot/Bot.elm` | Combat state machine, targeting, drone launch/recall |
+
+**Key Elm modules to cross-reference when extending EBot:**
+
+| Elm file | C# equivalent |
+|---|---|
+| `EveOnline/ParseUserInterface.elm` | `UITreeParser.cs` + `ParsedUI.cs` |
+| `EveOnline/BotFramework.elm` | `BotRunner.cs` + `BotContext.cs` |
+| `EveOnline/BotFrameworkSeparatingMemory.elm` | Behavior tree node patterns |
+| `Common/DecisionPath.elm` | Behavior tree node types |
+| `Common/EffectOnWindow.elm` | `BotAction.cs` + `InputSimulator.cs` |
+
+The Elm `ParsedUserInterface` type at the top of `ParseUserInterface.elm` is the
+canonical list of all UI windows the upstream framework supports — use it as the
+reference when adding support for a new window type to `UITreeParser.cs`.
+
+The Elm `Bot.elm` files use a **decision path** pattern (rather than a behavior tree):
+each function returns `describeBranch "label" (decideNext context)` which chains
+decisions into a human-readable trace. When implementing new bot logic in C#, the
+`ctx.Log("branch: label")` + `ctx.ActiveNodes` stack provides equivalent traceability.
 
 ---
 
@@ -253,7 +466,16 @@ Shows the InfoPanelLocationInfo node tree with `_name`, `_setText`, `_text`, `_h
 for each node up to depth 4. Use this to find the exact node names for new UI elements
 you want to parse (e.g. if security status parsing breaks after an EVE patch).
 
-### 3. Live logs
+### 3. Capture a UI frame for parser regression tests
+
+```
+GET http://localhost:5000/api/save-frame
+```
+
+Writes the current raw UI JSON to disk. Load it in `EBot.Tests` to test `UITreeParser`
+against a real snapshot without needing a live EVE client.
+
+### 4. Live logs
 
 ```
 GET http://localhost:5000/api/log?count=100
@@ -270,13 +492,13 @@ Key log messages to watch for:
 | `Memory reading failed: ...` | Reader error — check EVE is running |
 | `Direct read in Xms, Y bytes` | Normal tick (Debug level) |
 
-### 4. Full memory scan is slow (~60 s)
+### 5. Full memory scan is slow (~60 s)
 
 On first start or after EVE restarts, `EnumeratePossibleAddressesForUIRootObjectsFromProcessId`
 scans the full process heap. This takes ~60 seconds. After the live root is found its
 address is cached; subsequent ticks are fast (< 500 ms typically).
 
-### 5. DPI / coordinate issues
+### 6. DPI / coordinate issues
 
 ```
 GET http://localhost:5000/api/dpi
@@ -302,6 +524,34 @@ button or the POST endpoint.
 | Route markers sorted by `(Region.X + Region.Y)` ascending | First = next hop |
 | UIRoot class stub returned before live instance | Filtered by checking for `"children":[{` in JSON |
 | `_hint` on buttons pollutes location text | Security status search skips `_hint`; uses only `_setText`/`_text` |
+| Overview column alignment | Cell-to-header mapping uses X-position proximity, not index |
+| Module `ramp_active` field | Bool stored as int (0/1) in some EVE versions; `GetDictBool` handles |
+
+---
+
+## Adding a New UI Window Parser
+
+Pattern to follow when adding support for a new EVE UI window:
+
+1. **Find the node type** — use `GET /api/debug/reader` or `GET /api/debug/infopanel` to see live node names. The reference list of all EVE Python object type names is in `ref/botimplement/eve-online-mining-bot/EveOnline/ParseUserInterface.elm`.
+
+2. **Add typed model** to `ParsedUI.cs` following the existing pattern (sealed class with `UINode` + typed properties).
+
+3. **Add a finder method** to `UITreeParser.cs`:
+```csharp
+private NewWindow? FindNewWindow(UITreeNodeWithDisplayRegion root) =>
+    root.FindFirst(n => n.Node.PythonObjectTypeName == "NewWindowType") is { } node
+        ? new NewWindow
+          {
+              UINode = node,
+              SomeText = node.Node.GetDictString("_someText"),
+          }
+        : null;
+```
+
+4. **Wire it up** in `UITreeParser.Parse()` by adding `NewWindow = FindNewWindow(root),` to the `ParsedUI` initializer.
+
+5. **Add the property** to `ParsedUI.cs`.
 
 ---
 
@@ -313,54 +563,50 @@ Re-clone with the commands in the section below if they are missing.
 
 ```
 ref/
-├── Sanderling/          # github.com/Arcitectus/Sanderling
-│   ├── implement/
-│   │   ├── read-memory-64-bit/   # SOURCE of EveOnline64.cs — the memory-reading engine
-│   │   │   ├── EveOnline64.cs    # ← primary reference: EnumeratePossibleAddresses*, ReadUITreeFromAddress, SerializeMemoryReadingNodeToJson
-│   │   │   ├── MemoryReader.cs   # Win32 ReadProcessMemory wrapper
-│   │   │   ├── WinApi.cs         # P/Invoke declarations (OpenProcess, VirtualQueryEx, …)
-│   │   │   └── ProcessSample.cs  # Memory-region sampling helpers
-│   │   └── alternate-ui/         # Elm/JavaScript alternate UI renderer (not used by EBot)
-│   ├── explore/                  # Exploratory scripts from 2019–2020 reverse-engineering sessions
-│   └── guide/                    # Sanderling user guide (markdown)
+├── botimplement/        # Viir/bots Elm reference implementations
+│   ├── eve-online-mining-bot/
+│   │   ├── Bot.elm                         # Complete mining bot logic
+│   │   ├── EveOnline/ParseUserInterface.elm # Canonical UI node type catalogue
+│   │   ├── EveOnline/BotFramework.elm       # Framework: event loop, process selection
+│   │   └── EveOnline/BotFrameworkSeparatingMemory.elm  # Decision helpers
+│   ├── eve-online-warp-to-0-autopilot/
+│   │   └── Bot.elm                         # Autopilot logic
+│   └── eve-online-combat-anomaly-bot/
+│       └── Bot.elm                         # Combat state machine
 │
-└── bots/                # github.com/Viir/bots  (sparse: guide/eve-online only)
-    └── guide/eve-online/
-        ├── parsed-user-interface-of-the-eve-online-game-client.md  # ← key doc: all UI node types, JSON shape, dict entry names
-        ├── developing-for-eve-online.md   # bot development walkthrough
-        ├── eve-online-warp-to-0-autopilot-bot.md   # autopilot bot design patterns
-        ├── eve-online-mining-bot.md       # mining bot design patterns
-        ├── eve-online-combat-anomaly-bot.md
-        └── eve-online-players-strategies.md
+└── Sanderling/ (optional, clone separately)
+    └── implement/read-memory-64-bit/
+        ├── EveOnline64.cs    # Source of the three DLL APIs we call
+        ├── MemoryReader.cs   # Win32 ReadProcessMemory wrapper
+        └── WinApi.cs         # P/Invoke declarations
 ```
 
 ### Why these refs matter
 
 | Reference file | What to read there |
 |---|---|
-| `ref/Sanderling/implement/read-memory-64-bit/EveOnline64.cs` | Authoritative source of the three public APIs we call: `EnumeratePossibleAddressesForUIRootObjectsFromProcessId`, `ReadUITreeFromAddress`, `SerializeMemoryReadingNodeToJson`. Read this when memory reading breaks or the DLL version changes. |
-| `ref/Sanderling/implement/read-memory-64-bit/MemoryReader.cs` | How Win32 `ReadProcessMemory` is used; useful if debugging address enumeration performance or access-denied errors. |
-| `ref/bots/guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md` | Complete catalogue of EVE UI node types, `pythonObjectTypeName` values, `dictEntriesOfInterest` key names, and the JSON schema produced by the DLL. **Read this first when adding support for a new UI window.** |
-| `ref/bots/guide/eve-online/developing-for-eve-online.md` | High-level bot design guide. Good starting point for understanding the overall approach. |
-| `ref/bots/guide/eve-online/eve-online-warp-to-0-autopilot-bot.md` | Autopilot logic patterns; useful reference when extending `AutopilotBot`. |
-| `ref/bots/guide/eve-online/eve-online-mining-bot.md` | Mining logic patterns; useful reference when extending `MiningBot`. |
+| `ref/botimplement/eve-online-mining-bot/EveOnline/ParseUserInterface.elm` | **Canonical list of all EVE UI Python object type names and dict entry keys.** Read this first when adding support for a new UI window. |
+| `ref/botimplement/eve-online-mining-bot/Bot.elm` | Complete decision logic for a production mining bot: ore hold detection, belt warp, drone management, unload cycle. Cross-reference against `MiningBot/*.cs`. |
+| `ref/botimplement/eve-online-warp-to-0-autopilot/Bot.elm` | Autopilot route hop logic and gate-jump sequence. Cross-reference against `AutopilotBot.cs`. |
+| `ref/botimplement/eve-online-combat-anomaly-bot/Bot.elm` | Combat targeting, drone recall, anomaly navigation state machine. |
+| `ref/botimplement/*/EveOnline/BotFramework.elm` | How the Elm framework selects the game client process and handles the tick event — context for `BotRunner.cs` design decisions. |
+| `ref/Sanderling/implement/read-memory-64-bit/EveOnline64.cs` | Authoritative source of the three public DLL APIs. Read when memory reading breaks or the DLL version changes. |
 
 ### Re-cloning refs
 
 ```bash
-# From the repo root
 mkdir -p ref
+
+# Viir bots — sparse checkout (guide + implementations)
+git clone --filter=blob:none --no-checkout --depth=1 https://github.com/Viir/bots ref/bots-viir
+cd ref/bots-viir
+git sparse-checkout init --cone
+git sparse-checkout set guide/eve-online implement
+git checkout main
+cd ../..
 
 # Full Sanderling source
 git clone https://github.com/Arcitectus/Sanderling ref/Sanderling
-
-# Viir bots guide (sparse — guide/eve-online only)
-git clone --filter=blob:none --no-checkout --depth=1 https://github.com/Viir/bots ref/bots
-cd ref/bots
-git sparse-checkout init --cone
-git sparse-checkout set guide/eve-online
-git checkout main
-cd ../..
 ```
 
 ---
@@ -368,15 +614,25 @@ cd ../..
 ## Building & Running
 
 ```bash
-# Build
-cd src/EBot.WebHost
+# Build all projects
 dotnet build
 
-# Run (default port 5000)
-dotnet run
+# Run web server (default port 5000)
+dotnet run --project src/EBot.WebHost
 
 # Custom port
-dotnet run -- --port=5001
+dotnet run --project src/EBot.WebHost -- --port 5001
+
+# Run tests
+dotnet test tests/EBot.Tests
+
+# Run single test class
+dotnet test tests/EBot.Tests --filter "FullyQualifiedName~UIQueryTests"
+
+# Console runner
+dotnet run --project src/EBot.Runner -- run --bot mining --tick 2000
+dotnet run --project src/EBot.Runner -- list-processes
+dotnet run --project src/EBot.Runner -- test-read
 ```
 
 Requires .NET 9 SDK. Windows only. EVE Online must be running for memory reads to work.

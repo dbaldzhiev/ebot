@@ -21,7 +21,7 @@ public sealed partial class MiningBot
     private static IBehaviorNode WaitCapRegen() =>
         new SequenceNode("Capacitor regen",
             new ConditionNode("Capacitor low?", ctx =>
-                (ctx.GameState.ParsedUI.ShipUI?.Capacitor?.LevelPercent ?? 100) < 20),
+                (ctx.GameState.ParsedUI.ShipUI?.Capacitor?.LevelPercent ?? 100) < MinCapPct),
             new ActionNode("Wait for regen", _ => NodeStatus.Running));
 
     private static IBehaviorNode NavigateToMiningHold() =>
@@ -36,7 +36,7 @@ public sealed partial class MiningBot
                     ctx.Log("[Navigation] Inventory not open. Pressing Alt+C.");
                     ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]);
                     ctx.Wait(TimeSpan.FromSeconds(1.5));
-                    return NodeStatus.Success;
+                    return NodeStatus.Running;
                 }
 
                 // Inventory is open but FindOreHoldWindow returned null (wrong hold selected)
@@ -49,12 +49,12 @@ public sealed partial class MiningBot
                 {
                     if (oreEntry.IsSelected)
                     {
-                        // It's already selected but parser didn't pick up the hold type? 
+                        // It's already selected but parser didn't pick up the hold type?
                         // This shouldn't happen with the new parser, but as a safeguard:
                         ctx.Log("[Navigation] Mining hold entry is SELECTED but window not recognized. Toggling compact mode or inventory.");
                         ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]); // toggle
                         ctx.Wait(TimeSpan.FromSeconds(1));
-                        return NodeStatus.Success;
+                        return NodeStatus.Running;
                     }
 
                     ctx.Log($"[Navigation] Switching to {oreEntry.Label} in inventory");
@@ -67,7 +67,7 @@ public sealed partial class MiningBot
                 ctx.Log("[Navigation] Mining hold not found in navigation panel. Toggling inventory.");
                 ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]);
                 ctx.Wait(TimeSpan.FromSeconds(1.5));
-                return NodeStatus.Success;
+                return NodeStatus.Running;
             }));
 
     private IBehaviorNode BT_MineAtBelt() =>
@@ -97,7 +97,6 @@ public sealed partial class MiningBot
             }
 
             // Window is open. Should we scan? 
-            // Only scan if cooldown is ready AND (window is empty OR 5 minutes passed)
             bool isEmpty = ui.MiningScanResultsWindow.Entries.Count == 0;
             bool timerReady = ctx.Blackboard.IsCooldownReady("surveyor_scan");
             
@@ -107,19 +106,36 @@ public sealed partial class MiningBot
                 {
                     ctx.Log("[Mining] Triggering Mining Surveyor Scan");
                     ctx.Click(ui.MiningScanResultsWindow.ScanButton);
-                    ctx.Blackboard.SetCooldown("surveyor_scan", TimeSpan.FromSeconds(20)); // Short cooldown for empty
-                    ctx.Blackboard.SetCooldown("surveyor_scan_long", TimeSpan.FromMinutes(5));
+                    
+                    var seconds = 120 + Random.Shared.Next(-10, 11);
+                    ctx.Blackboard.SetCooldown("surveyor_scan", TimeSpan.FromSeconds(20)); 
+                    ctx.Blackboard.SetCooldown("surveyor_scan_long", TimeSpan.FromSeconds(seconds));
+                    ctx.Blackboard.Set("surveyor_scroll_done", false);
                 }
             }
 
-            // If we have groups, make sure they are expanded
+            // Expand groups
             var collapsedGroup = ui.MiningScanResultsWindow.Entries.FirstOrDefault(e => e.IsGroup && !e.IsExpanded);
             if (collapsedGroup != null && collapsedGroup.ExpanderNode != null && ctx.Blackboard.IsCooldownReady("surveyor_expand"))
             {
                 ctx.Log($"[Mining] Expanding Surveyor group: {collapsedGroup.OreName}");
                 ctx.Click(collapsedGroup.ExpanderNode);
                 ctx.Blackboard.SetCooldown("surveyor_expand", TimeSpan.FromSeconds(2));
+                ctx.Blackboard.Set("surveyor_scroll_done", false);
                 return NodeStatus.Running;
+            }
+
+            // Scroll down if we haven't seen enough rocks
+            if (collapsedGroup == null && !ctx.Blackboard.Get<bool>("surveyor_scroll_done") && ctx.Blackboard.IsCooldownReady("surveyor_scroll"))
+            {
+                var scrollNode = ui.MiningScanResultsWindow.UINode.QueryFirst("@Scroll");
+                if (scrollNode != null)
+                {
+                    ctx.Log("[Mining] Scrolling Surveyor window to find more rocks");
+                    ctx.Scroll(scrollNode, -300); // Scroll down
+                    ctx.Blackboard.SetCooldown("surveyor_scroll", TimeSpan.FromSeconds(4));
+                    if (ui.MiningScanResultsWindow.Entries.Count > 15) ctx.Blackboard.Set("surveyor_scroll_done", true);
+                }
             }
 
             return NodeStatus.Failure;
@@ -223,9 +239,9 @@ public sealed partial class MiningBot
 
                 var range = world.LaserRangeM > 0 ? world.LaserRangeM : 15000;
                 
-                // Pick best asteroid that isn't locked and is reasonably reachable
+                // Pick best asteroid that isn't locked and not already being mined
                 var next = world.Asteroids
-                    .Where(a => !a.IsLocked && a.DistanceM < range + 5000)
+                    .Where(a => !a.IsLocked && !a.IsBeingMined && a.DistanceM < range + 5000)
                     .OrderByDescending(a => a.Value)
                     .FirstOrDefault();
 
@@ -248,29 +264,55 @@ public sealed partial class MiningBot
             if (world.IdleLaserCount == 0) return NodeStatus.Failure;
 
             var range = world.LaserRangeM > 0 ? world.LaserRangeM : 15000;
-            var firingRange = range - 1000; // 1km safety buffer
+            var firingRange = range - 1000;
 
-            // Match idle lasers to locked targets that are in range
+            // Get all idle lasers
             var idleLasers = GetMiningModules(ctx.GameState.ParsedUI.ShipUI!)
                 .Where(m => m.IsActive != true && !m.IsBusy)
                 .ToList();
 
+            // Get all locked reachable targets
             var reachableTargets = world.Asteroids
                 .Where(a => a.IsLocked && a.DistanceM < firingRange)
                 .ToList();
 
             if (reachableTargets.Count == 0) return NodeStatus.Failure;
 
-            // Simple 1:1 mapping logic
-            // For this tick, just fire the first available laser at the first available target
-            var laser = idleLasers.First();
-            var target = reachableTargets.First();
+            // Assignment tracking to prevent stacking (keyed by laser index → asteroid python object address)
+            var assignments = ctx.Blackboard.Get<Dictionary<int, string>>("laser_targets")
+                ?? new Dictionary<int, string>();
 
-            ctx.Log($"[Mining] Firing {laser.Name} at {target.Name} ({target.DistanceText})");
-            ctx.Click(target.UINode);
-            ctx.Click(laser.UINode);
+            // Sync assignments with current module states
+            var allLasers = GetMiningModules(ctx.GameState.ParsedUI.ShipUI!).ToList();
+            var activeIndices = allLasers.Select((m, i) => new { m, i })
+                .Where(x => x.m.IsActive == true).Select(x => x.i).ToHashSet();
+
+            // Remove assignments for lasers that are no longer active
+            foreach (var key in assignments.Keys.ToList())
+                if (!activeIndices.Contains(key)) assignments.Remove(key);
+
+            foreach (var laser in idleLasers)
+            {
+                int laserIndex = allLasers.IndexOf(laser);
+
+                // Pick a target that isn't already assigned to another laser (compare by python object address)
+                var assignedIds = new HashSet<string>(assignments.Values);
+                var bestTarget = reachableTargets
+                    .OrderByDescending(a => a.Value)
+                    .FirstOrDefault(a => !assignedIds.Contains(a.UINode.Node.PythonObjectAddress));
+
+                if (bestTarget != null)
+                {
+                    ctx.Log($"[Mining] Firing {laser.Name} at {bestTarget.Name} ({bestTarget.DistanceText})");
+                    ctx.Click(bestTarget.TargetUINode ?? bestTarget.UINode);
+                    ctx.Click(laser.UINode);
+                    assignments[laserIndex] = bestTarget.UINode.Node.PythonObjectAddress;
+                    ctx.Blackboard.Set("laser_targets", assignments);
+                    return NodeStatus.Success;
+                }
+            }
             
-            return NodeStatus.Success; // One laser per tick for reliability
+            return NodeStatus.Failure;
         });
 
     // ─── Sub-Tree: Drone Security ────────────────────────────────────────────
@@ -296,8 +338,10 @@ public sealed partial class MiningBot
                     (ctx.GameState.ParsedUI.DronesWindow?.DronesInSpace?.QuantityCurrent ?? 0) > 0),
                 new ActionNode("Recall drones", ctx =>
                 {
+                    if (!ctx.Blackboard.IsCooldownReady("drone_recall_cd")) return NodeStatus.Success;
                     ctx.Log("[Defense] Belt clear. Recalling drones.");
                     ctx.KeyPress(VirtualKey.R, VirtualKey.Shift);
+                    ctx.Blackboard.SetCooldown("drone_recall_cd", TimeSpan.FromSeconds(10));
                     return NodeStatus.Success;
                 }))
         );

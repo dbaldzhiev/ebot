@@ -280,6 +280,7 @@ public sealed class InfoPanelLocationInfo
     public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
     public string? SecurityStatusText { get; init; }
     public string? SystemName { get; init; }
+    public string? NearestLocationName { get; init; }
 }
 
 // ─── Selected Item ─────────────────────────────────────────────────────────
@@ -358,6 +359,7 @@ public sealed class MiningScanEntry
     public int? Quantity { get; init; }
     public double? Volume { get; init; }
     public string? ValueText { get; init; }
+    public double? ValuePerM3 { get; init; }
     public double? DistanceInMeters { get; init; }
     public bool IsGroup { get; init; }
     public bool IsExpanded { get; init; }

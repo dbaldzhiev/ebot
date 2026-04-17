@@ -369,6 +369,14 @@
       <div id="ap-search-results" style="max-height: 200px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid var(--border);"></div>
       <button class="btn btn-primary" id="ap-start-btn" onclick="startAutopilot()">Start Autopilot</button>
       <div id="ap-status-line" style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">No destination selected</div>
+      <button class="btn btn-secondary" id="ap-save-btn" onclick="saveDestination()"
+              style="display:none; margin-top:4px; width:100%; font-size:0.65rem;">
+        &#9733; Save Destination
+      </button>
+      <div class="nav-title" style="margin-top:10px; font-size:0.6rem;">Saved Destinations</div>
+      <div id="ap-saved-list" style="max-height:120px; overflow-y:auto; margin-bottom:6px;"></div>
+      <div class="nav-title" style="font-size:0.6rem;">Recent (last 5)</div>
+      <div id="ap-recent-list" style="max-height:120px; overflow-y:auto;"></div>
     </div>
 
     <!-- Mining Bot -->
@@ -406,6 +414,7 @@ let apSearchResults  = [];
 let apSelectedSearch = null;
 let apSearchBusy     = false;
 let _sdeInputTimer   = null;
+let apSavedDests     = [];
 
 function onSdeInput(q) {
   if (_sdeInputTimer) clearTimeout(_sdeInputTimer);
@@ -448,6 +457,7 @@ function selectSearchResult(i) {
   renderSearchResults();
   const sl = $('ap-status-line');
   if (apSelectedSearch) sl.textContent = `Selected: ${apSelectedSearch.name}`;
+  toggleSaveBtn();
 }
 
 async function pollSdeStatus() {
@@ -467,9 +477,99 @@ async function pollSdeStatus() {
   } catch(e) { setTimeout(pollSdeStatus, 10000); }
 }
 
+async function loadSavedDests() {
+  try {
+    apSavedDests = await fetch('/api/destinations').then(r => r.json());
+    renderSavedDests();
+  } catch(e) {}
+}
+
+function renderSavedDests() {
+  const el = $('ap-saved-list');
+  if (!el) return;
+  if (!apSavedDests.length) { el.innerHTML = '<div class="empty">None saved</div>'; return; }
+  el.innerHTML = apSavedDests.map(d => `
+    <div class="ap-result-item" style="display:flex; justify-content:space-between; align-items:center;">
+      <span onclick="selectSavedDest('${esc(d.id)}','${esc(d.name)}')" style="cursor:pointer; flex:1;">
+        <div class="ap-result-name">${esc(d.name)}</div>
+        ${d.systemName ? `<div class="ap-result-sys">${esc(d.systemName)}</div>` : ''}
+      </span>
+      <span onclick="deleteSavedDest('${esc(d.id)}')" style="cursor:pointer; padding:2px 6px; color:var(--text-dim);">&#x2715;</span>
+    </div>`).join('');
+}
+
+function selectSavedDest(id, name) {
+  apSelectedSearch = apSavedDests.find(d => d.id === id) ?? { id, name };
+  $('ap-status-line').textContent = `Selected: ${name}`;
+  $('ap-search-results').innerHTML = '';
+  $('ap-search-input').value = '';
+  toggleSaveBtn();
+}
+
+async function saveDestination() {
+  if (!apSelectedSearch) return;
+  const dest = {
+    id:         apSelectedSearch.id,
+    name:       apSelectedSearch.name,
+    systemName: apSelectedSearch.systemName ?? null,
+    typeId:     apSelectedSearch.typeId    ?? null,
+    iconUrl:    null
+  };
+  try {
+    apSavedDests = await fetch('/api/destinations', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(dest)
+    }).then(r => r.json());
+    renderSavedDests();
+    const btn = $('ap-save-btn');
+    if (btn) { btn.textContent = '\u2605 Saved!'; setTimeout(() => { if ($('ap-save-btn')) $('ap-save-btn').textContent = '\u2605 Save Destination'; }, 1500); }
+    toggleSaveBtn();
+  } catch(e) {}
+}
+
+async function deleteSavedDest(id) {
+  try {
+    apSavedDests = await fetch('/api/destinations/' + encodeURIComponent(id), { method: 'DELETE' }).then(r => r.json());
+    renderSavedDests();
+  } catch(e) {}
+}
+
+function toggleSaveBtn() {
+  const btn = $('ap-save-btn');
+  if (!btn) return;
+  const isAlreadySaved = apSelectedSearch && apSavedDests.some(d => d.id === apSelectedSearch.id);
+  btn.style.display = apSelectedSearch && !isAlreadySaved ? '' : 'none';
+}
+
+const RECENT_KEY = 'ap_recent_dests';
+const RECENT_MAX = 5;
+
+function pushRecent(dest) {
+  let recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+  recent = recent.filter(d => d.id !== dest.id);
+  recent.unshift({ id: dest.id, name: dest.name, systemName: dest.systemName ?? null });
+  if (recent.length > RECENT_MAX) recent.length = RECENT_MAX;
+  localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+  renderRecent();
+}
+
+function renderRecent() {
+  const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+  const el = $('ap-recent-list');
+  if (!el) return;
+  if (!recent.length) { el.innerHTML = '<div class="empty">No history yet</div>'; return; }
+  el.innerHTML = recent.map(d => `
+    <div class="ap-result-item" onclick="selectSavedDest('${esc(d.id)}','${esc(d.name)}')" style="cursor:pointer;">
+      <div class="ap-result-name">${esc(d.name)}</div>
+      ${d.systemName ? `<div class="ap-result-sys">${esc(d.systemName)}</div>` : ''}
+    </div>`).join('');
+}
+
 async function startAutopilot() {
   const body = { botName: 'Travel Bot' };
-  if (apSelectedSearch) body.destination = apSelectedSearch.name;
+  if (apSelectedSearch) {
+    body.destination = apSelectedSearch.name;
+    pushRecent(apSelectedSearch);
+  }
   api('POST', '/api/start', body);
 }
 
@@ -499,11 +599,13 @@ conn.on('ActionLog', e => addActionEntry(e));
 conn.on('StateChanged', state => { updateBotState(state); });
 
 async function startConnection() {
-  try { 
-    await conn.start(); 
-    $('conn-text').textContent = 'Connected'; 
-    $('conn-dot').classList.add('ok'); 
+  try {
+    await conn.start();
+    $('conn-text').textContent = 'Connected';
+    $('conn-dot').classList.add('ok');
     loadInitialState();
+    loadSavedDests();
+    renderRecent();
   } catch(e) { setTimeout(startConnection, 3000); }
 }
 

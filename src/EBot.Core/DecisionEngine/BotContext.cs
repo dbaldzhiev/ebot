@@ -147,6 +147,13 @@ public sealed class BotContext
         Actions.Enqueue(new MoveMouseAction(x, y));
     }
 
+    public void Scroll(UITreeNodeWithDisplayRegion node, int delta)
+    {
+        var (x, y) = node.Center;
+        Actions.Enqueue(new MoveMouseAction(x, y));
+        Actions.Enqueue(new ScrollAction(delta));
+    }
+
     /// <summary>
     /// Finds a context menu entry by text and enqueues a click on it.
     /// </summary>

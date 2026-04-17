@@ -450,11 +450,19 @@ public sealed partial class UITreeParser
                ?? secNode.GetAllContainedDisplayTexts().FirstOrDefault())
             : null;
 
+        var nearestNode = node.QueryFirst("[_name=nearestLocationInfo]");
+        var nearestLocationName = nearestNode != null
+            ? (EveTextUtil.StripTags(nearestNode.Node.GetDictString("_setText"))
+               ?? EveTextUtil.StripTags(nearestNode.Node.GetDictString("_text"))
+               ?? nearestNode.GetAllContainedDisplayTexts().FirstOrDefault())
+            : null;
+
         return new InfoPanelLocationInfo
         {
             UINode             = node,
             SystemName         = systemName,
             SecurityStatusText = secText,
+            NearestLocationName = nearestLocationName,
         };
     }
 
@@ -1048,9 +1056,11 @@ public sealed partial class UITreeParser
         var individualLabels = node.QueryAll("[_name=entryLabel]");
         
         var allNodes = listGroups.Concat(individualLabels).OrderBy(n => n.Region.Y).ToList();
+        double? currentGroupValue = null;
 
-        foreach (var n in allNodes)
+        for (int i = 0; i < allNodes.Count; i++)
         {
+            var n = allNodes[i];
             var text = n.GetAllContainedDisplayTexts().FirstOrDefault();
             if (string.IsNullOrWhiteSpace(text)) continue;
 
@@ -1059,11 +1069,19 @@ public sealed partial class UITreeParser
             if (isGroup)
             {
                 // Regex for group header: "Scordite [2] <color=...>113 ISK / m³</color>"
-                var match = Regex.Match(text, @"^(.*)\s+\[(\d+)\]");
+                var match = Regex.Match(text, @"^(.*)\s+\[(\d+)\].*?>([\d,.]+)\s*ISK", RegexOptions.IgnoreCase);
                 
-                // Detection: if there are entryLabels below this group before the next group, it's expanded.
-                // Simpler detection: check if it has a child of type TextBody (entryLabel)
-                bool isExpanded = n.QueryFirst("[_name=entryLabel]") != null;
+                // Detection: if the NEXT node in the flat list is an entryLabel, this group is expanded.
+                bool isExpanded = false;
+                if (i + 1 < allNodes.Count)
+                {
+                    var next = allNodes[i + 1];
+                    isExpanded = next.Node.GetDictString("_name") == "entryLabel";
+                }
+
+                currentGroupValue = null;
+                if (match.Success && double.TryParse(match.Groups[3].Value.Replace(",", ""), out var val))
+                    currentGroupValue = val;
 
                 entries.Add(new MiningScanEntry
                 {
@@ -1074,6 +1092,7 @@ public sealed partial class UITreeParser
                     IsExpanded = isExpanded,
                     ExpanderNode = n.QueryFirst("@GlowSprite") ?? n.QueryFirst("@Sprite"),
                     ValueText = text.Contains("ISK") ? text : null,
+                    ValuePerM3 = currentGroupValue,
                 });
             }
             else
@@ -1094,6 +1113,7 @@ public sealed partial class UITreeParser
                         IsGroup = false,
                         DistanceInMeters = ParseDistanceText(distText),
                         ValueText = parts.Length > 3 ? parts[3] : null,
+                        ValuePerM3 = currentGroupValue, // Propagate from last seen group
                     });
                 }
             }
@@ -1102,7 +1122,9 @@ public sealed partial class UITreeParser
         return new MiningScanResultsWindow
         {
             UINode = node,
-            ScanButton = node.QueryFirst(":has-text('Scan')") ?? node.QueryFirst("@Button"),
+            ScanButton = node.QueryFirst("@Button:has-text('Scan')") ?? 
+                         node.QueryFirst("[_name=buttonScan]") ??
+                         node.QueryFirst("@Button"),
             Entries = entries,
         };
     }

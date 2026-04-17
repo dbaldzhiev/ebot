@@ -22,7 +22,7 @@ public sealed partial class MiningBot
     private IBehaviorNode PerformUnload() =>
         new SequenceNode("Unload ore",
             new ConditionNode("Needs unload?",
-                ctx => ctx.Blackboard.Get<bool>("needs_unload")),
+                ctx => ctx.Blackboard.Get<bool>("needs_unload") || IsOreHoldFull(ctx)),
             new ActionNode("Unload state machine", ctx =>
             {
                 var phase = ctx.Blackboard.Get<string>("unload_phase") ?? "";
@@ -252,8 +252,10 @@ public sealed partial class MiningBot
             }
             var btn = ctx.GameState.ParsedUI.StationWindow?.UndockButton;
             if (btn == null) return NodeStatus.Failure;
+            if (!ctx.Blackboard.IsCooldownReady("undock_cd")) return NodeStatus.Success;
             ctx.Click(btn);
             ctx.Wait(TimeSpan.FromSeconds(10));
+            ctx.Blackboard.SetCooldown("undock_cd", TimeSpan.FromSeconds(20));
             return NodeStatus.Success;
         });
 
@@ -274,10 +276,11 @@ public sealed partial class MiningBot
         }
 
         // 3. Broad text match on caption (handles "Ore Hold", "Mining Hold", "Mining Frigate Hold", etc.)
-        return invWindows.FirstOrDefault(w => 
-            w.SubCaptionLabelText?.Contains("ore",    StringComparison.OrdinalIgnoreCase) == true ||
-            w.SubCaptionLabelText?.Contains("mining", StringComparison.OrdinalIgnoreCase) == true ||
-            w.SubCaptionLabelText?.Contains("hold",   StringComparison.OrdinalIgnoreCase) == true);
+        // Excludes "Cargo Hold" by requiring ore/mining keyword without cargo keyword.
+        return invWindows.FirstOrDefault(w =>
+            (w.SubCaptionLabelText?.Contains("ore",    StringComparison.OrdinalIgnoreCase) == true ||
+             w.SubCaptionLabelText?.Contains("mining", StringComparison.OrdinalIgnoreCase) == true) &&
+             w.SubCaptionLabelText?.Contains("cargo",  StringComparison.OrdinalIgnoreCase) != true);
     }
 
     private bool IsOreHoldFull(BotContext ctx)
