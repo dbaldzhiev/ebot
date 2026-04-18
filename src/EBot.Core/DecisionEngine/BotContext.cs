@@ -173,4 +173,14 @@ public sealed class BotContext
     {
         Actions.Enqueue(new TypeTextAction(text));
     }
+
+    /// <summary>
+    /// Enqueues a drag-and-drop action from one UI node to another.
+    /// </summary>
+    public void Drag(UITreeNodeWithDisplayRegion from, UITreeNodeWithDisplayRegion to)
+    {
+        var (fx, fy) = from.Center;
+        var (tx, ty) = to.Center;
+        Actions.Enqueue(new DragAction(fx, fy, tx, ty));
+    }
 }

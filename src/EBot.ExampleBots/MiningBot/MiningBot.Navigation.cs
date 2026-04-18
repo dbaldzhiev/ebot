@@ -72,6 +72,17 @@ public sealed partial class MiningBot
                         var homeMenuType     = ctx.Blackboard.Get<string>("home_menu_type") ?? "";
                         bool triedStations   = ctx.Blackboard.Get<bool>("return_tried_stations");
                         bool triedStructures = ctx.Blackboard.Get<bool>("return_tried_structures");
+                        var homeName         = ctx.Blackboard.Get<string>("home_station") ?? "";
+
+                        // Heuristic: player structures often have " - " but NPC stations follow 
+                        // "System X - Moon Y - Corporation". If it has "Moon" or "Corporation", it's likely a Station.
+                        bool looksLikeNpcStation = homeName.Contains(" Moon ", StringComparison.OrdinalIgnoreCase) || 
+                                                 homeName.Contains(" Corporation ", StringComparison.OrdinalIgnoreCase) ||
+                                                 homeName.Contains(" University ", StringComparison.OrdinalIgnoreCase) ||
+                                                 homeName.Contains(" Institute ", StringComparison.OrdinalIgnoreCase) ||
+                                                 homeName.Contains(" School ", StringComparison.OrdinalIgnoreCase);
+
+                        bool preferStructures = homeName.Contains(" - ") && !looksLikeNpcStation && !triedStructures && !triedStations;
 
                         ContextMenuEntry? entry = null;
                         if (!string.IsNullOrEmpty(homeMenuType))
@@ -79,6 +90,11 @@ public sealed partial class MiningBot
                             // Remembered from a previous dock this session — use it directly
                             entry = menu?.Entries.FirstOrDefault(e =>
                                 string.Equals(e.Text?.Trim(), homeMenuType, StringComparison.OrdinalIgnoreCase));
+                        }
+                        else if (preferStructures)
+                        {
+                            entry = menu?.Entries.FirstOrDefault(e =>
+                                e.Text?.Contains("Structures", StringComparison.OrdinalIgnoreCase) == true);
                         }
                         else if (!triedStations)
                         {
@@ -163,12 +179,21 @@ public sealed partial class MiningBot
 
                         var homeName = ctx.Blackboard.Get<string>("home_station");
                         
-                        // Try to find home station, or fallback to first station
+                        // 1. Try exact match first (case-insensitive)
                         var target = subMenu.Entries.FirstOrDefault(e => 
+                            !string.IsNullOrEmpty(homeName) && 
+                            string.Equals(e.Text?.Trim(), homeName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                        // 2. Fallback to contains match
+                        target ??= subMenu.Entries.FirstOrDefault(e => 
                             !string.IsNullOrEmpty(homeName) && 
                             e.Text?.Contains(homeName, StringComparison.OrdinalIgnoreCase) == true);
                         
-                        target ??= subMenu.Entries.FirstOrDefault();
+                        // 3. Last resort: first entry ONLY if we don't have a home station set
+                        if (target == null && string.IsNullOrEmpty(homeName))
+                        {
+                            target = subMenu.Entries.FirstOrDefault();
+                        }
 
                         if (target != null)
                         {
@@ -211,6 +236,8 @@ public sealed partial class MiningBot
                         if (dockEntry != null)
                         {
                             ctx.Log("[Mining] 'Dock' command found. Clicking.");
+                            ctx.Hover(dockEntry.UINode);
+                            ctx.Wait(TimeSpan.FromMilliseconds(300));
                             ctx.Click(dockEntry.UINode);
                             ctx.Blackboard.Set("menu_expected", false);
                             ctx.Blackboard.Set("return_phase", "waiting_to_dock");

@@ -155,24 +155,16 @@ public sealed partial class MiningBot
                     case "click_move":
                     {
                         ctx.Blackboard.Set("menu_expected", false);
-                        if (!ctx.GameState.HasContextMenu)
-                        { 
-                            if (ticks > 5) Progress("open_menu"); 
-                            return NodeStatus.Running; 
-                        }
                         
                         var menu  = ctx.GameState.ParsedUI.ContextMenus.FirstOrDefault();
-                        if (menu == null) { Progress("open_menu"); return NodeStatus.Running; }
-
-                        ctx.Log($"[Mining] Unload: Menu seen with {menu.Entries.Count} entries.");
                         
                         // Look for the specific "Item Hangar" or "Station Hangar" target
-                        var targetEntry = menu.Entries.FirstOrDefault(e =>
+                        var targetEntry = menu?.Entries.FirstOrDefault(e =>
                             e.Text?.Contains("Item Hangar", StringComparison.OrdinalIgnoreCase) == true ||
                             e.Text?.Contains("Station Hangar", StringComparison.OrdinalIgnoreCase) == true);
                         
                         // Fallback to "Move To..." or "Move All"
-                        var moveEntry = menu.Entries.FirstOrDefault(e =>
+                        var moveEntry = menu?.Entries.FirstOrDefault(e =>
                             e.Text?.Contains("Move To",  StringComparison.OrdinalIgnoreCase) == true ||
                             e.Text?.Contains("Move All", StringComparison.OrdinalIgnoreCase) == true);
 
@@ -187,9 +179,27 @@ public sealed partial class MiningBot
                         }
                         else
                         {
-                            ctx.Log("[Mining] Unload: Could not find move action in menu.");
-                            ctx.KeyPress(VirtualKey.Escape);
-                            Progress("open_menu");
+                            // If menu action fails, try Drag and Drop fallback
+                            ctx.Log("[Mining] Unload: Menu action not found. Attempting drag and drop to sidebar.");
+                            var anyInv = ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
+                            var hangarEntry = anyInv?.NavEntries.FirstOrDefault(e =>
+                                e.Label?.Contains("Item hangar",    StringComparison.OrdinalIgnoreCase) == true ||
+                                e.Label?.Contains("Station hangar", StringComparison.OrdinalIgnoreCase) == true);
+
+                            var oreHold = FindOreHoldWindow(ctx);
+                            if (hangarEntry != null && oreHold != null && oreHold.Items.Count > 0)
+                            {
+                                ctx.Log($"[Mining] Unload: Dragging items from Mining Hold to '{hangarEntry.Label}'");
+                                ctx.Drag(oreHold.Items[0].UINode, hangarEntry.UINode);
+                                ctx.Wait(TimeSpan.FromSeconds(1.5));
+                                Progress("verify");
+                            }
+                            else
+                            {
+                                ctx.Log("[Mining] Unload: Drag and drop fallback failed (hangar or items not found).");
+                                ctx.KeyPress(VirtualKey.Escape);
+                                Progress("open_menu");
+                            }
                         }
                         return NodeStatus.Running;
                     }

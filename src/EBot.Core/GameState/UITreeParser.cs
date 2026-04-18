@@ -101,9 +101,9 @@ public sealed partial class UITreeParser
     private List<ContextMenu> FindContextMenus(UITreeNodeWithDisplayRegion root)
     {
         // EVE's context menu container Python type name is exactly "ContextMenu" (Elm reference).
-        // Submenus may also appear as separate ContextMenu nodes (EVE creates them dynamically).
+        // Submenus may also appear as separate ContextMenu or ContextSubMenu nodes (EVE creates them dynamically).
         // Entries are "MenuEntryView" at any descendant depth.
-        return root.QueryAll("@ContextMenu")
+        return root.FindAll(n => IsType(n, "ContextMenu", "ContextSubMenu"))
             .Select(n => new ContextMenu
             {
                 UINode = n,
