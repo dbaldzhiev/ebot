@@ -283,9 +283,15 @@
     </div>
 
     <div class="client-info">
+      <div id="status-header" style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid var(--accent);">
+        <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px;">Ship Status</div>
+        <div id="info-location" style="font-size: 1.0rem; font-weight: bold; color: var(--accent);">Initializing...</div>
+        <div id="info-activity" style="font-size: 0.8rem; color: #fff; margin-top: 2px;">Monitor Mode</div>
+      </div>
       <span id="info-system">System: Unknown</span>
       <span id="info-dpi">DPI: 100%</span>
       <span id="info-ticks">Ticks: 0</span>
+      <span id="runtime-display">00:00:00</span>
     </div>
   </aside>
 
@@ -293,6 +299,7 @@
   <main>
     <!-- Row 1: Ship HUD -->
     <div class="hud-row" style="grid-template-columns: 320px 1fr;">
+      <!-- ... ship bars ... -->
       <div class="hud-panel ship-bars">
         <div class="bar-container">
           <div class="bar-label"><span>SHIELD</span><span id="val-shield">100%</span></div>
@@ -316,6 +323,30 @@
         <div class="nav-title" style="margin-bottom: 10px;">Targets In Range</div>
         <div class="targets-list" id="targets-list">
           <div class="empty" style="margin: auto;">No targets locked</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mining Queue & Belts (Visible only when Mining Bot is active) -->
+    <div id="mining-dashboard" style="display: none; padding: 15px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--border);">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="card">
+          <div class="card-header" style="font-size: 0.8rem; color: var(--accent);">TARGET QUEUE (TOP 5 SCORES)</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 10px;">
+            <thead style="color: var(--text-dim); text-align: left; border-bottom: 1px solid var(--border);">
+              <tr>
+                <th style="padding: 5px;">Asteroid</th>
+                <th style="padding: 5px;">Dist</th>
+                <th style="padding: 5px;">Score</th>
+                <th style="padding: 5px;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="table-asteroids"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-header" style="font-size: 0.8rem; color: var(--accent);">BELT INDEXER</div>
+          <div id="list-belts" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
         </div>
       </div>
     </div>
@@ -654,11 +685,14 @@ function updateBotState(state, name, desc) {
   
   if (name) {
     $('bot-desc').textContent = `${name}: ${desc || ''}`;
+    $('info-activity').textContent = name;
   } else if (s === 'Idle') {
     $('bot-desc').textContent = 'No active bot';
+    $('info-activity').textContent = 'Monitor Mode';
   }
 
-  $('btn-stop').disabled   = s === 'Idle';
+  // Fix: Enable stop button if we are NOT idle OR if we have an active bot name (handles startup)
+  $('btn-stop').disabled   = s === 'Idle' && !name;
   $('btn-pause').disabled  = s !== 'Running';
   $('btn-resume').disabled = s !== 'Paused';
 }
@@ -667,17 +701,23 @@ function renderDashboard(gs) {
   if (!gs) return;
   lastGs = gs;
 
-  // 1. Sidebar & Engine
+  // 1. Sidebar & Status
   $('engine-rpm').textContent = gs.engineRpm.toFixed(1);
   $('info-ticks').textContent = `Ticks: ${gs.tickCount}`;
   $('info-system').textContent = `System: ${gs.systemName || 'Unknown'} (${gs.securityStatus || '?'})`;
   $('runtime-display').textContent = gs.runtime;
 
+  let locText = 'In Space';
+  if (gs.isDocked) locText = `Docked @ ${gs.currentStation || 'Station'}`;
+  if (gs.isWarping) locText = 'Warping...';
+  $('info-location').textContent = locText;
+
   // 2. HUD Bars
   const updateBar = (id, val) => {
     const v = val ?? 100;
     $(id).style.width = v + '%';
-    $(`val-${id.split('-')[1]}`).textContent = v + '%';
+    const labelId = 'val-' + id.split('-')[1];
+    if ($(labelId)) $(labelId).textContent = v + '%';
     if (v < 25) $(id).style.background = 'var(--red)';
     else if (id === 'bar-shield') $(id).style.background = 'var(--accent)';
   };
@@ -686,7 +726,41 @@ function renderDashboard(gs) {
   updateBar('bar-hull', gs.structurePercent);
   updateBar('bar-cap', gs.capacitorPercent);
 
-  // 3. Targets
+  // 3. Mining Dashboard
+  const hasAsteroids = gs.topAsteroids && gs.topAsteroids.length > 0;
+  const hasBelts = gs.discoveredBelts && gs.discoveredBelts.length > 0;
+  $('mining-dashboard').style.display = hasAsteroids || hasBelts ? 'block' : 'none';
+
+  if (gs.topAsteroids) {
+    const tbody = $('table-asteroids');
+    tbody.innerHTML = gs.topAsteroids.map(a => `
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 5px;">${a.name}</td>
+        <td style="padding: 5px;">${a.distanceText}</td>
+        <td style="padding: 5px; color: var(--accent);">${a.score}</td>
+        <td style="padding: 5px;">
+          ${a.isBeingMined ? '<span style="color:#0f0">MINING</span>' : (a.isLocked ? '<span style="color:var(--accent)">LOCKED</span>' : 'Queued')}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  if (gs.discoveredBelts) {
+    const list = $('list-belts');
+    list.innerHTML = gs.discoveredBelts.map(b => `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.03); margin-bottom: 2px; border-radius: 2px; font-size: 0.75rem;">
+        <span style="${b.depleted ? 'text-decoration: line-through; color: var(--text-dim);' : ''}">${b.name}</span>
+        <div style="gap: 8px; display: flex; align-items: center;">
+          ${b.excluded ? '<span style="color:var(--red); font-size: 0.6rem;">EXCLUDED</span>' : ''}
+          <button class="btn btn-xs ${b.excluded ? 'btn-success' : 'btn-danger'}" onclick="toggleBelt(${b.index})" style="padding: 2px 6px; font-size: 0.6rem; border-radius: 2px; border: none; cursor: pointer;">
+            ${b.excluded ? 'Include' : 'Exclude'}
+          </button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // 4. Targets
   const targetList = $('targets-list');
   if (gs.targets && gs.targets.length > 0) {
     targetList.innerHTML = gs.targets.map(t => `
@@ -810,6 +884,10 @@ async function api(method, url, body) {
 
 async function apiClick(url) {
   api('POST', url);
+}
+
+async function toggleBelt(index) {
+  await api('POST', `/api/mining/belts/${index}/toggle`);
 }
 
 async function captureFrame() {

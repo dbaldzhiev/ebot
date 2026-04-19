@@ -627,7 +627,7 @@ public sealed class BotOrchestrator : IDisposable
         var runner = new BotRunner(bot, settings, reader, parser, input, executor,
             _loggerFactory.CreateLogger<BotRunner>());
 
-        runner.OnTick += ctx =>
+        runner.OnTick += (ctx, bot) =>
         {
             _lastContext = ctx;
             // Update hold cache from whatever hold is currently visible in the inventory window
@@ -644,7 +644,14 @@ public sealed class BotOrchestrator : IDisposable
                     w.CapacityGauge.Used, w.CapacityGauge.Maximum,
                     (w.Items ?? []).Select(i => new CargoItemDto(i.Name, i.Quantity)).ToList());
             }
-            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache, TicksPerMinute));
+
+            var miningBot = bot as MiningBot;
+            if (miningBot == null && bot is SurvivalWrappedBot swb && swb.Inner is MiningBot mb)
+            {
+                miningBot = mb;
+            }
+
+            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache, TicksPerMinute, miningBot));
         };
 
         runner.OnError += ex =>
@@ -662,13 +669,22 @@ public sealed class BotOrchestrator : IDisposable
 
     // ─── Query ──────────────────────────────────────────────────────────────
 
-    public BotStatusResponse GetStatus(int port) => new(
-        State.ToString(),
-        CurrentBotName,
-        _activeBot?.Description,
-        _lastContext != null ? DtoMapper.ToDto(_lastContext, _holdCache, TicksPerMinute) : null,
-        port,
-        SurvivalEnabled);
+    public BotStatusResponse GetStatus(int port)
+    {
+        var miningBot = _activeBot as MiningBot;
+        if (miningBot == null && _activeBot is SurvivalWrappedBot swb && swb.Inner is MiningBot mb)
+        {
+            miningBot = mb;
+        }
+
+        return new BotStatusResponse(
+            State.ToString(),
+            CurrentBotName,
+            _activeBot?.Description,
+            _lastContext != null ? DtoMapper.ToDto(_lastContext, _holdCache, TicksPerMinute, miningBot) : null,
+            port,
+            SurvivalEnabled);
+    }
 
     public IReadOnlyList<LogEntry> GetRecentLogs(int count = 50) =>
         _logSink.GetRecent(count);
@@ -684,8 +700,9 @@ public sealed class BotOrchestrator : IDisposable
 
     // ─── Survival wrapper ────────────────────────────────────────────────────
 
-    private sealed class SurvivalWrappedBot(IBot inner) : IBot
+    public sealed class SurvivalWrappedBot(IBot inner) : IBot
     {
+        public IBot Inner => inner;
         public string Name => inner.Name;
         public string Description => inner.Description;
         public BotSettings GetDefaultSettings() => inner.GetDefaultSettings();

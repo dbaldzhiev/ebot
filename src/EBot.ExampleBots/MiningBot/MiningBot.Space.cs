@@ -78,109 +78,67 @@ public sealed partial class MiningBot
                 switch (phase)
                 {
                     case "open_surveyor":
-                    {
-                        if (ui.MiningScanResultsWindow != null) { Progress("scan_surveyor"); return NodeStatus.Running; }
-                        if (ctx.Blackboard.IsCooldownReady("surveyor_toggle"))
-                        {
-                            ctx.Log("[Mining] Opening Mining Surveyor (M)");
-                            ctx.KeyPress(VirtualKey.M);
-                            ctx.Blackboard.SetCooldown("surveyor_toggle", TimeSpan.FromSeconds(5));
-                        }
-                        return NodeStatus.Running;
-                    }
-
                     case "scan_surveyor":
-                    {
-                        if (ui.MiningScanResultsWindow == null) { Progress("open_surveyor"); return NodeStatus.Running; }
-                        
-                        bool timerReady = ctx.Blackboard.IsCooldownReady("surveyor_scan_long");
-                        bool isEmpty    = ui.MiningScanResultsWindow.Entries.Count == 0;
-
-                        if (isEmpty || timerReady)
-                        {
-                            if (ui.MiningScanResultsWindow.ScanButton != null && ctx.Blackboard.IsCooldownReady("surveyor_scan_btn"))
-                            {
-                                ctx.Log("[Mining] Triggering Surveyor Scan");
-                                ctx.Click(ui.MiningScanResultsWindow.ScanButton);
-                                ctx.Blackboard.SetCooldown("surveyor_scan_btn", TimeSpan.FromSeconds(10));
-                                ctx.Blackboard.SetCooldown("surveyor_scan_long", TimeSpan.FromSeconds(120 + Random.Shared.Next(-10, 10)));
-                                ctx.Blackboard.Set("surveyor_scroll_done", false);
-                            }
-                            return NodeStatus.Running;
-                        }
-                        Progress("scroll_surveyor");
-                        return NodeStatus.Running;
-                    }
-
                     case "scroll_surveyor":
-                    {
-                        if (ui.MiningScanResultsWindow == null) { Progress("open_surveyor"); return NodeStatus.Running; }
-                        
-                        var groups = ui.MiningScanResultsWindow.Entries.Where(e => e.IsGroup).ToList();
-                        var asteroids = ui.MiningScanResultsWindow.Entries.Where(e => !e.IsGroup).ToList();
-
-                        if (groups.Count > 0 && ctx.Blackboard.IsCooldownReady("surveyor_log_groups"))
-                        {
-                            ctx.Log($"[Mining] Surveyor groups: {string.Join(", ", groups.Select(g => $"{(g.IsExpanded ? "*" : "")}{g.OreName}({g.ValuePerM3:F0})"))}");
-                            ctx.Blackboard.SetCooldown("surveyor_log_groups", TimeSpan.FromSeconds(10));
-                        }
-
-                        var bestGroup = groups.OrderByDescending(g => g.ValuePerM3 ?? 0).FirstOrDefault();
-
-                        if (bestGroup != null)
-                        {
-                            // 2. Collapse all groups that are NOT the best one
-                            var toCollapse = groups.Where(g => g.IsExpanded && g.OreName != bestGroup.OreName).ToList();
-                            if (toCollapse.Count > 0 && ctx.Blackboard.IsCooldownReady("surveyor_collapse"))
-                            {
-                                var g = toCollapse.First();
-                                ctx.Log($"[Mining] Collapsing less valuable group: {g.OreName}");
-                                if (g.ExpanderNode != null) ctx.Click(g.ExpanderNode);
-                                ctx.Blackboard.SetCooldown("surveyor_collapse", TimeSpan.FromSeconds(2));
-                                return NodeStatus.Running;
-                            }
-
-                            // 3. Expand the best group if it's collapsed
-                            if (!bestGroup.IsExpanded && ctx.Blackboard.IsCooldownReady("surveyor_expand"))
-                            {
-                                ctx.Log($"[Mining] Expanding best group: {bestGroup.OreName} ({bestGroup.ValuePerM3:F1} ISK/m3)");
-                                if (bestGroup.ExpanderNode != null) ctx.Click(bestGroup.ExpanderNode);
-                                ctx.Blackboard.SetCooldown("surveyor_expand", TimeSpan.FromSeconds(2));
-                                return NodeStatus.Running;
-                            }
-                        }
-
-                        // 4. Scroll if we still don't have enough entries visible AND we haven't found asteroids in our best group yet
-                        bool hasRocksInBestGroup = asteroids.Any(a => 
-                            bestGroup != null && bestGroup.OreName != null &&
-                            (a.OreName?.Contains(bestGroup.OreName, StringComparison.OrdinalIgnoreCase) == true ||
-                             bestGroup.OreName.Contains(a.OreName ?? "", StringComparison.OrdinalIgnoreCase)));
-
-                        if (!hasRocksInBestGroup && !ctx.Blackboard.Get<bool>("surveyor_scroll_done") && ctx.Blackboard.IsCooldownReady("surveyor_scroll"))
-                        {
-                            var scrollNode = ui.MiningScanResultsWindow.UINode.QueryFirst("@Scroll");
-                            if (scrollNode != null)
-                            {
-                                ctx.Log("[Mining] Scrolling Surveyor to reveal rocks");
-                                ctx.Scroll(scrollNode, -400); 
-                                ctx.Blackboard.SetCooldown("surveyor_scroll", TimeSpan.FromSeconds(3));
-                                if (ui.MiningScanResultsWindow.Entries.Count > 12) ctx.Blackboard.Set("surveyor_scroll_done", true);
-                                return NodeStatus.Running;
-                            }
-                        }
                         Progress("approach_lock");
                         return NodeStatus.Running;
-                    }
 
                     case "approach_lock":
                     {
                         if (!ctx.Blackboard.Has("laser_range_m")) { Progress("get_range"); return NodeStatus.Running; }
                         
                         var best = world.PrimaryTarget;
-                        if (best == null) { Progress("scan_surveyor"); return NodeStatus.Running; }
+                        
+                        // ON-DEMAND SURVEYOR SCORING:
+                        // Trigger a scan if we have no best target (start or depleted) 
+                        // OR if we lack value data for the top rocks and the scan is ready.
+                        bool haveAnyScores = world.Asteroids.Any(a => a.ValuePerM3 != null);
+                        bool needsScoring = best == null || (!haveAnyScores && ctx.Blackboard.IsCooldownReady("surveyor_scan_long"));
+
+                        if (needsScoring) 
+                        {
+                            // 1. Ensure Surveyor is Open
+                            if (ui.MiningScanResultsWindow == null)
+                            {
+                                if (ctx.Blackboard.IsCooldownReady("surveyor_toggle"))
+                                {
+                                    ctx.Log("[Mining] Opening Surveyor to score new targets (M)");
+                                    ctx.KeyPress(VirtualKey.M);
+                                    ctx.Blackboard.SetCooldown("surveyor_toggle", TimeSpan.FromSeconds(5));
+                                }
+                                return NodeStatus.Running;
+                            }
+                            
+                            // 2. Trigger Scan
+                            if (ctx.Blackboard.IsCooldownReady("surveyor_scan_btn") && ui.MiningScanResultsWindow.ScanButton != null)
+                            {
+                                ctx.Log("[Mining] Scanning Surveyor to recalculate target scores...");
+                                ctx.Click(ui.MiningScanResultsWindow.ScanButton);
+                                ctx.Blackboard.SetCooldown("surveyor_scan_btn", TimeSpan.FromSeconds(10));
+                                ctx.Blackboard.SetCooldown("surveyor_scan_long", TimeSpan.FromMinutes(2)); // Don't scan too often
+                                
+                                // Reset overview scroll to top to find nearest rocks
+                                var ovScroll = ui.OverviewWindows.FirstOrDefault()?.UINode.QueryFirst("@Scroll");
+                                if (ovScroll != null) ctx.Scroll(ovScroll, 1000); 
+                            }
+                            
+                            // 3. Hunt for rocks if Overview is empty
+                            if (best == null && ctx.Blackboard.IsCooldownReady("overview_scroll_hunt"))
+                            {
+                                var ovScroll = ui.OverviewWindows.FirstOrDefault()?.UINode.QueryFirst("@Scroll");
+                                if (ovScroll != null)
+                                {
+                                    ctx.Log("[Mining] Scrolling Overview to find new targets...");
+                                    ctx.Scroll(ovScroll, -300);
+                                    ctx.Blackboard.SetCooldown("overview_scroll_hunt", TimeSpan.FromSeconds(5));
+                                }
+                            }
+                            
+                            if (best == null) return NodeStatus.Running; 
+                        }
 
                         var range = world.LaserRangeM > 0 ? world.LaserRangeM : 15000;
-                        var safeRange = range - 2000;
+                        var safeRange = 5000;
 
                         // 1. Propulsion - Start it ONCE per belt visit when we arrive at a target
                         if (best.DistanceM > safeRange && !ctx.Blackboard.Get<bool>("belt_prop_started"))
@@ -199,41 +157,53 @@ public sealed partial class MiningBot
                         {
                             if (world.ShipSpeed < 20 && ctx.Blackboard.IsCooldownReady("approach_cmd"))
                             {
-                                ctx.Log($"[Mining] Approaching {best.Name} ({best.DistanceText}) via Surveyor");
-                                // Prefer Surveyor node for approach interaction
-                                ctx.Click(best.SurveyorUINode ?? best.UINode, [VirtualKey.Q]);
+                                ctx.Log($"[Mining] Approaching {best.Name} ({best.DistanceText}) via Overview");
+                                ctx.Click(best.UINode, [VirtualKey.Q]);
                                 ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
-                            }
-                            
-                            // Periodic scan while approaching to update distances
-                            if (ctx.Blackboard.IsCooldownReady("surveyor_scan_approach") && ui.MiningScanResultsWindow?.ScanButton != null)
-                            {
-                                ctx.Log("[Mining] Scanning to update distance while approaching...");
-                                ctx.Click(ui.MiningScanResultsWindow.ScanButton);
-                                ctx.Blackboard.SetCooldown("surveyor_scan_approach", TimeSpan.FromSeconds(6 + Random.Shared.Next(-2, 3)));
                             }
                         }
 
                         // 3. Lock
                         var lockedCount = world.Asteroids.Count(a => a.IsLocked);
-                        if (lockedCount < world.TotalLaserCount && ctx.Blackboard.IsCooldownReady("lock_asteroid"))
-                        {
-                            var nextToLock = world.Asteroids
-                                .Where(a => !a.IsLocked && a.DistanceM < range + 5000)
-                                .OrderByDescending(a => a.Value).FirstOrDefault();
+                        
+                        // PROACTIVE: Try to fire lasers at any already-locked targets while approaching primary
+                        TryFireIdleLasers(ctx, world, ui);
 
-                            if (nextToLock != null)
+                        if (ctx.Blackboard.IsCooldownReady("lock_asteroid"))
+                        {
+                            // Target 1: Always lock the PrimaryTarget
+                            if (!best.IsLocked)
                             {
-                                ctx.Log($"[Mining] Locking {nextToLock.Name} (Distance={nextToLock.DistanceText}) via Surveyor (Ctrl+Click)");
-                                // Use Surveyor node for locking interaction as requested.
-                                // IMPORTANT: Use only Ctrl+Click. Do NOT use standard Click on Surveyor entries
-                                // as it might trigger unwanted UI behaviors.
-                                ctx.Click(nextToLock.SurveyorUINode ?? nextToLock.UINode, [VirtualKey.Control]);
+                                ctx.Log($"[Mining] Locking Primary: {best.Name} ({best.DistanceText})");
+                                ctx.Click(best.UINode, [VirtualKey.Control]);
                                 ctx.Blackboard.SetCooldown("lock_asteroid", TimeSpan.FromSeconds(12));
+                                
+                                var assumed = ctx.Blackboard.Get<HashSet<string>>("assumed_locked") ?? new HashSet<string>();
+                                assumed.Add(best.UINode.Node.PythonObjectAddress);
+                                ctx.Blackboard.Set("assumed_locked", assumed);
+                            }
+                            // Target 2+: Lock secondary ONLY if Primary is < 5000m and there's another rock in range
+                            else if (best.DistanceM <= safeRange && lockedCount < world.TotalLaserCount)
+                            {
+                                // Pick secondary target by Score, excluding Primary
+                                var secondary = world.Asteroids
+                                    .Where(a => !a.IsLocked && a.DistanceM < range + 2000)
+                                    .OrderByDescending(a => a.Score)
+                                    .FirstOrDefault();
+
+                                if (secondary != null)
+                                {
+                                    ctx.Log($"[Mining] Locking Secondary: {secondary.Name} ({secondary.DistanceText})");
+                                    ctx.Click(secondary.UINode, [VirtualKey.Control]);
+                                    ctx.Blackboard.SetCooldown("lock_asteroid", TimeSpan.FromSeconds(12));
+
+                                    var assumed = ctx.Blackboard.Get<HashSet<string>>("assumed_locked") ?? new HashSet<string>();
+                                    assumed.Add(secondary.UINode.Node.PythonObjectAddress);
+                                    ctx.Blackboard.Set("assumed_locked", assumed);
+                                }
                             }
                         }
 
-                        if (world.Asteroids.Any(a => a.IsLocked && a.DistanceM < range)) Progress("fire_lasers");
                         return NodeStatus.Running;
                     }
 
@@ -253,47 +223,75 @@ public sealed partial class MiningBot
 
                     case "fire_lasers":
                     {
-                        var idleLasers = GetMiningModules(ui.ShipUI!).Where(m => m.IsActive != true && !m.IsBusy).ToList();
-                        var targets    = world.Asteroids.Where(a => a.IsLocked && a.DistanceM < world.LaserRangeM - 500).ToList();
-                        
-                        if (idleLasers.Count == 0) { if (ticks > 5) Progress("approach_lock"); return NodeStatus.Running; }
-                        if (targets.Count == 0) { Progress("approach_lock"); return NodeStatus.Running; }
+                        var best = world.PrimaryTarget;
+                        if (best == null || !best.IsLocked || best.DistanceM > (world.LaserRangeM > 0 ? world.LaserRangeM : 15000)) { Progress("approach_lock"); return NodeStatus.Running; }
 
-                        var unassignedInRangeCount = world.Asteroids.Count(a => !a.IsLocked && a.DistanceM < world.LaserRangeM + 5000);
-                        var assignments = ctx.Blackboard.Get<Dictionary<int, string>>("laser_targets") ?? new Dictionary<int, string>();
-                        var allLasers   = GetMiningModules(ui.ShipUI!).ToList();
-                        var activeIdx   = allLasers.Select((m, i) => new { m, i }).Where(x => x.m.IsActive == true).Select(x => x.i).ToHashSet();
-                        foreach (var key in assignments.Keys.ToList()) if (!activeIdx.Contains(key)) assignments.Remove(key);
+                        // Use helper to handle laser activation and reactivation
+                        TryFireIdleLasers(ctx, world, ui);
 
-                        foreach (var laser in idleLasers)
-                        {
-                            var assignedIds = new HashSet<string>(assignments.Values);
-                            var best = targets.OrderByDescending(a => a.Value).FirstOrDefault(a => !assignedIds.Contains(a.UINode.Node.PythonObjectAddress));
-                            
-                            // Fallback: If no unassigned locked targets exist, but we have locked targets,
-                            // AND there are no other unlockable asteroids in range, put multiple lasers on the same target.
-                            if (best == null && targets.Count > 0 && unassignedInRangeCount == 0)
-                            {
-                                best = targets.OrderByDescending(a => a.Value).First();
-                            }
-
-                            if (best != null)
-                            {
-                                ctx.Log($"[Mining] Firing {laser.Name} -> {best.Name}");
-                                ctx.Click(best.TargetUINode ?? best.UINode);
-                                ctx.Wait(TimeSpan.FromMilliseconds(200));
-                                ctx.Click(laser.UINode);
-                                assignments[allLasers.IndexOf(laser)] = best.UINode.Node.PythonObjectAddress;
-                                ctx.Blackboard.Set("laser_targets", assignments);
-                                return NodeStatus.Running;
-                            }
-                        }
-                        Progress("approach_lock");
+                        if (world.IdleLaserCount == 0 && ticks > 10) Progress("approach_lock");
                         return NodeStatus.Running;
                     }
                 }
                 return NodeStatus.Running;
             });
+
+    private static void TryFireIdleLasers(BotContext ctx, WorldState world, ParsedUI ui)
+    {
+        if (ui.ShipUI == null) return;
+        
+        var allLasers = GetMiningModules(ui.ShipUI).ToList();
+        var idleLasers = allLasers.Where(m => m.IsActive != true && !m.IsBusy && ctx.Blackboard.IsCooldownReady($"fire_module_{m.UINode.Node.PythonObjectAddress}")).ToList();
+        var range = world.LaserRangeM > 0 ? world.LaserRangeM : 15000;
+        var targetsInRange = world.Asteroids.Where(a => a.IsLocked && a.DistanceM < range).ToList();
+
+        if (idleLasers.Count == 0 || targetsInRange.Count == 0) return;
+
+        var assignments = ctx.Blackboard.Get<Dictionary<int, string>>("laser_targets") ?? new Dictionary<int, string>();
+        
+        // Cleanup old assignments for modules that are no longer active
+        var activeIdx = allLasers.Select((m, i) => new { m, i }).Where(x => x.m.IsActive == true).Select(x => x.i).ToHashSet();
+        foreach (var key in assignments.Keys.ToList()) 
+            if (!activeIdx.Contains(key)) assignments.Remove(key);
+
+        foreach (var laser in idleLasers)
+        {
+            var assignedIds = new HashSet<string>(assignments.Values);
+            
+            // 1. Primary Target gets first priority
+            AsteroidEntity? targetToFire = null;
+            if (world.PrimaryTarget != null && world.PrimaryTarget.IsLocked && world.PrimaryTarget.DistanceM < range)
+            {
+                if (!assignedIds.Contains(world.PrimaryTarget.UINode.Node.PythonObjectAddress))
+                    targetToFire = world.PrimaryTarget;
+            }
+            
+            // 2. Second priority: any OTHER locked target in range
+            targetToFire ??= targetsInRange
+                .OrderByDescending(a => a.Value)
+                .FirstOrDefault(a => !assignedIds.Contains(a.UINode.Node.PythonObjectAddress));
+                
+            // 3. Fallback: if all locked targets already have lasers, put multiple on Primary
+            targetToFire ??= world.PrimaryTarget;
+
+            if (targetToFire != null)
+            {
+                ctx.Log($"[Mining] Firing {laser.Name} -> {targetToFire.Name}");
+                ctx.Click(targetToFire.TargetUINode ?? targetToFire.UINode);
+                ctx.Wait(TimeSpan.FromMilliseconds(200));
+                ctx.Click(laser.UINode);
+                
+                assignments[allLasers.IndexOf(laser)] = targetToFire.UINode.Node.PythonObjectAddress;
+                ctx.Blackboard.Set("laser_targets", assignments);
+                
+                // Prevent toggle spam: 10s cooldown for this specific module
+                ctx.Blackboard.SetCooldown($"fire_module_{laser.UINode.Node.PythonObjectAddress}", TimeSpan.FromSeconds(10));
+                
+                // One fire per tick to be safe
+                break;
+            }
+        }
+    }
 
     // ─── Sub-Tree: Drone Security ────────────────────────────────────────────
 
@@ -349,9 +347,22 @@ public sealed partial class MiningBot
                     // Step 3: Order drones to engage once we have a locked target in space
                     if (dronesInSpace > 0 && ui.Targets.Count > 0 && ctx.Blackboard.IsCooldownReady("drone_engage"))
                     {
-                        ctx.Log($"[Defense] Commanding drones to ENGAGE {nearest.Name}.");
-                        ctx.KeyPress(VirtualKey.F);
-                        ctx.Blackboard.SetCooldown("drone_engage", TimeSpan.FromSeconds(10));
+                        var enemyTarget = ui.Targets.FirstOrDefault(t =>
+                            !string.IsNullOrEmpty(t.TextLabel) && !string.IsNullOrEmpty(nearest.Name) &&
+                            (t.TextLabel.Contains(nearest.Name, StringComparison.OrdinalIgnoreCase) ||
+                             nearest.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
+                        
+                        if (enemyTarget != null)
+                        {
+                            ctx.Log($"[Defense] Commanding drones to ENGAGE {nearest.Name}.");
+                            if (!enemyTarget.IsActiveTarget)
+                            {
+                                ctx.Click(enemyTarget.UINode);
+                                ctx.Wait(TimeSpan.FromMilliseconds(200));
+                            }
+                            ctx.KeyPress(VirtualKey.F);
+                            ctx.Blackboard.SetCooldown("drone_engage", TimeSpan.FromSeconds(10));
+                        }
                     }
 
                     // No drones available at all — we can't fight. Let mining continue;

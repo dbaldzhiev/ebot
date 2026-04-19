@@ -367,6 +367,7 @@ public sealed class MiningScanEntry
     public double? DistanceInMeters { get; init; }
     public bool IsGroup { get; init; }
     public bool IsExpanded { get; init; }
+    public bool IsLocked { get; init; }
     public UITreeNodeWithDisplayRegion? ExpanderNode { get; init; }
 }
 

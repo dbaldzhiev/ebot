@@ -70,7 +70,7 @@ public sealed class BotRunner : IDisposable
     }
 
     /// <summary>Fired on each completed tick with the current context.</summary>
-    public event Action<BotContext>? OnTick;
+    public event Action<BotContext, IBot>? OnTick;
 
     /// <summary>Fired when the bot state changes.</summary>
     public event Action<BotRunnerState>? OnStateChanged;
@@ -291,7 +291,7 @@ public sealed class BotRunner : IDisposable
                 lock (_tpmLock)
                     _tickTimestampsMs.Enqueue(Environment.TickCount64);
 
-                OnTick?.Invoke(_context);
+                OnTick?.Invoke(_context, _bot);
 
                 // Wait before next tick
                 await Task.Delay(_settings.TickIntervalMs, ct);

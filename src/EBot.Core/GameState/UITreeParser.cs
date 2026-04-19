@@ -1170,6 +1170,7 @@ public sealed partial class UITreeParser
                     Quantity = match.Success ? int.Parse(match.Groups[2].Value) : null,
                     IsGroup = true,
                     IsExpanded = isExpanded,
+                    IsLocked = n.FindFirst(c => (c.Node.GetDictString("_texturePath") ?? "").Contains("activeTarget.png")) != null,
                     ExpanderNode = n.QueryFirst("@GlowSprite") ?? n.QueryFirst("@Sprite"),
                     ValueText = text.Contains("ISK") ? text : null,
                     ValuePerM3 = currentGroupValue,
@@ -1188,6 +1189,7 @@ public sealed partial class UITreeParser
                         OreName = match.Groups[1].Value.Trim(),
                         Quantity = int.TryParse(match.Groups[2].Value.Replace(",", ""), out var q) ? q : null,
                         IsGroup = false,
+                        IsLocked = n.FindFirst(c => (c.Node.GetDictString("_texturePath") ?? "").Contains("activeTarget.png")) != null,
                         DistanceInMeters = ParseDistanceText(match.Groups[5].Value),
                         ValueText = match.Groups[4].Value.Trim(),
                         ValuePerM3 = currentGroupValue,
@@ -1201,6 +1203,7 @@ public sealed partial class UITreeParser
                         UINode = n,
                         OreName = text.Length > 20 ? text[..15].Trim() : text,
                         IsGroup = false,
+                        IsLocked = n.FindFirst(c => (c.Node.GetDictString("_texturePath") ?? "").Contains("activeTarget.png")) != null,
                         ValuePerM3 = currentGroupValue,
                     });
                 }

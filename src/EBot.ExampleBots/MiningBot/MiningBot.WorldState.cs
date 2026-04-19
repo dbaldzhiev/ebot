@@ -28,6 +28,7 @@ public class AsteroidEntity
     public string DistanceText { get; set; } = "";
     public double DistanceM { get; set; }
     public double Value { get; set; }
+    public double Score { get; set; }
     public double? ValuePerM3 { get; set; }
     public bool IsLocked { get; set; }
     public bool IsBeingMined { get; set; }
@@ -104,8 +105,16 @@ public sealed partial class MiningBot
         // 3. Asteroids & Targets
         var targets = ui.Targets.Where(IsAsteroid).ToList();
         var surveyorEntries = ui.MiningScanResultsWindow?.Entries ?? [];
-        var currentOverviewAsteroids = AsteroidsInOverview(ctx).ToList();
+        var overviewAsteroids = AsteroidsInOverview(ctx).ToList();
         var intendedTargetName = ctx.Blackboard.Get<string>("intended_target_name");
+
+        // Assumed locked memory (to handle text-less targets)
+        var assumedLocked = ctx.Blackboard.Get<HashSet<string>>("assumed_locked") ?? new HashSet<string>();
+        if (targets.Count == 0 && assumedLocked.Count > 0)
+        {
+            assumedLocked.Clear();
+            ctx.Blackboard.Set("assumed_locked", assumedLocked);
+        }
 
         // Build set of addresses currently assigned to lasers (for IsBeingMined)
         var laserAssignments = ctx.Blackboard.Get<Dictionary<int, string>>("laser_targets")
@@ -114,29 +123,28 @@ public sealed partial class MiningBot
 
         state.Asteroids.Clear();
 
-        // Use Surveyor as the master list for what exists and is valuable
-        var surveyorAsteroids = surveyorEntries.Where(e => !e.IsGroup).ToList();
         var assignedTargets = new HashSet<string>();
+        var laserRange = state.LaserRangeM > 0 ? state.LaserRangeM : 15000;
 
-        foreach (var s in surveyorAsteroids)
+        foreach (var ov in overviewAsteroids)
         {
-            // Find corresponding overview entry by name matching
-            var ovMatch = currentOverviewAsteroids.FirstOrDefault(ov => 
-                ov.Name != null && s.OreName != null && 
+            // Find corresponding surveyor entry by name matching.
+            // Check both individual rocks AND group headers (if collapsed).
+            var sMatch = surveyorEntries.FirstOrDefault(s => 
+                s.OreName != null && ov.Name != null && 
                 (ov.Name.Contains(s.OreName, StringComparison.OrdinalIgnoreCase) || 
                  s.OreName.Contains(ov.Name, StringComparison.OrdinalIgnoreCase)));
 
             // Find if this specific asteroid is currently locked.
-            // Check both overview name AND surveyor ore name against target labels.
             var matchedTarget = targets.FirstOrDefault(t =>
                 !assignedTargets.Contains(t.UINode.Node.PythonObjectAddress) &&
-                t.TextLabel != null && (
-                    (ovMatch?.Name != null && (ovMatch.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase) || t.TextLabel.Contains(ovMatch.Name, StringComparison.OrdinalIgnoreCase))) ||
-                    (s.OreName != null && (s.OreName.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase) || t.TextLabel.Contains(s.OreName, StringComparison.OrdinalIgnoreCase)))
+                t.TextLabel != null && ov.Name != null && (
+                    ov.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase) || 
+                    t.TextLabel.Contains(ov.Name, StringComparison.OrdinalIgnoreCase)
                 ));
             
             // Fallback for text-less targets (memory reader failure)
-            if (matchedTarget == null)
+            if (matchedTarget == null && assumedLocked.Contains(ov.UINode.Node.PythonObjectAddress))
             {
                 matchedTarget = targets.FirstOrDefault(t => 
                     !assignedTargets.Contains(t.UINode.Node.PythonObjectAddress) && 
@@ -146,62 +154,48 @@ public sealed partial class MiningBot
             if (matchedTarget != null)
                 assignedTargets.Add(matchedTarget.UINode.Node.PythonObjectAddress);
 
-            var dist = s.DistanceInMeters ?? ovMatch?.DistanceInMeters ?? 1e9;
-            var isLocked = matchedTarget != null;
-            double value = s.ValuePerM3 ?? (ovMatch != null ? OreValueOf(ovMatch) : 0);
-            value += (s.Quantity ?? 0) / 10_000_000.0;
+            var dist = matchedTarget?.DistanceInMeters ?? ov.DistanceInMeters ?? 1e9;
+            var isLocked = sMatch?.IsLocked == true || matchedTarget != null || assumedLocked.Contains(ov.UINode.Node.PythonObjectAddress);
+            var isBeingMined = assignedAddresses.Contains(ov.UINode.Node.PythonObjectAddress) || (sMatch != null && assignedAddresses.Contains(sMatch.UINode.Node.PythonObjectAddress));
+
+            // Scoring:
+            // 1. Base value from surveyor ISK/m3 or rough Overview estimate
+            double value = sMatch?.ValuePerM3 ?? OreValueOf(ov);
+            
+            // 2. Travel time penalty
+            // Assume 150 m/s ship speed. 1 minute of travel costs ~100 ISK/m3 of "opportunity value"
+            double distToTravel = Math.Max(0, dist - laserRange + 2000);
+            double travelTimeSeconds = distToTravel / 150.0;
+            double travelPenalty = travelTimeSeconds * 1.5; 
+
+            double score = value - travelPenalty;
+
+            // 3. Bonuses
+            if (isLocked) score += 2000; // Prefer keeping existing locks
+            if (isBeingMined) score += 5000; // Heavily prefer continuing what we're already mining
 
             state.Asteroids.Add(new AsteroidEntity
             {
-                Name = s.OreName ?? ovMatch?.Name ?? "Unknown",
-                DistanceText = s.DistanceInMeters.HasValue ? $"{s.DistanceInMeters:F0} m" : (ovMatch?.DistanceText ?? "???"),
+                Name = ov.Name ?? sMatch?.OreName ?? "Unknown",
+                DistanceText = ov.DistanceText ?? (sMatch?.DistanceInMeters.HasValue == true ? $"{sMatch.DistanceInMeters:F0} m" : "???"),
                 DistanceM = dist,
                 Value = value,
-                ValuePerM3 = s.ValuePerM3,
+                Score = score,
+                ValuePerM3 = sMatch?.ValuePerM3,
                 IsLocked = isLocked,
-                IsBeingMined = (ovMatch != null && assignedAddresses.Contains(ovMatch.UINode.Node.PythonObjectAddress)) || 
-                               assignedAddresses.Contains(s.UINode.Node.PythonObjectAddress),
-                UINode = s.UINode, 
-                SurveyorUINode = s.UINode, 
+                IsBeingMined = isBeingMined,
+                UINode = ov.UINode, 
+                SurveyorUINode = sMatch?.UINode, 
                 TargetUINode = matchedTarget?.UINode,
             });
         }
 
-        // Fallback to overview if surveyor is empty/closed
-        if (state.Asteroids.Count == 0)
-        {
-            foreach (var ov in currentOverviewAsteroids)
-            {
-                var dist = ov.DistanceInMeters ?? 1e9;
-                var matchedTarget = targets.FirstOrDefault(t =>
-                    t.TextLabel != null && ov.Name != null && (
-                        ov.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase) ||
-                        t.TextLabel.Contains(ov.Name, StringComparison.OrdinalIgnoreCase)));
-                
-                state.Asteroids.Add(new AsteroidEntity
-                {
-                    Name = ov.Name ?? "Unknown",
-                    DistanceText = ov.DistanceText ?? "???",
-                    DistanceM = dist,
-                    Value = OreValueOf(ov),
-                    IsLocked = matchedTarget != null,
-                    IsBeingMined = assignedAddresses.Contains(ov.UINode.Node.PythonObjectAddress),
-                    UINode = ov.UINode,
-                    TargetUINode = matchedTarget?.UINode,
-                });
-            }
-        }
-
         // Target selection: 
-        // 1. Prefer the target we ALREADY decided to mine
-        // 2. Prefer already locked asteroids
-        // 3. Prefer higher value (surveyor enriched)
-        // 4. Prefer closest
+        // 1. Prefer by Score (Value - Travel)
+        // 2. Prefer the target we ALREADY decided to mine (to avoid jitter)
         state.PrimaryTarget = state.Asteroids
-            .OrderByDescending(a => intendedTargetName != null && a.Name.Equals(intendedTargetName, StringComparison.OrdinalIgnoreCase))
-            .ThenByDescending(a => a.IsLocked) 
-            .ThenByDescending(a => a.Value)
-            .ThenBy(a => a.DistanceM)
+            .OrderByDescending(a => a.Score)
+            .ThenByDescending(a => intendedTargetName != null && a.Name.Equals(intendedTargetName, StringComparison.OrdinalIgnoreCase))
             .FirstOrDefault();
 
         if (state.PrimaryTarget != null)

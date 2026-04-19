@@ -28,9 +28,13 @@ public sealed record GameStateSummary(
     // Location
     string? SystemName,
     string? SecurityStatus,
+    string? CurrentStation,
     int RouteJumpsRemaining,
     bool HasContextMenu,
     IReadOnlyList<string> ContextMenuEntries,
+    // Mining specific
+    IReadOnlyList<AsteroidDto> TopAsteroids,
+    IReadOnlyList<BeltDto> DiscoveredBelts,
     // All detected inventory holds (currently-visible + orchestrator hold cache)
     IReadOnlyList<HoldInfoDto> Holds,
     // Nav entries (clickable holds in the left panel)
@@ -42,6 +46,19 @@ public sealed record GameStateSummary(
     DroneGroupDto? DronesInBay,
     DroneGroupDto? DronesInSpace,
     SelectedItemDto? SelectedItem);
+
+public sealed record AsteroidDto(
+    string Name,
+    string DistanceText,
+    double Score,
+    bool IsLocked,
+    bool IsBeingMined);
+
+public sealed record BeltDto(
+    int Index,
+    string Name,
+    bool Depleted,
+    bool Excluded);
 
 public sealed record TargetDto(
     string? Name,
@@ -154,7 +171,8 @@ public static class DtoMapper
     public static GameStateSummary ToDto(
         EBot.Core.DecisionEngine.BotContext ctx,
         IReadOnlyDictionary<string, HoldInfoDto>? holdCache = null,
-        double engineRpm = 0)
+        double engineRpm = 0,
+        EBot.ExampleBots.MiningBot.MiningBot? miningBot = null)
     {
         var gs = ctx.GameState;
         var ui = gs.ParsedUI;
@@ -183,6 +201,28 @@ public static class DtoMapper
             .Select(e => e.Text ?? "")
             .Where(t => !string.IsNullOrEmpty(t))
             .ToList() ?? [];
+
+        // ── Mining Specific ─────────────────────────────────────────────────
+        var world = ctx.Blackboard.Get<EBot.ExampleBots.MiningBot.WorldState>("world");
+        var topAsteroids = (world?.Asteroids ?? [])
+            .OrderByDescending(a => a.Score)
+            .Take(5)
+            .Select(a => new AsteroidDto(a.Name, a.DistanceText, Math.Round(a.Score, 1), a.IsLocked, a.IsBeingMined))
+            .ToList();
+
+        var belts = new List<BeltDto>();
+        if (miningBot != null)
+        {
+            for (int i = 0; i < miningBot.BeltCount; i++)
+            {
+                belts.Add(new BeltDto(
+                    i,
+                    miningBot.BeltNames.TryGetValue(i, out var n) ? n : $"Belt {i + 1}",
+                    miningBot.BeltDepleted.TryGetValue(i, out var d) && d,
+                    miningBot.BeltExcluded.TryGetValue(i, out var e) && e
+                ));
+            }
+        }
 
         // ── Inventory holds ──────────────────────────────────────────────────
         // Start with cached holds from previous ticks, then overlay the currently-visible window.
@@ -234,6 +274,8 @@ public static class DtoMapper
             ui.SelectedItemWindow.UINode.GetAllContainedDisplayTexts().FirstOrDefault(),
             ui.SelectedItemWindow.ActionButtons.Select(b => b.Node.GetDictString("_hint") ?? b.Node.PythonObjectTypeName).ToList());
 
+        var stationName = ui.StationWindow?.UINode.GetAllContainedDisplayTexts().FirstOrDefault(t => t.Length > 3);
+
         return new GameStateSummary(
             gs.IsInSpace,
             gs.IsDocked,
@@ -251,9 +293,12 @@ public static class DtoMapper
             modules,
             loc?.SystemName,
             loc?.SecurityStatusText,
+            stationName,
             gs.RouteJumpsRemaining,
             gs.HasContextMenu,
             contextMenuEntries,
+            topAsteroids,
+            belts,
             holds,
             navEntries,
             string.Join(" > ", ctx.ActiveNodes.Reverse()),
