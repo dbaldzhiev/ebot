@@ -246,6 +246,12 @@ public sealed partial class MiningBot
     private IBehaviorNode RememberStationAndUndock() =>
         new ActionNode("Remember home + undock", ctx =>
         {
+            if (ctx.Blackboard.Get<bool>("bot_cancelled"))
+            {
+                ctx.Log("[Mining] Bot execution is CANCELLED. Staying docked.");
+                return NodeStatus.Failure;
+            }
+
             if (!ctx.Blackboard.Get<bool>("home_station_set"))
             {
                 var name = ctx.GameState.ParsedUI.StationWindow?.UINode

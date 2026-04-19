@@ -26,7 +26,6 @@ public sealed partial class MiningBot : IBot
     private readonly ConcurrentDictionary<int, bool>   _beltDepleted = new();
     private readonly ConcurrentDictionary<int, bool>   _beltExcluded = new();
     private int _beltCount = 0;
-    private bool _beltsDiscoveryDone;
 
     public IReadOnlyDictionary<int, string> BeltNames    => _beltNames;
     public IReadOnlyDictionary<int, bool>   BeltDepleted => _beltDepleted;
@@ -69,7 +68,6 @@ public sealed partial class MiningBot : IBot
         _beltExcluded.Clear();
         _beltNames.Clear();
         _beltCount = 0;
-        _beltsDiscoveryDone = false;
         ctx.Blackboard.Set("last_belt_target", -1);
 
         ctx.Blackboard.Set("return_phase",            "");
@@ -155,7 +153,6 @@ public sealed partial class MiningBot : IBot
                 BT_DroneSecurity(),
                 EnsureMiningTab(),
                 NavigateToMiningHold(),
-                DiscoverBeltsOnce(),
                 BT_MineAtBelt(),
                 WarpToBelt()));
 

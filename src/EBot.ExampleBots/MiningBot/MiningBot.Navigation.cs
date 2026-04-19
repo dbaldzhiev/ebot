@@ -342,188 +342,6 @@ public sealed partial class MiningBot
         ctx.Log($"[Mining] '{current}' submenu did not contain home station — will try the other category.");
     }
 
-    // ─── 7d-pre. Proactive belt discovery ────────────────────────────────────
-
-    private IBehaviorNode DiscoverBeltsOnce() =>
-        new SequenceNode("Discover belt list",
-            new ConditionNode("Belt list unknown?", ctx =>
-                !_beltsDiscoveryDone &&
-                _beltCount == 0 &&
-                !ctx.GameState.IsWarping &&
-                ctx.Blackboard.IsCooldownReady("belt_discover_cd")),
-            new ActionNode("Discovery state machine", ctx =>
-            {
-                var phase = ctx.Blackboard.Get<string>("discover_phase") ?? "";
-                if (ctx.Blackboard.IsCooldownReady("discover_trace")) {
-                    ctx.Log($"[Mining] Discover Phase: '{phase}'");
-                    ctx.Blackboard.SetCooldown("discover_trace", TimeSpan.FromSeconds(2));
-                }
-
-                switch (phase)
-                {
-                    case "":
-                        ctx.Log("[Mining] Initiating belt discovery. Right-clicking space.");
-                        ctx.Blackboard.Set("menu_expected", true);
-                        RightClickInSpace(ctx);
-                        ctx.Wait(TimeSpan.FromMilliseconds(800));
-                        ctx.Blackboard.Set("discover_phase", "space_menu");
-                        ctx.Blackboard.Set("discover_tick", 0);
-                        return NodeStatus.Running;
-
-                    case "space_menu":
-                    {
-                        int tick = ctx.Blackboard.Get<int>("discover_tick") + 1;
-                        ctx.Blackboard.Set("discover_tick", tick);
-
-                        if (!ctx.GameState.HasContextMenu)
-                        {
-                            if (tick > 5) { Abort(ctx, 30); return NodeStatus.Failure; }
-                            return NodeStatus.Running;
-                        }
-                        ctx.Blackboard.Set("discover_tick", 0);
-
-                        ContextMenuEntry? beltsEntry = null;
-                        foreach (var m in ctx.GameState.ParsedUI.ContextMenus)
-                        {
-                            beltsEntry = m.Entries.FirstOrDefault(e =>
-                                e.Text != null && e.Text.Trim().Length < 20 &&
-                                e.Text.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase));
-                            if (beltsEntry != null) break;
-                        }
-
-                        if (beltsEntry == null)
-                        {
-                            ctx.Log("[Mining] No Asteroid Belts entry in space menu — system has none");
-                            ctx.KeyPress(VirtualKey.Escape);
-                            ctx.Blackboard.Set("menu_expected", false);
-                            _beltsDiscoveryDone = true;
-                            Abort(ctx, 600);
-                            return NodeStatus.Failure;
-                        }
-
-                        ctx.Blackboard.Set("discover_ref_x",
-                            beltsEntry.UINode.Region.X + beltsEntry.UINode.Region.Width);
-
-                        HoverAndSlide(ctx, beltsEntry.UINode);
-                        ctx.Wait(TimeSpan.FromMilliseconds(600));
-                        ctx.Blackboard.Set("discover_phase", "belt_submenu");
-                        return NodeStatus.Running;
-                    }
-
-                    case "belt_submenu":
-                    {
-                        int tick = ctx.Blackboard.Get<int>("discover_tick") + 1;
-                        ctx.Blackboard.Set("discover_tick", tick);
-
-                        if (!ctx.GameState.HasContextMenu)
-                        {
-                            if (tick > 8) { Abort(ctx, 20); return NodeStatus.Failure; }
-                            return NodeStatus.Running;
-                        }
-
-                        var allMenus   = ctx.GameState.ParsedUI.ContextMenus;
-                        var allEntries = allMenus.SelectMany(m => m.Entries).ToList();
-
-                        static bool BeltText(ContextMenuEntry e, Func<string, bool> pred)
-                            => e.UINode.GetAllContainedDisplayTexts().Any(pred);
-
-                        int discoverRefX = ctx.Blackboard.Get<int>("discover_ref_x");
-
-                        var beltEntries = allEntries
-                            .Where(e => e.UINode.Region.X > discoverRefX && BeltText(e, t =>
-                                (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
-                                (t.Length > 8  && (t.Contains("Ore Deposit",  StringComparison.OrdinalIgnoreCase) ||
-                                                   t.Contains("Cluster",      StringComparison.OrdinalIgnoreCase)))))
-                            .OrderBy(e => e.UINode.Region.Y)
-                            .ToList();
-
-                        if (beltEntries.Count == 0 && allMenus.Count >= 2)
-                        {
-                            var minX   = allMenus.Min(m => m.UINode.Region.X);
-                            var subMnu = allMenus.Where(m => m.UINode.Region.X > minX + 10)
-                                                 .MaxBy(m => m.UINode.Region.X);
-                            if (subMnu?.Entries.Count > 0)
-                                // Filter to belt-looking entries only — avoids storing "Show Info",
-                                // "Warp Within 10 km", etc. when the wrong submenu is captured.
-                                beltEntries = subMnu.Entries
-                                    .Where(e => e.UINode.GetAllContainedDisplayTexts().Any(t =>
-                                        (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
-                                        (t.Length > 8  && (t.Contains("Ore Deposit",  StringComparison.OrdinalIgnoreCase) ||
-                                                           t.Contains("Cluster",      StringComparison.OrdinalIgnoreCase)))))
-                                    .OrderBy(e => e.UINode.Region.Y)
-                                    .ToList();
-                        }
-
-                        if (beltEntries.Count == 0)
-                        {
-                            var treeNodes = (ctx.GameState.ParsedUI.UITree?
-                                .FindAll(n => n.Node.PythonObjectTypeName == "MenuEntryView" &&
-                                    n.Region.X > discoverRefX &&
-                                    n.Region.Height > 3 &&
-                                    n.GetAllContainedDisplayTexts().Any(t =>
-                                        t.Length > 14 &&
-                                        t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)))
-                                ?? []).OrderBy(n => n.Region.Y).ToList();
-
-                            if (treeNodes.Count > 0)
-                            {
-                                _beltCount = treeNodes.Count;
-                                for (int i = 0; i < treeNodes.Count; i++)
-                                {
-                                    var txt = treeNodes[i].GetAllContainedDisplayTexts()
-                                        .Where(t => t.Length > 3).OrderByDescending(t => t.Length)
-                                        .FirstOrDefault() ?? $"Belt {i + 1}";
-                                    _beltNames[i] = txt.Trim();
-                                }
-                            }
-                            else if (tick > 8)
-                            {
-                                Abort(ctx, 15);
-                                return NodeStatus.Failure;
-                            }
-                            else
-                            {
-                                return NodeStatus.Running;
-                            }
-                        }
-                        else
-                        {
-                            _beltCount = beltEntries.Count;
-                            for (int i = 0; i < beltEntries.Count; i++)
-                            {
-                                var txt = beltEntries[i].UINode.GetAllContainedDisplayTexts()
-                                    .Where(t => t.Length > 3).OrderByDescending(t => t.Length)
-                                    .FirstOrDefault() ?? beltEntries[i].Text ?? $"Belt {i + 1}";
-                                _beltNames[i] = txt.Trim();
-                            }
-                        }
-
-                        ctx.KeyPress(VirtualKey.Escape);
-                        ctx.Blackboard.Set("menu_expected", false);
-                        ctx.Blackboard.Set("discover_phase", "");
-                        ctx.Blackboard.Set("discover_tick", 0);
-                        _beltsDiscoveryDone = true;
-
-                        if (_beltCount > 0)
-                            ctx.Log($"[Mining] Discovered {_beltCount} asteroid belts");
-
-                        return NodeStatus.Failure;
-                    }
-
-                    default:
-                        ctx.Blackboard.Set("discover_phase", "");
-                        return NodeStatus.Failure;
-                }
-
-                void Abort(BotContext c, int cooldownSec)
-                {
-                    c.Blackboard.Set("discover_phase", "");
-                    c.Blackboard.Set("discover_tick", 0);
-                    c.Blackboard.Set("menu_expected", false);
-                    c.Blackboard.SetCooldown("belt_discover_cd", TimeSpan.FromSeconds(cooldownSec));
-                }
-            }));
-
     // ─── 7e. Warp to next asteroid belt ─────────────────────────────────────
 
     private IBehaviorNode WarpToBelt() =>
@@ -554,6 +372,7 @@ public sealed partial class MiningBot
                     ctx.Blackboard.Set("belt_phase_ticks", 0);
                     ctx.Blackboard.Set("menu_expected", false);
                     ctx.Blackboard.Set("cascade_ref_x", 0);
+                    ctx.Blackboard.Set("belt_find_attempts", 0);
                     ctx.Blackboard.SetCooldown("warp_belt", TimeSpan.FromSeconds(cooldownSec));
                 }
 
@@ -573,6 +392,7 @@ public sealed partial class MiningBot
                         // Reset mining state machine so the next belt starts from scratch
                         ctx.Blackboard.Remove("mining_phase");
                         ctx.Blackboard.Set("mining_tick", 0);
+                        ctx.Blackboard.Set("belt_find_attempts", 0);
 
                         int lastBelt = ctx.Blackboard.Get<int>("last_belt_target");
                         if (lastBelt >= 0 && _beltCount > 0)
@@ -605,10 +425,7 @@ public sealed partial class MiningBot
                         ctx.Blackboard.Set("belt_target", curIdx);
                         ctx.Blackboard.Set("belt_index",  curIdx + 1);
                         ctx.Blackboard.Set("last_belt_target", curIdx);
-                        int displayIdx = _beltCount > 0 ? curIdx % _beltCount : curIdx;
-                        string beltName = _beltNames.TryGetValue(displayIdx, out var n) ? n : $"belt {displayIdx}";
-                        ctx.Log($"[Mining] No asteroids — moving to {beltName} (index {displayIdx})");
-
+                        
                         ctx.Blackboard.SetCooldown("belt_drone_recall", TimeSpan.FromSeconds(15));
                         Progress("await_drones");
                         return NodeStatus.Running;
@@ -648,9 +465,27 @@ public sealed partial class MiningBot
 
                         if (beltsEntry == null)
                         {
-                            ctx.KeyPress(VirtualKey.Escape);
-                            Reset(20);
-                            return NodeStatus.Failure;
+                            int attempts = ctx.Blackboard.Get<int>("belt_find_attempts") + 1;
+                            ctx.Blackboard.Set("belt_find_attempts", attempts);
+
+                            if (attempts < 3)
+                            {
+                                ctx.Log($"[Mining] Asteroid Belts menu not found, retrying at different location (attempt {attempts}/3)");
+                                ctx.KeyPress(VirtualKey.Escape);
+                                ctx.Wait(TimeSpan.FromMilliseconds(500));
+                                RightClickInSpace(ctx);
+                                ctx.Wait(TimeSpan.FromMilliseconds(800));
+                                return NodeStatus.Running;
+                            }
+                            else
+                            {
+                                ctx.Log("[Mining] Failed to find Asteroid Belts menu after 3 attempts. System may have no belts. Aborting mining session.");
+                                ctx.KeyPress(VirtualKey.Escape);
+                                ctx.Blackboard.Set("needs_unload", true);
+                                ctx.Blackboard.Set("bot_cancelled", true);
+                                Reset(600);
+                                return NodeStatus.Failure;
+                            }
                         }
 
                         ctx.Blackboard.Set("cascade_ref_x",
@@ -708,8 +543,6 @@ public sealed partial class MiningBot
                                 .MaxBy(m => m.UINode.Region.X);
                             if (subMenu != null && subMenu.Entries.Count > 0)
                             {
-                                // Filter to belt-looking entries only — avoids recording "Show Info",
-                                // "Warp Within 10 km", etc. if the actions submenu is captured instead.
                                 var filteredEntries = subMenu.Entries
                                     .Where(e => e.UINode.GetAllContainedDisplayTexts().Any(t =>
                                         (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
@@ -946,4 +779,5 @@ public sealed partial class MiningBot
                         return NodeStatus.Running;
                 }
             }));
+
 }

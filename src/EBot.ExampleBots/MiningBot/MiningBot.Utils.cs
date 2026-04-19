@@ -58,15 +58,8 @@ public sealed partial class MiningBot
 
     private static bool AnyAsteroidsInOverview(BotContext ctx)
     {
-        if (AsteroidsInOverview(ctx).Any()) return true;
-        
-        // Also check Surveyor window as requested
-        var surveyorEntries = ctx.GameState.ParsedUI.MiningScanResultsWindow?.Entries ?? [];
-        if (surveyorEntries.Any(e => !e.IsGroup)) return true;
-
-        return false;
+        return AsteroidsInOverview(ctx).Any();
     }
-
     private static IEnumerable<OverviewEntry> AsteroidsInOverview(BotContext ctx)
     {
         var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
