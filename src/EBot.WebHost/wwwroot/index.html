@@ -138,7 +138,7 @@
 
     /* Row 2: Info panels */
     .info-row {
-      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border);
+      display: grid; grid-template-columns: 320px 320px 1fr; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border);
     }
 
     /* Row 3: Tables and Logs */
@@ -194,9 +194,20 @@
     .log-Error .log-msg { color: var(--red); }
     .log-Warn  .log-msg { color: var(--yellow); }
 
-    .holds-container { display: flex; flex-direction: column; gap: 12px; }
-    .hold-card { background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
-    .hold-title { font-size: 0.75rem; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; }
+    /* Holds Enhanced */
+    .holds-container { display: flex; flex-direction: column; gap: 8px; }
+    .hold-card { background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 6px; padding: 10px; transition: all 0.2s; }
+    .hold-card:hover { border-color: var(--border-brt); }
+    .hold-header { cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+    .hold-title { font-size: 0.75rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+    .hold-type { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    .hold-content { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
+    .hold-card.expanded .hold-content { display: block; }
+    .hold-card.expanded { border-color: var(--accent-dim); background: rgba(88,166,255,0.02); }
+
+    .cargo-item { display: flex; justify-content: space-between; font-size: 0.7rem; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .cargo-qty { color: var(--cyan); font-family: monospace; }
     
     #conn-status { position: fixed; top: 10px; right: 20px; z-index: 100; display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--text-dim); }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
@@ -206,6 +217,27 @@
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--border-brt); }
+
+    /* ─── Mobile Responsiveness ────────────────────────────────────────── */
+    @media (max-width: 1024px) {
+      .app-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto 1fr auto;
+        height: auto;
+        overflow-y: auto;
+      }
+      html, body { overflow-y: auto; height: auto; }
+      aside, aside.launcher-sidebar { border: none; border-bottom: 1px solid var(--border); }
+      .hud-row { grid-template-columns: 1fr; }
+      .info-row { grid-template-columns: 1fr 1fr; }
+      .content-row { grid-template-columns: 1fr; }
+      .main-table-container { height: 400px; }
+      .log-feed { height: 300px; }
+    }
+
+    @media (max-width: 600px) {
+      .info-row { grid-template-columns: 1fr; }
+    }
 
   </style>
 </head>
@@ -242,18 +274,11 @@
     <div class="nav-section">
       <div class="nav-title">Quick Actions</div>
       <button class="btn" onclick="apiClick('/api/undock')">Undock Ship</button>
-      <button class="btn" onclick="apiClick('/api/dock')">Dock At Nearest</button>
-      <button class="btn" onclick="apiClick('/api/open-cargo')">Toggle Inventory</button>
-      <button class="btn" onclick="apiClick('/api/scan-holds')">Sync All Holds</button>
     </div>
 
     <div class="nav-section">
       <div class="nav-title">System Tools</div>
-      <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <span style="font-size: 0.75rem; font-weight: 600;">Survival Protocol</span>
-        <input type="checkbox" id="toggle-survival" onchange="api('POST','/api/survival',{enabled:this.checked})">
-      </div>
-      <button class="btn" onclick="api('POST','/api/save-frame')">💾 Capture Frame</button>
+      <button class="btn" id="btn-capture-frame" onclick="captureFrame()">💾 Capture Frame</button>
       <button class="btn btn-danger" onclick="if(confirm('Kill EBot Server?'))api('POST','/api/kill')">☢ Terminate Server</button>
     </div>
 
@@ -267,7 +292,7 @@
   <!-- ─── Main ─────────────────────────────────────────────────────────── -->
   <main>
     <!-- Row 1: Ship HUD -->
-    <div class="hud-row">
+    <div class="hud-row" style="grid-template-columns: 320px 1fr;">
       <div class="hud-panel ship-bars">
         <div class="bar-container">
           <div class="bar-label"><span>SHIELD</span><span id="val-shield">100%</span></div>
@@ -287,35 +312,31 @@
         </div>
       </div>
 
-      <div class="hud-panel" style="border-left: 1px solid var(--border); border-right: 1px solid var(--border);">
+      <div class="hud-panel" style="border-left: 1px solid var(--border);">
         <div class="nav-title" style="margin-bottom: 10px;">Targets In Range</div>
         <div class="targets-list" id="targets-list">
           <div class="empty" style="margin: auto;">No targets locked</div>
         </div>
       </div>
-
-      <div class="hud-panel">
-        <div class="nav-title" style="margin-bottom: 8px;">Selected Object</div>
-        <div id="selected-item" class="empty">Nothing selected</div>
-      </div>
     </div>
 
     <!-- Row 2: Modules, Drones, Holds -->
-    <div class="info-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+    <div class="info-row" style="grid-template-columns: 320px 320px 1fr;">
       <div class="hud-panel" style="border-right: 1px solid var(--border);">
         <div class="nav-title">Modules</div>
         <div class="module-grid" id="module-grid"></div>
       </div>
       <div class="hud-panel" style="border-right: 1px solid var(--border);">
-        <div class="nav-title" id="drones-space-title">Drones In Space</div>
-        <div id="drones-space-list" style="font-size: 0.7rem;"></div>
-      </div>
-      <div class="hud-panel" style="border-right: 1px solid var(--border);">
-        <div class="nav-title" id="drones-bay-title">Drones In Bay</div>
-        <div id="drones-bay-list" style="font-size: 0.7rem;"></div>
+        <div class="nav-title">Drones</div>
+        <div id="drones-merged-list" class="holds-container">
+          <div class="empty">No drones detected</div>
+        </div>
       </div>
       <div class="hud-panel">
-        <div class="nav-title">Holds</div>
+        <div class="nav-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Inventory Holds</span>
+          <button class="badge" onclick="apiClick('/api/scan-holds')" style="background:var(--accent-dim); color:white; border:none; cursor:pointer; padding:2px 8px;">Sync All</button>
+        </div>
         <div id="holds-list" class="holds-container"></div>
       </div>
     </div>
@@ -408,6 +429,13 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 let lastGs = null;
+let expandedHolds = new Set();
+
+function toggleHold(holdName) {
+  if (expandedHolds.has(holdName)) expandedHolds.delete(holdName);
+  else expandedHolds.add(holdName);
+  if (lastGs) renderDashboard(lastGs);
+}
 
 // Autopilot state
 let apSearchResults  = [];
@@ -614,7 +642,6 @@ async function loadInitialState() {
     const s = await fetch('/api/status').then(r => r.json());
     updateBotState(s.state, s.botName, s.botDescription);
     if (s.gameState) renderDashboard(s.gameState);
-    $('toggle-survival').checked = s.survivalEnabled;
   } catch(e) {}
 }
 
@@ -677,21 +704,8 @@ function renderDashboard(gs) {
     targetList.innerHTML = '<div class="empty" style="margin: auto;">No targets locked</div>';
   }
 
-  // 4. Selected Item
-  const selPanel = $('selected-item');
-  if (gs.selectedItem) {
-    selPanel.innerHTML = `
-      <div style="color:var(--orange); font-weight:700; font-size:0.8rem;">${esc(gs.selectedItem.name)}</div>
-      <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:8px;">
-        ${gs.selectedItem.actions.map(a => `<span class="badge" style="background:#1c2128; border:1px solid var(--border); color:var(--text-dim); font-size:0.55rem;">${esc(a)}</span>`).join('')}
-      </div>
-    `;
-    selPanel.className = '';
-  } else {
-    selPanel.innerHTML = 'Nothing selected';
-    selPanel.className = 'empty';
-  }
-
+  // 4. Selected Item - Removed
+  
   // 5. Modules
   $('module-grid').innerHTML = gs.moduleButtons.map(m => {
     let cls = '';
@@ -705,29 +719,30 @@ function renderDashboard(gs) {
     </div>`;
   }).join('');
 
-  // 6. Drones
-  const renderDrones = (group, listId, titleId) => {
-    const list = $(listId);
-    const title = $(titleId);
-    if (group && group.drones.length > 0) {
-      title.textContent = `${group.header || 'Drones'} (${group.current}/${group.max})`;
-      list.innerHTML = group.drones.map(d => `
-        <div style="font-size:0.7rem; display:flex; justify-content:space-between; padding:2px 0;">
-          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px;">${esc(d.name)}</span>
-          <div style="display:flex; gap:2px; width:60px; height:4px; margin-top:4px;">
-            <div style="flex:1; background:var(--accent); opacity:${(d.shield??100)/100}"></div>
-            <div style="flex:1; background:var(--yellow); opacity:${(d.armor??100)/100}"></div>
-            <div style="flex:1; background:var(--red); opacity:${(d.structure??100)/100}"></div>
+  // 6. Drones (Merged)
+  const droneList = $('drones-merged-list');
+  let dronesHtml = '';
+  const renderDroneGroup = (group) => {
+    if (!group || !group.drones.length) return '';
+    return `
+      <div style="margin-bottom:8px;">
+        <div class="hold-type" style="margin-bottom:4px;">${esc(group.header)} (${group.current}/${group.max})</div>
+        ${group.drones.map(d => `
+          <div style="font-size:0.7rem; display:flex; justify-content:space-between; padding:2px 0;">
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">${esc(d.name)}</span>
+            <div style="display:flex; gap:2px; width:60px; height:4px; margin-top:4px;">
+              <div style="flex:1; background:var(--accent); opacity:${(d.shield??100)/100}"></div>
+              <div style="flex:1; background:var(--yellow); opacity:${(d.armor??100)/100}"></div>
+              <div style="flex:1; background:var(--red); opacity:${(d.structure??100)/100}"></div>
+            </div>
           </div>
-        </div>
-      `).join('');
-    } else {
-      title.textContent = titleId.includes('space') ? 'Drones In Space' : 'Drones In Bay';
-      list.innerHTML = '<div class="empty" style="padding:10px;">None</div>';
-    }
+        `).join('')}
+      </div>
+    `;
   };
-  renderDrones(gs.dronesInSpace, 'drones-space-list', 'drones-space-title');
-  renderDrones(gs.dronesInBay, 'drones-bay-list', 'drones-bay-title');
+  dronesHtml += renderDroneGroup(gs.dronesInSpace);
+  dronesHtml += renderDroneGroup(gs.dronesInBay);
+  droneList.innerHTML = dronesHtml || '<div class="empty">No drones detected</div>';
 
   // 7. Overview
   $('overview-body').innerHTML = gs.overview.map(e => `
@@ -739,13 +754,28 @@ function renderDashboard(gs) {
     </tr>
   `).join('') || '<tr><td colspan="4" class="empty">Empty space</td></tr>';
 
-  // 8. Holds
+  // 8. Holds (Enhanced)
   $('holds-list').innerHTML = gs.holds.map(h => {
     const pct = h.maxM3 > 0 ? (h.usedM3 / h.maxM3 * 100) : 0;
+    const isExpanded = expandedHolds.has(h.name);
     return `
-      <div class="hold-card">
-        <div class="hold-title"><span>${esc(h.name)}</span><span style="color:var(--text-dim)">${h.usedM3?.toFixed(1)} / ${h.maxM3?.toFixed(1)} m³</span></div>
-        <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${pct > 90 ? 'var(--red)' : 'var(--purple)'}"></div></div>
+      <div class="hold-card ${isExpanded ? 'expanded' : ''}">
+        <div class="hold-header" onclick="toggleHold('${esc(h.name)}')">
+          <div class="hold-title">
+            <span>${esc(h.name)}</span>
+            <span style="color:var(--text-dim)">${h.usedM3?.toFixed(1)} / ${h.maxM3?.toFixed(1)} m³</span>
+          </div>
+          <div class="hold-type">${esc(h.holdType)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${pct > 90 ? 'var(--red)' : 'var(--purple)'}"></div></div>
+        </div>
+        <div class="hold-content">
+          ${(h.items || []).map(i => `
+            <div class="cargo-item">
+              <span>${esc(i.name)}</span>
+              <span class="cargo-qty">${i.quantity?.toLocaleString()}</span>
+            </div>
+          `).join('') || '<div class="empty" style="font-size:0.65rem;">Empty</div>'}
+        </div>
       </div>
     `;
   }).join('') || '<div class="empty">Sync holds to view</div>';
@@ -780,6 +810,18 @@ async function api(method, url, body) {
 
 async function apiClick(url) {
   api('POST', url);
+}
+
+async function captureFrame() {
+  const btn = $('btn-capture-frame');
+  const oldText = btn.textContent;
+  btn.textContent = '💾 Captured!';
+  btn.disabled = true;
+  await api('POST', '/api/save-frame');
+  setTimeout(() => {
+    btn.textContent = oldText;
+    btn.disabled = false;
+  }, 1500);
 }
 
 // Controls

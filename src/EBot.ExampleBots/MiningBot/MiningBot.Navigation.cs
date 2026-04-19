@@ -21,6 +21,7 @@ public sealed partial class MiningBot
                         ctx.Blackboard.Set("needs_unload", true);
                         StopAllModules(ctx);
                         RecallDrones(ctx);
+                        ctx.Blackboard.Set("belt_prop_started", false);
                         // Reset per-cycle menu-type probing (home_menu_type persists across cycles once learned)
                         ctx.Blackboard.Set("return_tried_stations",   false);
                         ctx.Blackboard.Set("return_tried_structures",  false);
@@ -353,10 +354,15 @@ public sealed partial class MiningBot
             new ActionNode("Discovery state machine", ctx =>
             {
                 var phase = ctx.Blackboard.Get<string>("discover_phase") ?? "";
+                if (ctx.Blackboard.IsCooldownReady("discover_trace")) {
+                    ctx.Log($"[Mining] Discover Phase: '{phase}'");
+                    ctx.Blackboard.SetCooldown("discover_trace", TimeSpan.FromSeconds(2));
+                }
 
                 switch (phase)
                 {
                     case "":
+                        ctx.Log("[Mining] Initiating belt discovery. Right-clicking space.");
                         ctx.Blackboard.Set("menu_expected", true);
                         RightClickInSpace(ctx);
                         ctx.Wait(TimeSpan.FromMilliseconds(800));
@@ -437,7 +443,15 @@ public sealed partial class MiningBot
                             var subMnu = allMenus.Where(m => m.UINode.Region.X > minX + 10)
                                                  .MaxBy(m => m.UINode.Region.X);
                             if (subMnu?.Entries.Count > 0)
-                                beltEntries = subMnu.Entries.OrderBy(e => e.UINode.Region.Y).ToList();
+                                // Filter to belt-looking entries only — avoids storing "Show Info",
+                                // "Warp Within 10 km", etc. when the wrong submenu is captured.
+                                beltEntries = subMnu.Entries
+                                    .Where(e => e.UINode.GetAllContainedDisplayTexts().Any(t =>
+                                        (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
+                                        (t.Length > 8  && (t.Contains("Ore Deposit",  StringComparison.OrdinalIgnoreCase) ||
+                                                           t.Contains("Cluster",      StringComparison.OrdinalIgnoreCase)))))
+                                    .OrderBy(e => e.UINode.Region.Y)
+                                    .ToList();
                         }
 
                         if (beltEntries.Count == 0)
@@ -523,6 +537,11 @@ public sealed partial class MiningBot
                 var phase = ctx.Blackboard.Get<string>("belt_phase") ?? "";
                 int ticks = ctx.Blackboard.Get<int>("belt_phase_ticks");
 
+                if (ctx.Blackboard.IsCooldownReady("warp_belt_trace")) {
+                    ctx.Log($"[Mining] WarpToBelt Phase: '{phase}' (Ticks: {ticks})");
+                    ctx.Blackboard.SetCooldown("warp_belt_trace", TimeSpan.FromSeconds(2));
+                }
+
                 void Progress(string nextPhase)
                 {
                     ctx.Blackboard.Set("belt_phase", nextPhase);
@@ -551,6 +570,9 @@ public sealed partial class MiningBot
                     {
                         StopAllModules(ctx);
                         RecallDrones(ctx);
+                        // Reset mining state machine so the next belt starts from scratch
+                        ctx.Blackboard.Remove("mining_phase");
+                        ctx.Blackboard.Set("mining_tick", 0);
 
                         int lastBelt = ctx.Blackboard.Get<int>("last_belt_target");
                         if (lastBelt >= 0 && _beltCount > 0)
@@ -686,15 +708,27 @@ public sealed partial class MiningBot
                                 .MaxBy(m => m.UINode.Region.X);
                             if (subMenu != null && subMenu.Entries.Count > 0)
                             {
-                                _beltCount = subMenu.Entries.Count;
-                                for (int i = 0; i < subMenu.Entries.Count; i++)
+                                // Filter to belt-looking entries only — avoids recording "Show Info",
+                                // "Warp Within 10 km", etc. if the actions submenu is captured instead.
+                                var filteredEntries = subMenu.Entries
+                                    .Where(e => e.UINode.GetAllContainedDisplayTexts().Any(t =>
+                                        (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
+                                        (t.Length > 8  && (t.Contains("Ore Deposit",  StringComparison.OrdinalIgnoreCase) ||
+                                                           t.Contains("Cluster",      StringComparison.OrdinalIgnoreCase)))))
+                                    .OrderBy(e => e.UINode.Region.Y)
+                                    .ToList();
+                                if (filteredEntries.Count > 0)
                                 {
-                                    var txt = subMenu.Entries[i].UINode.GetAllContainedDisplayTexts()
-                                        .Where(t => t.Length > 3)
-                                        .OrderByDescending(t => t.Length)
-                                        .FirstOrDefault()
-                                        ?? subMenu.Entries[i].Text ?? $"Belt {i + 1}";
-                                    _beltNames[i] = txt.Trim();
+                                    _beltCount = filteredEntries.Count;
+                                    for (int i = 0; i < filteredEntries.Count; i++)
+                                    {
+                                        var txt = filteredEntries[i].UINode.GetAllContainedDisplayTexts()
+                                            .Where(t => t.Length > 3)
+                                            .OrderByDescending(t => t.Length)
+                                            .FirstOrDefault()
+                                            ?? filteredEntries[i].Text ?? $"Belt {i + 1}";
+                                        _beltNames[i] = txt.Trim();
+                                    }
                                 }
                             }
                         }

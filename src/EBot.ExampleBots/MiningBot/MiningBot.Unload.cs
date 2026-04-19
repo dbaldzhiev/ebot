@@ -129,7 +129,8 @@ public sealed partial class MiningBot
                     case "select_all":
                     {
                         var oreHold = FindOreHoldWindow(ctx);
-                        if (oreHold == null || oreHold.Items.Count == 0)
+                        if (oreHold == null) return NodeStatus.Running; // inventory still loading
+                        if (oreHold.Items.Count == 0)
                         { FinishUnload(ctx, 0); return NodeStatus.Success; }
                         ctx.Blackboard.Set("unload_vol_before", oreHold.CapacityGauge?.Used ?? 0.0);
                         ctx.Click(oreHold.Items[0].UINode);
@@ -143,7 +144,8 @@ public sealed partial class MiningBot
                     case "open_menu":
                     {
                         var oreHold = FindOreHoldWindow(ctx);
-                        if (oreHold == null || oreHold.Items.Count == 0)
+                        if (oreHold == null) return NodeStatus.Running; // inventory still loading
+                        if (oreHold.Items.Count == 0)
                         { FinishUnload(ctx, ctx.Blackboard.Get<double>("unload_vol_before")); return NodeStatus.Success; }
                         ctx.Blackboard.Set("menu_expected", true);
                         ctx.RightClick(oreHold.Items[0].UINode);
@@ -207,7 +209,8 @@ public sealed partial class MiningBot
                     case "verify":
                     {
                         var oreHold = FindOreHoldWindow(ctx);
-                        if (oreHold?.Items.Count > 0)
+                        if (oreHold == null) return NodeStatus.Running; // inventory still loading — don't treat as empty
+                        if (oreHold.Items.Count > 0)
                         { ctx.Blackboard.Set("unload_phase", "select_all"); return NodeStatus.Running; }
                         FinishUnload(ctx, ctx.Blackboard.Get<double>("unload_vol_before"));
                         return NodeStatus.Success;
@@ -229,6 +232,7 @@ public sealed partial class MiningBot
         ctx.Blackboard.Set("unload_vol_before",   0.0);
         ctx.Blackboard.Set("belt_index",        0);   // restart belt cycle counter after unload
         ctx.Blackboard.Set("last_belt_target", -1);  // no current belt after station run
+        ctx.Blackboard.Set("belt_prop_started", false);
     }
 
     private void SyncStats(BotContext ctx)
@@ -239,7 +243,7 @@ public sealed partial class MiningBot
 
     // ─── Remember station and undock ────────────────────────────────────────
 
-    private static IBehaviorNode RememberStationAndUndock() =>
+    private IBehaviorNode RememberStationAndUndock() =>
         new ActionNode("Remember home + undock", ctx =>
         {
             if (!ctx.Blackboard.Get<bool>("home_station_set"))
@@ -263,6 +267,15 @@ public sealed partial class MiningBot
             var btn = ctx.GameState.ParsedUI.StationWindow?.UndockButton;
             if (btn == null) return NodeStatus.Failure;
             if (!ctx.Blackboard.IsCooldownReady("undock_cd")) return NodeStatus.Success;
+            // Safety: never undock with a full ore hold — PerformUnload should have caught this,
+            // but guard here in case the inventory window was closed before verify completed.
+            if (IsOreHoldFull(ctx))
+            {
+                ctx.Log("[Mining] Undock blocked — ore hold still full. Re-triggering unload.");
+                ctx.Blackboard.Set("needs_unload", true);
+                ctx.Blackboard.Set("unload_phase", "");
+                return NodeStatus.Failure;
+            }
             ctx.Click(btn);
             ctx.Wait(TimeSpan.FromSeconds(10));
             ctx.Blackboard.SetCooldown("undock_cd", TimeSpan.FromSeconds(20));

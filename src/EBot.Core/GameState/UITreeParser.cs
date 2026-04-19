@@ -51,7 +51,16 @@ public sealed partial class UITreeParser
             MessageBoxes = FindMessageBoxes(root),
             StationWindow = FindStationWindow(root),
             MiningScanResultsWindow = FindMiningScanResultsWindow(root),
+            CombatMessages = FindCombatMessages(root),
         };
+    }
+
+    private List<string> FindCombatMessages(UITreeNodeWithDisplayRegion root)
+    {
+        return root.FindAll(n => IsType(n, "CombatMessage", "CombatLog"))
+            .SelectMany(n => n.GetAllContainedDisplayTexts())
+            .Where(t => t.Length > 5)
+            .ToList();
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -303,6 +312,24 @@ public sealed partial class UITreeParser
             if (moduleName.Length == 0) moduleName = null;
         }
 
+        // Fallback if hint is missing: use node name suffix (type ID)
+        if (moduleName == null)
+        {
+            var nodeName = moduleButton.Node.GetDictString("_name") ?? "";
+            if (nodeName.Contains('_'))
+            {
+                var id = nodeName.Split('_').Last();
+                moduleName = id switch
+                {
+                    "482"  => "Mining Laser",
+                    "6001" => "Afterburner",
+                    "6002" => "Microwarpdrive",
+                    "2054" => "Afterburner",
+                    _      => $"Module {id}"
+                };
+            }
+        }
+
         return new ShipUIModuleButton
         {
             UINode = slotNode,
@@ -515,9 +542,20 @@ public sealed partial class UITreeParser
         var tabs = overviewNode.QueryAll("@OverviewTab")
             .Select(tab => {
                 var name = tab.GetAllContainedDisplayTexts().FirstOrDefault();
+                
+                // Detection 1: explicit attributes
                 bool isActive = tab.Node.GetDictBool("_selected") == true
                     || tab.Node.GetDictBool("selected") == true
                     || (tab.Node.GetDictString("_state") ?? "").Contains("selected", StringComparison.OrdinalIgnoreCase);
+                
+                // Detection 2: label alpha (Active tabs have more opaque labels, usually ~90% vs ~50%)
+                if (!isActive)
+                {
+                    var label = tab.FindFirst(n => n.Node.PythonObjectTypeName.Contains("Label", StringComparison.OrdinalIgnoreCase));
+                    var color = label?.Node.GetDictColor("_color");
+                    if (color != null && color.APercent > 70) isActive = true;
+                }
+
                 return new OverviewTab { UINode = tab, Name = name, IsActive = isActive };
             })
             .Where(t => !string.IsNullOrWhiteSpace(t.Name))
@@ -591,6 +629,20 @@ public sealed partial class UITreeParser
         cellsTexts.TryGetValue("Distance", out var cellDistText);
         var resolvedDistText = !string.IsNullOrEmpty(cellDistText) ? cellDistText : distText;
 
+        // Is hostile if hint says so OR if there's a red-ish icon background
+        bool isHostile = n.FindFirst(e => {
+            var hint = (e.Node.GetDictString("_hint") ?? "").ToLowerInvariant();
+            if (hint.Contains("hostile") || hint.Contains("threat") || 
+                hint.Contains("attacking") || hint.Contains("criminal") ||
+                hint.Contains("suspect") || hint.Contains("outlaw")) return true;
+            
+            // Check for red background in icon elements
+            var color = e.Node.GetDictColor("_bgColor") ?? e.Node.GetDictColor("_color");
+            if (color != null && color.RPercent > 70 && color.GPercent < 30 && color.BPercent < 30) return true;
+            
+            return false;
+        }) != null;
+
         return new OverviewEntry
         {
             UINode = n,
@@ -601,6 +653,7 @@ public sealed partial class UITreeParser
             DistanceInMeters = resolvedDistText != null ? ParseDistanceText(resolvedDistText) : null,
             IsAttackingMe = n.FindFirst(e =>
                 (e.Node.GetDictString("_hint") ?? "").Contains("attacking", StringComparison.OrdinalIgnoreCase)) != null,
+            IsHostile = isHostile,
             Texts = texts,
         };
     }
@@ -648,19 +701,32 @@ public sealed partial class UITreeParser
         return new DronesWindow
         {
             UINode = node,
-            DronesInBay = FindDronesGroup(node, "bay", "droneBay"),
-            DronesInSpace = FindDronesGroup(node, "space", "droneSpace", "local"),
+            DronesInBay   = FindDronesGroup(node, "DroneGroupHeaderInBay",   "bay",   "droneBay"),
+            DronesInSpace = FindDronesGroup(node, "DroneGroupHeaderInSpace",  "space", "droneSpace", "local"),
         };
     }
 
-    private DronesGroup? FindDronesGroup(UITreeNodeWithDisplayRegion parent, params string[] keywords)
+    private DronesGroup? FindDronesGroup(UITreeNodeWithDisplayRegion parent, string primaryTypeName, params string[] keywordFallback)
     {
+        // Primary: match by PythonObjectTypeName — avoids self-matching on the parent DronesWindow
+        // because FindFirst checks `this` before children and the parent's recursive text contains
+        // descendant keywords (e.g. "bay"), causing it to return the window node instead of the header.
         var groupNode = parent.FindFirst(n =>
-            keywords.Any(k => n.GetAllContainedDisplayTexts()
+            string.Equals(n.Node.PythonObjectTypeName, primaryTypeName, StringComparison.OrdinalIgnoreCase));
+
+        // Fallback: keyword search, but explicitly skip the parent node to avoid self-match.
+        groupNode ??= parent.FindFirst(n =>
+            !ReferenceEquals(n, parent) &&
+            keywordFallback.Any(k => n.GetAllContainedDisplayTexts()
                 .Any(t => t.Contains(k, StringComparison.OrdinalIgnoreCase))));
+
         if (groupNode == null) return null;
 
-        var headerText = groupNode.GetAllContainedDisplayTexts().FirstOrDefault();
+        // Read the header text from the node's own direct text fields, not recursively,
+        // so we get "Drones in Bay (8)" and not the window-level "Drones" label.
+        var headerText = groupNode.Node.GetDictString("_setText")
+                      ?? groupNode.Node.GetDictString("_text")
+                      ?? groupNode.GetAllContainedDisplayTexts().FirstOrDefault();
         int? current = null, max = null;
 
         if (headerText != null)
@@ -1051,37 +1117,47 @@ public sealed partial class UITreeParser
 
         var entries = new List<MiningScanEntry>();
         
-        // Find all text-bearing nodes that look like scan entries
-        var listGroups = node.QueryAll("@ListGroup");
-        var individualLabels = node.QueryAll("[_name=entryLabel]");
-        
-        var allNodes = listGroups.Concat(individualLabels).OrderBy(n => n.Region.Y).ToList();
+        // Find all nodes that look like they contain entry text (ListGroups or labels/entries)
+        var allScanNodes = node.FindAll(n => 
+            IsType(n, "ListGroup", "MiningScanEntry", "SurveyScanEntry") ||
+            (n.Node.GetDictString("_name") ?? "").Contains("entry", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n.Region.Y)
+            .ToList();
+
         double? currentGroupValue = null;
 
-        for (int i = 0; i < allNodes.Count; i++)
+        for (int i = 0; i < allScanNodes.Count; i++)
         {
-            var n = allNodes[i];
+            var n = allScanNodes[i];
             var text = n.GetAllContainedDisplayTexts().FirstOrDefault();
             if (string.IsNullOrWhiteSpace(text)) continue;
 
-            bool isGroup = n.Node.PythonObjectTypeName == "ListGroup";
+            bool isGroup = n.Node.PythonObjectTypeName.Contains("ListGroup", StringComparison.OrdinalIgnoreCase);
             
             if (isGroup)
             {
-                // Regex for group header: "Scordite [2] <color=...>113 ISK / m³</color>"
-                var match = Regex.Match(text, @"^(.*)\s+\[(\d+)\].*?>([\d,.]+)\s*ISK", RegexOptions.IgnoreCase);
+                var match = Regex.Match(text, @"^(.*?)\s+\[(\d+)\].*?([\d,.]+)\s*ISK", RegexOptions.IgnoreCase);
                 
-                // Detection: if the NEXT node in the flat list is an entryLabel, this group is expanded.
+                // Robust expansion detection: if any subsequent nodes are NOT groups and have similar/larger Y, we are expanded.
                 bool isExpanded = false;
-                if (i + 1 < allNodes.Count)
+                for (int j = i + 1; j < Math.Min(i + 10, allScanNodes.Count); j++)
                 {
-                    var next = allNodes[i + 1];
-                    isExpanded = next.Node.GetDictString("_name") == "entryLabel";
+                    var next = allScanNodes[j];
+                    if (!next.Node.PythonObjectTypeName.Contains("ListGroup", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isExpanded = true;
+                        break;
+                    }
+                    if (next.Region.Y > n.Region.Y + n.Region.Height + 50) break; // Too far down
                 }
 
                 currentGroupValue = null;
-                if (match.Success && double.TryParse(match.Groups[3].Value.Replace(",", ""), out var val))
-                    currentGroupValue = val;
+                if (match.Success)
+                {
+                    var valStr = match.Groups[3].Value.Replace(",", "");
+                    if (double.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
+                        currentGroupValue = val;
+                }
 
                 entries.Add(new MiningScanEntry
                 {
@@ -1097,23 +1173,31 @@ public sealed partial class UITreeParser
             }
             else
             {
-                // entryLabel: "Name<t><right>Quantity<t><right>Volume m3<t><right>Value ISK<t><right>Distance"
-                var parts = text.Split("<t>");
-                if (parts.Length >= 2)
+                // entryLabel example: "Scordite41,4696,220 m3675,000.00 ISK28 km"
+                var match = Regex.Match(text, @"^([a-zA-Z\s\-]+?)([\d,.]+?)(?=[\d,.]+\s*m3)([\d,.]+\s*m3)([\d,.]+\s*ISK)([\d,.]+\s*(?:m|km|au))", RegexOptions.IgnoreCase);
+                
+                if (match.Success)
                 {
-                    var oreName = EveTextUtil.StripTags(parts[0]).Trim();
-                    int.TryParse(EveTextUtil.StripTags(parts[1]).Replace(",", "").Trim(), out var qty);
-                    var distText = parts[^1].Replace("<right>", "").Trim();
-                    
                     entries.Add(new MiningScanEntry
                     {
                         UINode = n,
-                        OreName = oreName,
-                        Quantity = qty,
+                        OreName = match.Groups[1].Value.Trim(),
+                        Quantity = int.TryParse(match.Groups[2].Value.Replace(",", ""), out var q) ? q : null,
                         IsGroup = false,
-                        DistanceInMeters = ParseDistanceText(distText),
-                        ValueText = parts.Length > 3 ? parts[3] : null,
-                        ValuePerM3 = currentGroupValue, // Propagate from last seen group
+                        DistanceInMeters = ParseDistanceText(match.Groups[5].Value),
+                        ValueText = match.Groups[4].Value.Trim(),
+                        ValuePerM3 = currentGroupValue,
+                    });
+                }
+                else if (text.Length > 5 && !text.Contains("ISK / m"))
+                {
+                    // Fallback for simple names
+                    entries.Add(new MiningScanEntry
+                    {
+                        UINode = n,
+                        OreName = text.Length > 20 ? text[..15].Trim() : text,
+                        IsGroup = false,
+                        ValuePerM3 = currentGroupValue,
                     });
                 }
             }

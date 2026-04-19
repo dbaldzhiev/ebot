@@ -215,6 +215,19 @@ public sealed class InputSimulator
         _logger.LogDebug("DblClick client({X},{Y})", clientX, clientY);
     }
 
+    /// <summary>Scroll the mouse wheel. Positive = scroll up, negative = scroll down.</summary>
+    public async Task Scroll(int delta, CancellationToken ct = default)
+    {
+        var input = new NativeMethods.INPUT();
+        input.type = NativeMethods.INPUT_MOUSE;
+        input.u.mi.mouseData = (uint)delta;
+        input.u.mi.dwFlags = NativeMethods.MOUSEEVENTF_WHEEL;
+        NativeMethods.SendInput(1, [input], NativeMethods.InputSize);
+        
+        _logger.LogDebug("Scroll delta={Delta}", delta);
+        await HumanDelay(ct);
+    }
+
     /// <summary>Click-drag from one EVE client-area position to another.</summary>
     public async Task Drag(int fromX, int fromY, int toX, int toY, CancellationToken ct = default)
     {
@@ -378,8 +391,9 @@ internal static partial class NativeMethods
     public const uint MOUSEEVENTF_MOVE      = 0x0001;
     public const uint MOUSEEVENTF_LEFTDOWN  = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP    = 0x0004;
-    public const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
-    public const uint MOUSEEVENTF_RIGHTUP   = 0x0010;
+    public const uint MOUSEEVENTF_RIGHTDOWN = 0x08;
+    public const uint MOUSEEVENTF_RIGHTUP   = 0x10;
+    public const uint MOUSEEVENTF_WHEEL     = 0x0800;
     public const uint MOUSEEVENTF_ABSOLUTE  = 0x8000;
 
     // ─── KEYEVENTF flags ──────────────────────────────────────────────────

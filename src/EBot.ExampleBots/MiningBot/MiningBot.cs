@@ -8,30 +8,20 @@ namespace EBot.ExampleBots.MiningBot;
 
 /// <summary>
 /// Production mining bot — state-aware, self-recovering.
-///
-/// Logic is split across multiple partial files:
-///  - MiningBot.Constants.cs: Strings, keywords, and numeric constants.
-///  - MiningBot.Unload.cs: Docked unloading and station management.
-///  - MiningBot.Navigation.cs: Belt discovery, warping, and station return.
-///  - MiningBot.Space.cs: Asteroid mining, drone defense, and sensing.
-///  - MiningBot.Utils.cs: Shared UI and calculation helpers.
 /// </summary>
 public sealed partial class MiningBot : IBot
 {
     // ─── Configurable settings ──────────────────────────────────────────────
-
     public string? HomeStationOverride { get; init; }
     public int OreHoldFullPercent { get; init; } = 95;
     public int ShieldEscapePercent { get; init; } = 25;
 
     // ─── Session statistics ──────────────────────────────────────────────────
-
     private double         _totalUnloadedM3;
     private int            _unloadCycles;
     private DateTimeOffset _sessionStart;
 
     // ─── Belt registry ───────────────────────────────────────────────────────
-
     private readonly ConcurrentDictionary<int, string> _beltNames    = new();
     private readonly ConcurrentDictionary<int, bool>   _beltDepleted = new();
     private readonly ConcurrentDictionary<int, bool>   _beltExcluded = new();
@@ -47,7 +37,6 @@ public sealed partial class MiningBot : IBot
         _beltExcluded.AddOrUpdate(idx, true, (_, v) => !v);
 
     // ─── IBot Implementation ────────────────────────────────────────────────
-
     public string Name => "Mining Bot";
 
     public string Description
@@ -83,23 +72,23 @@ public sealed partial class MiningBot : IBot
         _beltsDiscoveryDone = false;
         ctx.Blackboard.Set("last_belt_target", -1);
 
-        // Reset all state-machine phases and transient flags so stale blackboard
-        // state from a previous session never causes the bot to take unexpected action.
-        // NOTE: needs_unload is intentionally NOT reset — if the ore hold was full when
-        // the bot stopped, it should remain queued for unload on the next session.
         ctx.Blackboard.Set("return_phase",            "");
         ctx.Blackboard.Set("return_tick",             0);
-        ctx.Blackboard.Set("home_menu_type",          "");   // re-learned each session
+        ctx.Blackboard.Set("home_menu_type",          "");
         ctx.Blackboard.Set("return_tried_stations",   false);
         ctx.Blackboard.Set("return_tried_structures", false);
         ctx.Blackboard.Set("return_current_menu",     "");
         ctx.Blackboard.Set("unload_phase",   "");
         ctx.Blackboard.Set("unload_ticks",   0);
+        // Always attempt unload before the first undock. The state machine exits
+        // immediately if the ore hold turns out to be empty, so this is safe.
+        ctx.Blackboard.Set("needs_unload",   true);
         ctx.Blackboard.Set("belt_phase",     "");
         ctx.Blackboard.Set("belt_phase_ticks", 0);
         ctx.Blackboard.Set("discover_phase", "");
         ctx.Blackboard.Set("discover_tick",  0);
         ctx.Blackboard.Set("menu_expected",  false);
+        ctx.Blackboard.Set("belt_prop_started", false);
 
         if (!string.IsNullOrWhiteSpace(HomeStationOverride))
         {
@@ -108,20 +97,13 @@ public sealed partial class MiningBot : IBot
         }
         else if (ctx.GameState.IsDocked)
         {
-            // Priority 1: Info panel "Nearest Location" (most reliable for structures)
             var name = ctx.GameState.ParsedUI.InfoPanelContainer?.InfoPanelLocationInfo?.NearestLocationName;
-            
-            // Priority 2: Station window content texts with strict filtering
             if (string.IsNullOrEmpty(name))
             {
                 name = ctx.GameState.ParsedUI.StationWindow?.UINode
                     .GetAllContainedDisplayTexts()
-                    .Where(t => t.Length is > 5 and < 60 && 
-                                !t.All(char.IsDigit) &&
-                                !t.Equals("Undock", StringComparison.OrdinalIgnoreCase) &&
-                                !t.Contains("Access your", StringComparison.OrdinalIgnoreCase) &&
-                                !t.Contains("hangars",    StringComparison.OrdinalIgnoreCase) &&
-                                !t.Contains("Leave the",   StringComparison.OrdinalIgnoreCase))
+                    .Where(t => t.Length is > 5 and < 60 && !t.All(char.IsDigit) &&
+                                !t.Equals("Undock", StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(t => t.Length)
                     .FirstOrDefault();
             }
@@ -139,20 +121,82 @@ public sealed partial class MiningBot : IBot
     public void OnStop(BotContext ctx) { }
 
     public IBehaviorNode BuildBehaviorTree() =>
-        new SelectorNode("Mining Root",
+        new StatelessSelectorNode("Mining Root",
+            new ActionNode("Trace Start", ctx => {
+                if (ctx.Blackboard.IsCooldownReady("bt_trace")) {
+                    ctx.Log($"[Mining] BT Tick #{ctx.TickCount} | Docked={ctx.GameState.IsDocked} InSpace={ctx.GameState.IsInSpace} Warping={ctx.GameState.IsWarping}");
+                    ctx.Blackboard.SetCooldown("bt_trace", TimeSpan.FromSeconds(5));
+                }
+                return NodeStatus.Failure;
+            }),
             new ActionNode("World State Synthesis", ctx => {
                 SynthesizeWorldState(ctx);
-                return NodeStatus.Failure; // Always continue to real nodes
+                return NodeStatus.Failure;
             }),
             HandleMessageBoxes(),
             HandleStrayContextMenu(),
             HandleShieldEmergency(),
             HandleDocked(),
             HandleWarping(),
-            EnsureMiningTab(),
             HandleInSpace());
 
     // ─── Core infrastructure behaviors ──────────────────────────────────────
+
+    private IBehaviorNode HandleInSpace() =>
+        new SequenceNode("In space",
+            new ConditionNode("Is in space?", ctx => ctx.GameState.IsInSpace),
+            // StatelessSelectorNode: re-evaluates ALL children from index 0 every tick.
+            // This ensures ReturnToStation and other high-priority nodes are always checked
+            // even when the mining state machine is Running. A regular SelectorNode would
+            // lock its cursor at BT_MineAtBelt and never re-check ReturnToStation.
+            new StatelessSelectorNode("Space actions",
+                WaitCapRegen(),
+                ReturnToStation(),
+                BT_DroneSecurity(),
+                EnsureMiningTab(),
+                NavigateToMiningHold(),
+                DiscoverBeltsOnce(),
+                BT_MineAtBelt(),
+                WarpToBelt()));
+
+    private static IBehaviorNode WaitCapRegen() =>
+        new SequenceNode("Capacitor regen",
+            new ConditionNode("Capacitor low?", ctx =>
+                (ctx.GameState.ParsedUI.ShipUI?.Capacitor?.LevelPercent ?? 100) < MinCapPct),
+            new ActionNode("Wait for regen", _ => NodeStatus.Running));
+
+    private static IBehaviorNode EnsureMiningTab() =>
+        new SequenceNode("Ensure Mining tab",
+            new ConditionNode("Need Mining tab?", ctx =>
+            {
+                if (ctx.GameState.IsDocked || !ctx.GameState.IsInSpace) return false;
+                
+                // If under attack, don't force mining tab
+                var hostiles = ctx.GameState.ParsedUI.OverviewWindows.SelectMany(w => w.Entries).Any(e => e.IsHostile || e.IsAttackingMe);
+                if (hostiles) return false;
+
+                var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
+                if (ov == null) return false;
+                
+                var miningTab = FindMiningTab(ov.Tabs);
+                if (miningTab == null || miningTab.IsActive) return false;
+
+                if (!ctx.Blackboard.IsCooldownReady("click_mining_tab")) return false;
+
+                ctx.Log($"[Mining] Mining tab '{miningTab.Name}' is NOT active.");
+                return true;
+            }),
+            new ActionNode("Click Mining tab", ctx =>
+            {
+                var tabs      = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault()?.Tabs ?? [];
+                var miningTab = FindMiningTab(tabs);
+                if (miningTab == null) return NodeStatus.Failure;
+                
+                ctx.Log($"[Mining] Clicking mining overview tab: '{miningTab.Name}'");
+                ctx.Click(miningTab.UINode);
+                ctx.Blackboard.SetCooldown("click_mining_tab", TimeSpan.FromSeconds(5));
+                return NodeStatus.Success;
+            }));
 
     private static IBehaviorNode HandleMessageBoxes() =>
         new SequenceNode("Close message box",
@@ -197,25 +241,6 @@ public sealed partial class MiningBot : IBot
         new SequenceNode("Wait while warping",
             new ConditionNode("Is warping?", ctx => ctx.GameState.IsWarping),
             new ActionNode("Wait", _ => NodeStatus.Success));
-
-    private static IBehaviorNode EnsureMiningTab() =>
-        new SequenceNode("Ensure Mining tab",
-            new ConditionNode("In space, Mining tab not active?", ctx =>
-            {
-                if (!ctx.GameState.IsInSpace) return false;
-                var tabs = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault()?.Tabs ?? [];
-                if (tabs.Count == 0) return false;
-                var miningTab = FindMiningTab(tabs);
-                return miningTab != null && !miningTab.IsActive;
-            }),
-            new ActionNode("Click Mining tab", ctx =>
-            {
-                var tabs     = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault()?.Tabs ?? [];
-                var miningTab = FindMiningTab(tabs);
-                if (miningTab == null) return NodeStatus.Failure;
-                ctx.Click(miningTab.UINode);
-                return NodeStatus.Success;
-            }));
 
     private static OverviewTab? FindMiningTab(IReadOnlyList<OverviewTab> tabs) =>
         tabs.FirstOrDefault(t =>

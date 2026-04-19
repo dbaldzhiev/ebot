@@ -145,6 +145,41 @@ public sealed class SelectorNode : IBehaviorNode
 }
 
 /// <summary>
+/// A non-stateful selector. Restarts from the first child every tick.
+/// Useful for root-level nodes that must always execute (like state synthesis).
+/// </summary>
+public sealed class StatelessSelectorNode : IBehaviorNode
+{
+    private readonly List<IBehaviorNode> _children;
+
+    public string Name { get; }
+
+    public StatelessSelectorNode(string name, params IBehaviorNode[] children)
+    {
+        Name = name;
+        _children = [.. children];
+    }
+
+    public NodeStatus Tick(BotContext context)
+    {
+        context.ActiveNodes.Push(Name);
+        try
+        {
+            foreach (var child in _children)
+            {
+                var status = child.Tick(context);
+                if (status != NodeStatus.Failure) return status;
+            }
+            return NodeStatus.Failure;
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
+    }
+}
+
+/// <summary>
 /// Evaluates a predicate against the current game state.
 /// Returns Success if true, Failure if false.
 /// </summary>

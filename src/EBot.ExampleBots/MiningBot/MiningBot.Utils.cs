@@ -34,20 +34,22 @@ public sealed partial class MiningBot
         var cx = root.Region.X;
         var cy = root.Region.Y;
 
-        var targetX = cx + cw / 3;
-        var targetY = cy + ch / 4;
+        // EVE's ship model is usually centered. Clicking near the top-left (but clear of Neocom/Menus)
+        // or top-right (if overview allows) is safer than 1/3, 1/4.
+        // Let's target a safe zone in the top-left quadrant with randomized offset.
+        int targetX = cx + 400 + Random.Shared.Next(-80, 80);
+        int targetY = cy + 180 + Random.Shared.Next(-40, 40);
 
         var overview = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
         if (overview != null)
         {
-            var ovCenterX = overview.UINode.Region.X + overview.UINode.Region.Width / 2;
-            if (ovCenterX < cw / 2)
-                targetX = cx + cw * 2 / 3;
+            // If overview is on the left, move right
+            if (overview.UINode.Region.X < cw / 2)
+                targetX = cx + cw - 400 + Random.Shared.Next(-80, 80);
         }
 
-        ctx.Actions.Enqueue(new RightClickAction(
-            Math.Max(cx + 50, targetX),
-            Math.Max(cy + 50, targetY)));
+        ctx.Log($"[Navigation] Right-clicking space at ({targetX}, {targetY}) to open context menu.");
+        ctx.Actions.Enqueue(new RightClickAction(targetX, targetY));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -55,18 +57,32 @@ public sealed partial class MiningBot
     // ═══════════════════════════════════════════════════════════════════════
 
     private static bool AnyAsteroidsInOverview(BotContext ctx)
-        => AsteroidsInOverview(ctx).Any();
+    {
+        if (AsteroidsInOverview(ctx).Any()) return true;
+        
+        // Also check Surveyor window as requested
+        var surveyorEntries = ctx.GameState.ParsedUI.MiningScanResultsWindow?.Entries ?? [];
+        if (surveyorEntries.Any(e => !e.IsGroup)) return true;
+
+        return false;
+    }
 
     private static IEnumerable<OverviewEntry> AsteroidsInOverview(BotContext ctx)
     {
-        var ov    = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
+        var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
         var parsed = (ov?.Entries.Where(IsAsteroid) ?? []).ToList();
 
+        // If overview has rocks, use them
         if (parsed.Count > 0) return parsed;
 
+        // If overview is empty but we are in space, it might be filtered or not loaded.
+        // Tree fallback is slow but helps if the user is on a wrong tab.
         var treeFallback = GetAsteroidsFromTreeScan(ctx);
-        if (treeFallback.Count > 0)
-            ctx.Log($"[Mining] UITree fallback found {treeFallback.Count} asteroids");
+        if (treeFallback.Count > 0 && ctx.Blackboard.IsCooldownReady("tree_scan_log"))
+        {
+            ctx.Log($"[Mining] UITree fallback found {treeFallback.Count} asteroids in overview area");
+            ctx.Blackboard.SetCooldown("tree_scan_log", TimeSpan.FromSeconds(30));
+        }
         return treeFallback;
     }
 

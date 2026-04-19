@@ -22,6 +22,7 @@ public static partial class EveTextUtil
     public static string? StripTags(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (raw.Contains("Failed to read string bytes", StringComparison.OrdinalIgnoreCase)) return null;
         // Replace <br> with space first
         var s = raw.Replace("<br>", " ", StringComparison.OrdinalIgnoreCase);
         s = TagRegex().Replace(s, "");

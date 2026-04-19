@@ -27,6 +27,7 @@ public static class SurvivalNodes
     public static IBehaviorNode Wrap(IBehaviorNode botTree) =>
         new SelectorNode("SafeRoot",
             DismissMessageBoxes(),
+            DismissInfoWindows(),
             EmergencyTank(),
             StructureCritical(),
             botTree);
@@ -44,8 +45,44 @@ public static class SurvivalNodes
                     .FirstOrDefault();
 
                 if (btn == null) return NodeStatus.Failure;
+                ctx.Log("[Survival] Dismissing blocking message box.");
                 ctx.Click(btn);
                 return NodeStatus.Success;
+            }));
+
+    // ─── Dismiss Info Windows (Show Info) ───────────────────────────────────
+
+    private static IBehaviorNode DismissInfoWindows() =>
+        new SequenceNode("DismissInfoWindow",
+            new ConditionNode("HasInfoWindow", ctx =>
+            {
+                // Typical info window is "InfoWindow" or has a name containing "showinfo"
+                return ctx.GameState.ParsedUI.UITree?.FindFirst(n => 
+                    n.Node.PythonObjectTypeName == "InfoWindow" || 
+                    n.Node.GetDictString("_name")?.Contains("showinfo", StringComparison.OrdinalIgnoreCase) == true) != null;
+            }),
+            new ActionNode("CloseInfoWindow", ctx =>
+            {
+                var window = ctx.GameState.ParsedUI.UITree?.FindFirst(n => 
+                    n.Node.PythonObjectTypeName == "InfoWindow" || 
+                    n.Node.GetDictString("_name")?.Contains("showinfo", StringComparison.OrdinalIgnoreCase) == true);
+                
+                if (window == null) return NodeStatus.Failure;
+
+                // Find the close button (usually a button with _name="closebutton" or similar)
+                var closeBtn = window.FindFirst(n => 
+                    n.Node.PythonObjectTypeName == "Button" && 
+                    (n.Node.GetDictString("_name")?.Contains("close", StringComparison.OrdinalIgnoreCase) == true ||
+                     n.Node.GetDictString("_setText")?.Contains("close", StringComparison.OrdinalIgnoreCase) == true));
+
+                if (closeBtn != null)
+                {
+                    ctx.Log("[Survival] Closing accidentally opened Info Window.");
+                    ctx.Click(closeBtn);
+                    return NodeStatus.Success;
+                }
+
+                return NodeStatus.Failure;
             }));
 
     // ─── Emergency tank (activate hardeners, deactivate weapons) ───────────

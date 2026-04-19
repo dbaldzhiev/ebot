@@ -70,6 +70,7 @@ public sealed class ActionExecutor
             DoubleClickAction dc => $"DoubleClick ({dc.X}, {dc.Y})",
             DragAction d         => $"Drag ({d.FromX},{d.FromY})→({d.ToX},{d.ToY})",
             MoveMouseAction mm   => $"MoveMouse ({mm.X}, {mm.Y})",
+            ScrollAction s       => $"Scroll ({s.Delta})",
             KeyPressAction kp    => kp.Modifiers is { Length: > 0 }
                                        ? $"KeyPress: {kp.Key} + {string.Join("+", kp.Modifiers)}"
                                        : $"KeyPress: {kp.Key}",
@@ -100,6 +101,10 @@ public sealed class ActionExecutor
 
             case MoveMouseAction moveMouse:
                 await _input.MoveToClient(moveMouse.X, moveMouse.Y, ct);
+                break;
+
+            case ScrollAction scroll:
+                await _input.Scroll(scroll.Delta, ct);
                 break;
 
             case KeyPressAction keyPress:

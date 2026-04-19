@@ -45,6 +45,9 @@ public sealed class ParsedUI
     /// <summary>Modal message boxes.</summary>
     public IReadOnlyList<MessageBox> MessageBoxes { get; init; } = [];
 
+    /// <summary>Recent combat messages (e.g. 'Blood Herald misses you completely').</summary>
+    public IReadOnlyList<string> CombatMessages { get; init; } = [];
+
     /// <summary>Station/structure window (when docked).</summary>
     public StationWindow? StationWindow { get; init; }
 
@@ -166,6 +169,7 @@ public sealed class OverviewEntry
     public string? DistanceText { get; init; }
     public double? DistanceInMeters { get; init; }
     public bool IsAttackingMe { get; init; }
+    public bool IsHostile { get; init; }
     /// <summary>All display texts found in the entry, for fallback access.</summary>
     public IReadOnlyList<string> Texts { get; init; } = [];
 }
