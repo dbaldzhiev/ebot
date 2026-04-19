@@ -116,6 +116,7 @@ public sealed partial class MiningBot
 
         // Use Surveyor as the master list for what exists and is valuable
         var surveyorAsteroids = surveyorEntries.Where(e => !e.IsGroup).ToList();
+        var assignedTargets = new HashSet<string>();
 
         foreach (var s in surveyorAsteroids)
         {
@@ -128,11 +129,23 @@ public sealed partial class MiningBot
             // Find if this specific asteroid is currently locked.
             // Check both overview name AND surveyor ore name against target labels.
             var matchedTarget = targets.FirstOrDefault(t =>
+                !assignedTargets.Contains(t.UINode.Node.PythonObjectAddress) &&
                 t.TextLabel != null && (
                     (ovMatch?.Name != null && (ovMatch.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase) || t.TextLabel.Contains(ovMatch.Name, StringComparison.OrdinalIgnoreCase))) ||
                     (s.OreName != null && (s.OreName.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase) || t.TextLabel.Contains(s.OreName, StringComparison.OrdinalIgnoreCase)))
                 ));
             
+            // Fallback for text-less targets (memory reader failure)
+            if (matchedTarget == null)
+            {
+                matchedTarget = targets.FirstOrDefault(t => 
+                    !assignedTargets.Contains(t.UINode.Node.PythonObjectAddress) && 
+                    t.TextLabel == null);
+            }
+
+            if (matchedTarget != null)
+                assignedTargets.Add(matchedTarget.UINode.Node.PythonObjectAddress);
+
             var dist = s.DistanceInMeters ?? ovMatch?.DistanceInMeters ?? 1e9;
             var isLocked = matchedTarget != null;
             double value = s.ValuePerM3 ?? (ovMatch != null ? OreValueOf(ovMatch) : 0);

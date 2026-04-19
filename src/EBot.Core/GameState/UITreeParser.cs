@@ -321,11 +321,15 @@ public sealed partial class UITreeParser
                 var id = nodeName.Split('_').Last();
                 moduleName = id switch
                 {
-                    "482"  => "Mining Laser",
-                    "6001" => "Afterburner",
-                    "6002" => "Microwarpdrive",
-                    "2054" => "Afterburner",
-                    _      => $"Module {id}"
+                    "482"   => "Mining Laser",
+                    "17912" => "Mining Laser", // Modulated Strip Miner II
+                    "17911" => "Mining Laser", // Modulated Strip Miner I
+                    "16277" => "Mining Laser", // Strip Miner I
+                    "17914" => "Mining Laser", // Modulated Deep Core Strip Miner II
+                    "6001"  => "Afterburner",
+                    "6002"  => "Microwarpdrive",
+                    "2054"  => "Afterburner",
+                    _       => $"Module {id}"
                 };
             }
         }

@@ -195,12 +195,23 @@ public sealed partial class MiningBot
                         }
 
                         // 2. Approach
-                        if (best.DistanceM > safeRange && world.ShipSpeed < 20 && ctx.Blackboard.IsCooldownReady("approach_cmd"))
+                        if (best.DistanceM > safeRange)
                         {
-                            ctx.Log($"[Mining] Approaching {best.Name} ({best.DistanceText}) via Surveyor");
-                            // Prefer Surveyor node for approach interaction
-                            ctx.Click(best.SurveyorUINode ?? best.UINode, [VirtualKey.Q]);
-                            ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
+                            if (world.ShipSpeed < 20 && ctx.Blackboard.IsCooldownReady("approach_cmd"))
+                            {
+                                ctx.Log($"[Mining] Approaching {best.Name} ({best.DistanceText}) via Surveyor");
+                                // Prefer Surveyor node for approach interaction
+                                ctx.Click(best.SurveyorUINode ?? best.UINode, [VirtualKey.Q]);
+                                ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
+                            }
+                            
+                            // Periodic scan while approaching to update distances
+                            if (ctx.Blackboard.IsCooldownReady("surveyor_scan_approach") && ui.MiningScanResultsWindow?.ScanButton != null)
+                            {
+                                ctx.Log("[Mining] Scanning to update distance while approaching...");
+                                ctx.Click(ui.MiningScanResultsWindow.ScanButton);
+                                ctx.Blackboard.SetCooldown("surveyor_scan_approach", TimeSpan.FromSeconds(6 + Random.Shared.Next(-2, 3)));
+                            }
                         }
 
                         // 3. Lock
@@ -218,7 +229,7 @@ public sealed partial class MiningBot
                                 // IMPORTANT: Use only Ctrl+Click. Do NOT use standard Click on Surveyor entries
                                 // as it might trigger unwanted UI behaviors.
                                 ctx.Click(nextToLock.SurveyorUINode ?? nextToLock.UINode, [VirtualKey.Control]);
-                                ctx.Blackboard.SetCooldown("lock_asteroid", TimeSpan.FromSeconds(5));
+                                ctx.Blackboard.SetCooldown("lock_asteroid", TimeSpan.FromSeconds(12));
                             }
                         }
 
@@ -248,6 +259,7 @@ public sealed partial class MiningBot
                         if (idleLasers.Count == 0) { if (ticks > 5) Progress("approach_lock"); return NodeStatus.Running; }
                         if (targets.Count == 0) { Progress("approach_lock"); return NodeStatus.Running; }
 
+                        var unassignedInRangeCount = world.Asteroids.Count(a => !a.IsLocked && a.DistanceM < world.LaserRangeM + 5000);
                         var assignments = ctx.Blackboard.Get<Dictionary<int, string>>("laser_targets") ?? new Dictionary<int, string>();
                         var allLasers   = GetMiningModules(ui.ShipUI!).ToList();
                         var activeIdx   = allLasers.Select((m, i) => new { m, i }).Where(x => x.m.IsActive == true).Select(x => x.i).ToHashSet();
@@ -257,10 +269,19 @@ public sealed partial class MiningBot
                         {
                             var assignedIds = new HashSet<string>(assignments.Values);
                             var best = targets.OrderByDescending(a => a.Value).FirstOrDefault(a => !assignedIds.Contains(a.UINode.Node.PythonObjectAddress));
+                            
+                            // Fallback: If no unassigned locked targets exist, but we have locked targets,
+                            // AND there are no other unlockable asteroids in range, put multiple lasers on the same target.
+                            if (best == null && targets.Count > 0 && unassignedInRangeCount == 0)
+                            {
+                                best = targets.OrderByDescending(a => a.Value).First();
+                            }
+
                             if (best != null)
                             {
                                 ctx.Log($"[Mining] Firing {laser.Name} -> {best.Name}");
                                 ctx.Click(best.TargetUINode ?? best.UINode);
+                                ctx.Wait(TimeSpan.FromMilliseconds(200));
                                 ctx.Click(laser.UINode);
                                 assignments[allLasers.IndexOf(laser)] = best.UINode.Node.PythonObjectAddress;
                                 ctx.Blackboard.Set("laser_targets", assignments);
@@ -404,6 +425,7 @@ public sealed partial class MiningBot
                 m.Name.Contains("Laser",     StringComparison.OrdinalIgnoreCase) ||
                 m.Name.Contains("Harvester", StringComparison.OrdinalIgnoreCase) ||
                 m.Name.Contains("Modulated", StringComparison.OrdinalIgnoreCase) ||
+                m.Name.Contains("Crystal",   StringComparison.OrdinalIgnoreCase) ||
                 m.Name.Contains("Module 482", StringComparison.OrdinalIgnoreCase));
 
         var top = shipUI.ModuleButtonsRows.Top.Where(m => !m.IsOffline).ToList();
