@@ -7,7 +7,7 @@ namespace EBot.Core.GameState;
 /// <summary>
 /// Parses the raw Sanderling JSON memory reading into typed <see cref="ParsedUI"/> models.
 /// </summary>
-public sealed partial class UITreeParser
+public sealed class UITreeParser
 {
     private readonly ILogger<UITreeParser> _logger;
 
@@ -50,6 +50,7 @@ public sealed partial class UITreeParser
             Neocom = FindNeocom(root),
             MessageBoxes = FindMessageBoxes(root),
             StationWindow = FindStationWindow(root),
+            ProbeScannerWindow = FindProbeScannerWindow(root),
             MiningScanResultsWindow = FindMiningScanResultsWindow(root),
             CombatMessages = FindCombatMessages(root),
         };
@@ -393,8 +394,8 @@ public sealed partial class UITreeParser
             .Select(n =>
             {
                 var allTexts = n.GetAllContainedDisplayTexts().ToList();
-                var label = allTexts.FirstOrDefault(t => !DistanceRegex().IsMatch(t) && !t.EndsWith('%'));
-                var distText = allTexts.FirstOrDefault(t => DistanceRegex().IsMatch(t));
+                var label = allTexts.FirstOrDefault(t => !EveConstants.DistanceRegex().IsMatch(t) && !t.EndsWith('%'));
+                var distText = allTexts.FirstOrDefault(t => EveConstants.DistanceRegex().IsMatch(t));
 
                 return new Target
                 {
@@ -579,7 +580,7 @@ public sealed partial class UITreeParser
         List<(string Name, int X)> columnHeaders)
     {
         var texts = n.GetAllContainedDisplayTexts().ToList();
-        var distText = texts.FirstOrDefault(t => DistanceRegex().IsMatch(t));
+        var distText = texts.FirstOrDefault(t => EveConstants.DistanceRegex().IsMatch(t));
 
         // Build cells dictionary by matching text-bearing nodes to column headers by X position
         var cellsTexts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -610,7 +611,7 @@ public sealed partial class UITreeParser
         if (string.IsNullOrEmpty(name) && textNodes.Count > 0)
         {
             var leftmost = textNodes
-                .Where(p => !DistanceRegex().IsMatch(p.Text) && !string.IsNullOrWhiteSpace(p.Text))
+                .Where(p => !EveConstants.DistanceRegex().IsMatch(p.Text) && !string.IsNullOrWhiteSpace(p.Text))
                 .OrderBy(p => p.X)
                 .FirstOrDefault();
             name = leftmost.Text?.Trim();
@@ -1074,7 +1075,7 @@ public sealed partial class UITreeParser
 
         var texts = node.GetAllContainedDisplayTexts().ToList();
         var rangeText = texts.FirstOrDefault(t => t.Contains("m", StringComparison.OrdinalIgnoreCase)
-            && DistanceRegex().IsMatch(t));
+            && EveConstants.DistanceRegex().IsMatch(t));
 
         return new ModuleButtonTooltip
         {
@@ -1264,27 +1265,7 @@ public sealed partial class UITreeParser
             name.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static double? ParseDistanceText(string text)
-    {
-        var match = DistanceRegex().Match(text);
-        if (!match.Success) return null;
-        
-        var valGroup = match.Groups[1].Value;
-        if (!double.TryParse(valGroup.Replace(",", ""), out var value))
-            return null;
-
-        var unit = match.Groups[2].Value.Trim().ToLowerInvariant();
-        return unit switch
-        {
-            "m" => value,
-            "km" => value * 1000,
-            "au" => value * 149_597_870_700,
-            _ => value,
-        };
-    }
-
-    [GeneratedRegex(@"([\d,.]+)\s*(m|km|au)\b", RegexOptions.IgnoreCase)]
-    private static partial Regex DistanceRegex();
+    private static double? ParseDistanceText(string text) => EveConstants.ParseDistanceMeters(text);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

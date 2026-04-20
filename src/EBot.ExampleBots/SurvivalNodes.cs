@@ -1,3 +1,4 @@
+using EBot.Core.Bot;
 using EBot.Core.DecisionEngine;
 using EBot.Core.GameState;
 
@@ -133,4 +134,18 @@ public static class SurvivalNodes
                 ctx.Click(stopBtn);
                 return NodeStatus.Success;
             }));
+}
+
+/// <summary>
+/// Decorates any <see cref="IBot"/> with survival behavior without modifying the bot itself.
+/// </summary>
+public sealed class SurvivalWrappedBot(IBot inner) : IBot
+{
+    public IBot Inner => inner;
+    public string Name => inner.Name;
+    public string Description => inner.Description;
+    public BotSettings GetDefaultSettings() => inner.GetDefaultSettings();
+    public void OnStart(BotContext ctx) => inner.OnStart(ctx);
+    public void OnStop(BotContext ctx) => inner.OnStop(ctx);
+    public IBehaviorNode BuildBehaviorTree() => SurvivalNodes.Wrap(inner.BuildBehaviorTree());
 }

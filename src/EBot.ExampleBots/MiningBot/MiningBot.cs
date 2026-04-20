@@ -144,8 +144,21 @@ public sealed partial class MiningBot : IBot
         new StatelessSelectorNode("Space actions",
             new ConditionNode("Wait: not in space", ctx => !ctx.GameState.IsInSpace),
             new ActionNode("Space state cleanup", ctx => {
-                // SAFETY: If we are in space and don't need to unload, 
-                // ensure the return-to-station machine is fully reset.
+                // Recovery: needs_unload=true but hold is provably empty — abort the return machine.
+                if (ctx.Blackboard.Get<bool>("needs_unload") && !ctx.GameState.IsDocked)
+                {
+                    var oreHold = FindOreHoldWindow(ctx);
+                    if (oreHold != null && oreHold.Items.Count == 0 && (oreHold.CapacityGauge?.FillPercent ?? 100) < 5)
+                    {
+                        ctx.Log("[Navigation] Ore hold empty but needs_unload=true — clearing stale flag to resume mining.");
+                        ctx.Blackboard.Set("needs_unload", false);
+                        ctx.Blackboard.Set("return_phase", "");
+                        ctx.Blackboard.Set("return_tick", 0);
+                        if (ctx.GameState.HasContextMenu) ctx.KeyPress(VirtualKey.Escape);
+                    }
+                }
+
+                // Cleanup: not unloading and hold not full — ensure return machine is fully reset.
                 if (!ctx.Blackboard.Get<bool>("needs_unload") && !IsOreHoldFull(ctx))
                 {
                     if (ctx.Blackboard.Get<string>("return_phase") != "")
@@ -155,31 +168,19 @@ public sealed partial class MiningBot : IBot
                         ctx.Blackboard.Set("return_tick", 0);
                     }
 
-                    // SAFE RECOVERY: If needs_unload is stuck on 'true' while in space, 
-                    // only clear it if we can definitively prove the hold is empty.
-                    if (ctx.Blackboard.Get<bool>("needs_unload"))
-                    {
-                        var oreHold = FindOreHoldWindow(ctx);
-                        if (oreHold != null && oreHold.Items.Count == 0)
-                        {
-                            ctx.Log("[Navigation] In space + Empty hold detected. Safely clearing stuck 'needs_unload' flag.");
-                            ctx.Blackboard.Set("needs_unload", false);
-                        }
-                    }
-
-                    // Also ensure mining phase and targeting memory is reset so we scan fresh at the next belt
                     if (!AnyAsteroidsInOverview(ctx) && ctx.Blackboard.Get<string>("mining_phase") != "")
                     {
                         ctx.Blackboard.Remove("mining_phase");
                         ctx.Blackboard.Set("mining_tick", 0);
-                        ctx.Blackboard.Remove("assumed_locked"); // CRITICAL: Clear ghost targets on arrival
+                        ctx.Blackboard.Remove("assumed_locked");
                     }
                 }
-                return NodeStatus.Failure; // Always fall through to actual actions
+                return NodeStatus.Failure;
             }),
             WaitCapRegen(),
             ReturnToStation(),
             BT_DroneSecurity(),
+            UnlockOutOfRangeTargets(),
             EnsureMiningTab(),
             DiscoverBeltsOnce(),
             WarpToBelt(),

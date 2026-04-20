@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using EBot.Core.Bot;
 using EBot.Core.DecisionEngine;
 using EBot.Core.Execution;
@@ -7,8 +6,8 @@ using EBot.Core.MemoryReading;
 using EBot.ExampleBots;
 using EBot.ExampleBots.AutopilotBot;
 using EBot.ExampleBots.MiningBot;
-using System.Text.Json;
 using EBot.WebHost.Hubs;
+using EBot.WebHost.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 
@@ -36,6 +35,7 @@ public sealed class BotOrchestrator : IDisposable
     private readonly IHubContext<BotHub> _hub;
     private readonly ILoggerFactory _loggerFactory;
     private readonly LogSink _logSink;
+    private readonly ManualActionService _manualActions;
 
     // Single perpetual runner — created once, never destroyed during the app lifetime
     private BotRunner? _runner;
@@ -51,18 +51,12 @@ public sealed class BotOrchestrator : IDisposable
     // Multi-tick hold cache: only one hold is visible at a time, so we cache across ticks
     private readonly Dictionary<string, HoldInfoDto> _holdCache = new();
 
-    // Input and executor for manual API-driven actions (undock, dock, etc.)
-    private InputSimulator? _lastInput;
-    private ActionExecutor? _lastExecutor;
-
     // ─── Available bots registry ────────────────────────────────────────────
 
     public static readonly IReadOnlyList<IBot> AvailableBots =
     [
         new MiningBot(),
-        new MiningBotScripted(),
         new TravelBot(),
-        new TravelBotScripted(),
     ];
 
     // ─── State ──────────────────────────────────────────────────────────────
@@ -136,6 +130,7 @@ public sealed class BotOrchestrator : IDisposable
         _hub = hub;
         _loggerFactory = loggerFactory;
         _logSink = logSink;
+        _manualActions = new ManualActionService(logSink);
 
         _logSink.EntryAdded += entry =>
             _ = _hub.Clients.All.SendAsync("LogEntry", entry);
@@ -328,306 +323,14 @@ public sealed class BotOrchestrator : IDisposable
         _ = _hub.Clients.All.SendAsync("SurvivalChanged", enabled);
     }
 
-    // ─── Manual actions (undock, dock) ──────────────────────────────────────
+    // ─── Manual actions (undock, dock) — delegated to ManualActionService ────
 
-    /// <summary>Opens the ship inventory / cargo hold (Alt+C default EVE shortcut).</summary>
-    public async Task OpenCargoAsync()
-    {
-        await EnsureExecutorAsync();
-        var eveClient = EveProcessFinder.FindFirstClient();
-        var handle    = eveClient?.MainWindowHandle ?? 0;
-        var q = new ActionQueue();
-        q.Enqueue(new KeyPressAction(VirtualKey.C, [VirtualKey.Alt]));
-        await _lastExecutor!.ExecuteAllAsync(q, handle);
-        _logSink.Add("Info", "Action", "Opened inventory (Alt+C)");
-    }
-
-    /// <summary>
-    /// Clicks a hold entry in the inventory left panel, switching the view to that hold
-    /// so its capacity and items become visible (and enter the hold cache).
-    /// </summary>
-    public async Task SwitchToHoldAsync(string holdType)
-    {
-        await EnsureExecutorAsync();
-        var eveClient = EveProcessFinder.FindFirstClient();
-        var handle = eveClient?.MainWindowHandle ?? 0;
-
-        var invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
-        if (invWin == null)
-        {
-            // Open inventory first
-            await OpenCargoAsync();
-            await Task.Delay(900);
-            invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
-            if (invWin == null)
-            {
-                _logSink.Add("Warn", "Action", "SwitchToHold: inventory not open");
-                return;
-            }
-        }
-
-        var entry = invWin.NavEntries.FirstOrDefault(e =>
-            e.HoldType.ToString().Equals(holdType, StringComparison.OrdinalIgnoreCase) ||
-            (e.Label?.Contains(holdType, StringComparison.OrdinalIgnoreCase) == true));
-
-        if (entry == null)
-        {
-            _logSink.Add("Warn", "Action", $"SwitchToHold: hold '{holdType}' not found in nav panel");
-            return;
-        }
-
-        var (cx, cy) = entry.UINode.Center;
-        var q = new ActionQueue();
-        q.Enqueue(new ClickAction(cx, cy));
-        await _lastExecutor!.ExecuteAllAsync(q, handle);
-        _logSink.Add("Info", "Action", $"Switched to hold: {entry.Label}");
-    }
-
-    /// <summary>
-    /// Opens inventory and cycles through every nav entry, pausing briefly on each
-    /// so the hold's capacity and items are captured into the cache.
-    /// </summary>
-    public async Task ScanAllHoldsAsync()
-    {
-        await EnsureExecutorAsync();
-        var eveClient = EveProcessFinder.FindFirstClient();
-        var handle = eveClient?.MainWindowHandle ?? 0;
-
-        // Open inventory if not already open
-        var invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
-        if (invWin == null)
-        {
-            await OpenCargoAsync();
-            await Task.Delay(1000);
-            invWin = _lastContext?.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
-        }
-        if (invWin == null)
-        {
-            _logSink.Add("Warn", "Action", "ScanAllHolds: inventory not open after Alt+C");
-            return;
-        }
-
-        if (invWin.NavEntries.Count == 0)
-        {
-            _logSink.Add("Info", "Action", "ScanAllHolds: no navigation entries found; only one hold or ship nav not visible");
-            return;
-        }
-
-        foreach (var entry in invWin.NavEntries)
-        {
-            var (cx, cy) = entry.UINode.Center;
-            var q = new ActionQueue();
-            q.Enqueue(new ClickAction(cx, cy));
-            await _lastExecutor!.ExecuteAllAsync(q, handle);
-            await Task.Delay(700);  // wait for EVE to update the right panel
-            _logSink.Add("Info", "Action", $"Scanned hold: {entry.Label}");
-        }
-        _logSink.Add("Info", "Action", $"ScanAllHolds complete — {invWin.NavEntries.Count} holds scanned");
-    }
-
-    /// <summary>
-    /// Clears the autopilot destination by right-clicking the last route marker
-    /// and selecting "Remove Waypoint".
-    /// </summary>
-    public async Task ClearDestinationAsync()
-    {
-        await EnsureExecutorAsync();
-        var eveClient = EveProcessFinder.FindFirstClient();
-        var handle    = eveClient?.MainWindowHandle ?? 0;
-
-        var markers = _lastContext?.GameState.ParsedUI.InfoPanelContainer?
-            .InfoPanelRoute?.RouteElementMarkers ?? [];
-        if (markers.Count == 0)
-            return; // nothing to clear
-
-        var last = markers[^1];
-        var (cx, cy) = last.Center;
-
-        // Right-click the destination marker
-        var q = new ActionQueue();
-        q.Enqueue(new RightClickAction(cx, cy));
-        await _lastExecutor!.ExecuteAllAsync(q, handle);
-
-        // Poll for context menu
-        ContextMenuEntry? removeEntry = null;
-        for (int i = 0; i < 6; i++)
-        {
-            await Task.Delay(200);
-            removeEntry = _lastContext?.GameState.ParsedUI.ContextMenus
-                .SelectMany(m => m.Entries)
-                .FirstOrDefault(e =>
-                    e.Text?.Contains("Remove",      StringComparison.OrdinalIgnoreCase) == true ||
-                    e.Text?.Contains("Clear",       StringComparison.OrdinalIgnoreCase) == true ||
-                    e.Text?.Contains("Destination", StringComparison.OrdinalIgnoreCase) == true);
-            if (removeEntry != null) break;
-        }
-
-        if (removeEntry != null)
-        {
-            var (ex, ey) = removeEntry.UINode.Center;
-            var q2 = new ActionQueue();
-            q2.Enqueue(new ClickAction(ex, ey));
-            await _lastExecutor!.ExecuteAllAsync(q2, handle);
-            _logSink.Add("Info", "Action", "Destination cleared");
-        }
-        else
-        {
-            // Dismiss stray menu
-            var q2 = new ActionQueue();
-            q2.Enqueue(new KeyPressAction(VirtualKey.Escape, []));
-            await _lastExecutor!.ExecuteAllAsync(q2, handle);
-            _logSink.Add("Warn", "Action", "Clear destination: no Remove entry found in menu");
-        }
-    }
-
-    /// <summary>Clicks the Undock button in the station window.</summary>
-    public async Task UndockAsync()
-    {
-        var ui = _lastContext?.GameState.ParsedUI;
-        var btn = ui?.StationWindow?.UndockButton;
-        if (btn == null)
-            throw new InvalidOperationException("Not docked or undock button not found in UI.");
-
-        await EnsureExecutorAsync();
-        var eveClient = EveProcessFinder.FindFirstClient();
-        var handle = eveClient?.MainWindowHandle ?? 0;
-
-        var cx = btn.Region.X + btn.Region.Width / 2;
-        var cy = btn.Region.Y + btn.Region.Height / 2;
-
-        var queue = new ActionQueue();
-        queue.Enqueue(new ClickAction(cx, cy));
-        await _lastExecutor!.ExecuteAllAsync(queue, handle);
-        _logSink.Add("Info", "Action", $"Undock clicked ({cx},{cy})");
-    }
-
-    /// <summary>
-    /// Docks to the nearest dockable object in the overview.
-    /// Searches all overview tabs if the current one has no recognisable station/structure.
-    /// </summary>
-    public async Task DockAsync()
-    {
-        await EnsureExecutorAsync();
-        var eveClient = EveProcessFinder.FindFirstClient();
-        var handle = eveClient?.MainWindowHandle ?? 0;
-
-        var target = FindDockableEntry();
-
-        // Not in active tab — try other tabs
-        if (target == null)
-        {
-            var tabs = _lastContext?.GameState.ParsedUI
-                .OverviewWindows.FirstOrDefault()?.Tabs ?? [];
-            foreach (var tab in tabs.Where(t => !t.IsActive))
-            {
-                _logSink.Add("Info", "Action", $"No station in current tab — switching to '{tab.Name}'");
-                var (tx, ty) = tab.UINode.Center;
-                var tq = new ActionQueue();
-                tq.Enqueue(new ClickAction(tx, ty));
-                await _lastExecutor!.ExecuteAllAsync(tq, handle);
-                await Task.Delay(700); // wait for tick refresh
-                target = FindDockableEntry();
-                if (target != null) break;
-            }
-        }
-
-        if (target == null)
-            throw new InvalidOperationException(
-                "No dockable station/structure found in any overview tab. " +
-                "Add a tab with stations visible or warp closer.");
-
-        var (cx, cy) = target.UINode.Center;
-        _logSink.Add("Info", "Action", $"Dock: RightClick '{target.Name}' ({cx},{cy})");
-
-        // Right-click → context menu
-        var q = new ActionQueue();
-        q.Enqueue(new RightClickAction(cx, cy));
-        await _lastExecutor!.ExecuteAllAsync(q, handle);
-
-        // Poll for context menu (up to ~1 s)
-        ContextMenuEntry? dockEntry = null;
-        for (int i = 0; i < 5; i++)
-        {
-            await Task.Delay(220);
-            dockEntry = _lastContext?.GameState.ParsedUI.ContextMenus
-                .SelectMany(m => m.Entries)
-                .FirstOrDefault(e => e.Text?.Contains("Dock", StringComparison.OrdinalIgnoreCase) == true);
-            if (dockEntry != null) break;
-        }
-
-        if (dockEntry != null)
-        {
-            var (ex, ey) = dockEntry.UINode.Center;
-            var q2 = new ActionQueue();
-            q2.Enqueue(new ClickAction(ex, ey));
-            await _lastExecutor!.ExecuteAllAsync(q2, handle);
-            _logSink.Add("Info", "Action", $"Dock menu entry clicked ({ex},{ey})");
-        }
-        else
-        {
-            _logSink.Add("Warn", "Action",
-                "Dock context menu did not appear — right-click may have missed. Try again.");
-        }
-    }
-
-    // Known player-structure and NPC-station type keywords
-    private static readonly string[] _stationKeywords =
-    [
-        "Station", "Outpost", "Astrahus", "Fortizar", "Keepstar",
-        "Raitaru", "Azbel", "Sotiyo", "Tatara", "Athanor", "Metenox",
-        "Structure", "Engineering", "Citadel", "Refinery"
-    ];
-
-    private static readonly string[] _nonDockableKeywords =
-    [
-        "Ship", "Pod", "Capsule", "Drone", "Fighter",
-        "Gate", "Beacon", "Asteroid", "Cloud", "Wreck", "Rat",
-    ];
-
-    /// <summary>Finds the nearest dockable overview entry using broad text-based heuristics.</summary>
-    private OverviewEntry? FindDockableEntry()
-    {
-        var overview = _lastContext?.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
-        if (overview == null) return null;
-
-        static bool LooksLikeStation(OverviewEntry e)
-        {
-            var allTexts = new[] { e.ObjectType ?? "", e.Name ?? "" }
-                .Concat(e.Texts)
-                .Concat(e.CellsTexts.Values);
-            return allTexts.Any(t => _stationKeywords.Any(k =>
-                t.Contains(k, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        static bool LooksLikeNonDockable(OverviewEntry e)
-        {
-            var allTexts = new[] { e.ObjectType ?? "" }
-                .Concat(e.CellsTexts.Values);
-            return allTexts.Any(t => _nonDockableKeywords.Any(k =>
-                t.Contains(k, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        // First: explicit station/structure match, nearest
-        var byType = overview.Entries
-            .Where(e => LooksLikeStation(e) && !LooksLikeNonDockable(e))
-            .OrderBy(e => e.DistanceInMeters ?? double.MaxValue)
-            .FirstOrDefault();
-        if (byType != null) return byType;
-
-        // Second: any entry that isn't obviously a ship, gate, or beacon
-        return overview.Entries
-            .Where(e => e.DistanceInMeters.HasValue && !LooksLikeNonDockable(e))
-            .OrderBy(e => e.DistanceInMeters!.Value)
-            .FirstOrDefault();
-    }
-
-    private async Task EnsureExecutorAsync()
-    {
-        if (_lastInput == null || _lastExecutor == null)
-            await EnsureMonitorAsync();
-        if (_lastInput == null)
-            throw new InvalidOperationException("InputSimulator not initialized.");
-    }
+    public Task OpenCargoAsync()          => _manualActions.OpenCargoAsync();
+    public Task SwitchToHoldAsync(string h) => _manualActions.SwitchToHoldAsync(h);
+    public Task ScanAllHoldsAsync()       => _manualActions.ScanAllHoldsAsync();
+    public Task ClearDestinationAsync()   => _manualActions.ClearDestinationAsync();
+    public Task UndockAsync()             => _manualActions.UndockAsync();
+    public Task DockAsync()               => _manualActions.DockAsync();
 
     // ─── Internal ───────────────────────────────────────────────────────────
 
@@ -667,8 +370,7 @@ public sealed class BotOrchestrator : IDisposable
         var input    = new InputSimulator(_loggerFactory.CreateLogger<InputSimulator>());
         var executor = new ActionExecutor(input, _loggerFactory.CreateLogger<ActionExecutor>());
 
-        _lastInput    = input;
-        _lastExecutor = executor;
+        _manualActions.Configure(input, executor, () => _lastContext);
 
         var runner = new BotRunner(bot, settings, reader, parser, input, executor,
             _loggerFactory.CreateLogger<BotRunner>());
@@ -698,16 +400,6 @@ public sealed class BotOrchestrator : IDisposable
             }
 
             _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache, TicksPerMinute, miningBot));
-
-            // LIVE DEBUG BRIDGE: Write full state to disk for Gemini analysis
-            try
-            {
-                var stateDto = DtoMapper.ToBotStateDto(ctx);
-                var debugPath = Path.Combine(SessionFileLogger.GetLogsDirectory(), "live_debug.json");
-                var json = JsonSerializer.Serialize(stateDto, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(debugPath, json);
-            }
-            catch { /* ignore debug I/O errors */ }
         };
 
         runner.OnError += ex =>
@@ -797,17 +489,4 @@ public sealed class BotOrchestrator : IDisposable
 
     public void Dispose() => _runner?.Dispose();
 
-    // ─── Survival wrapper ────────────────────────────────────────────────────
-
-    public sealed class SurvivalWrappedBot(IBot inner) : IBot
-    {
-        public IBot Inner => inner;
-        public string Name => inner.Name;
-        public string Description => inner.Description;
-        public BotSettings GetDefaultSettings() => inner.GetDefaultSettings();
-        public void OnStart(BotContext ctx) => inner.OnStart(ctx);
-        public void OnStop(BotContext ctx) => inner.OnStop(ctx);
-        public IBehaviorNode BuildBehaviorTree() =>
-            SurvivalNodes.Wrap(inner.BuildBehaviorTree());
-    }
 }

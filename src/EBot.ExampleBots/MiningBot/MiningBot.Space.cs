@@ -9,7 +9,7 @@ public sealed partial class MiningBot
     private static IBehaviorNode NavigateToMiningHold() =>
         new ActionNode("Search and select hold", ctx =>
         {
-            if (!ctx.GameState.IsInSpace || FindOreHoldWindow(ctx) != null) return NodeStatus.Success;
+            if (!ctx.GameState.IsInSpace || FindOreHoldWindow(ctx) != null) return NodeStatus.Failure;
             var anyInv = ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
             if (anyInv == null) { ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]); ctx.Wait(TimeSpan.FromSeconds(1.5)); return NodeStatus.Running; }
             var oreEntry = anyInv.NavEntries.FirstOrDefault(e => e.HoldType == InventoryHoldType.Mining || 
@@ -17,6 +17,52 @@ public sealed partial class MiningBot
                 e.Label?.Contains("ShipGeneralMiningHold", StringComparison.OrdinalIgnoreCase) == true);
             if (oreEntry != null) { ctx.Click(oreEntry.UINode); ctx.Wait(TimeSpan.FromSeconds(1)); return NodeStatus.Success; }
             ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]); return NodeStatus.Running;
+        });
+
+    private static IBehaviorNode UnlockOutOfRangeTargets() =>
+        new ActionNode("Unlock out-of-range targets", ctx =>
+        {
+            var ui = ctx.GameState.ParsedUI;
+            if (ui.Targets.Count == 0) return NodeStatus.Failure;
+
+            var range = ctx.Blackboard.Get<double>("laser_range_m", 0);
+            if (range <= 0) range = DefaultLaserRangeM;
+
+            var threshold = range + 500;
+
+            var world = ctx.Blackboard.Get<WorldState>("world");
+            var primaryName = world?.PrimaryTarget?.Name;
+
+            // Build set of asteroid names currently in overview so we never unlock enemies
+            var asteroidNames = new HashSet<string>(
+                (world?.Asteroids.Select(a => a.Name) ?? []).Where(n => !string.IsNullOrEmpty(n))!,
+                StringComparer.OrdinalIgnoreCase);
+
+            var outOfRange = ui.Targets
+                .Where(t => t.DistanceInMeters.HasValue && t.DistanceInMeters.Value > threshold)
+                .Where(t =>
+                {
+                    // Never unlock the primary — it is being approached or mined
+                    if (primaryName != null && t.TextLabel != null &&
+                        (t.TextLabel.Contains(primaryName, StringComparison.OrdinalIgnoreCase) ||
+                         primaryName.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)))
+                        return false;
+                    // Never unlock enemies / non-asteroids
+                    if (t.TextLabel != null &&
+                        !asteroidNames.Any(n => t.TextLabel.Contains(n, StringComparison.OrdinalIgnoreCase) ||
+                                               n.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)))
+                        return false;
+                    return true;
+                })
+                .ToList();
+
+            if (outOfRange.Count == 0) return NodeStatus.Failure;
+
+            var target = outOfRange[0];
+            ctx.Log($"[Mining] Unlocking out-of-range secondary '{target.TextLabel}' ({target.DistanceText}, range={range:F0} m)");
+            ctx.Click(target.UINode, [VirtualKey.Shift, VirtualKey.Control]);
+            ctx.Blackboard.SetCooldown("unlock_oor", TimeSpan.FromSeconds(3));
+            return NodeStatus.Running;
         });
 
     private IBehaviorNode BT_MineAtBelt() =>
@@ -28,7 +74,7 @@ public sealed partial class MiningBot
             var ui    = ctx.GameState.ParsedUI;
             var range = world.LaserRangeM > 0 ? world.LaserRangeM : 15000;
 
-            // 1. Propulsion & Positioning (Approach Primary)
+            // 1. Propulsion & Positioning
             var best = world.PrimaryTarget;
             if (best != null && ui.ShipUI != null)
             {
@@ -46,25 +92,36 @@ public sealed partial class MiningBot
                 }
                 if (best.DistanceM > 5000 && world.ShipSpeed < 20 && ctx.Blackboard.IsCooldownReady("approach_cmd"))
                 {
-                    ctx.Click(best.UINode, [VirtualKey.Q]);
+                    // Pre-lock: approach via overview. Post-lock: approach via HUD target bar to avoid
+                    // overlap with the overview-only locking logic and the unlock-loop.
+                    UITreeNodeWithDisplayRegion approachNode = best.UINode;
+                    if (best.IsLocked)
+                    {
+                        var hudMatch = ui.Targets.FirstOrDefault(t =>
+                            t.TextLabel != null && best.Name != null &&
+                            (t.TextLabel.Contains(best.Name, StringComparison.OrdinalIgnoreCase) ||
+                             best.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
+                        if (hudMatch != null) approachNode = hudMatch.UINode;
+                    }
+                    ctx.Click(approachNode, [VirtualKey.Q]);
                     ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
                 }
             }
 
-            // 2. Sequential Locking (OVERVIEW ONLY)
+            // 2. Sequential Locking — primary only when in range; secondaries fill idle laser slots
             if (ctx.Blackboard.IsCooldownReady("lock_asteroid"))
             {
-                // Target 1: Primary
-                if (best != null && !best.IsLocked && !best.IsLockPending)
+                // Target 1: Primary — only lock when it's within laser range so we never need to unlock it
+                if (best != null && !best.IsLocked && !best.IsLockPending && best.DistanceM <= range + 2000)
                 {
-                    ctx.Log($"[Mining] Locking Primary from Overview: {best.Name}");
+                    ctx.Log($"[Mining] Locking Primary (in range): {best.Name}");
                     ctx.Click(best.UINode, [VirtualKey.Control]);
                     ctx.Blackboard.SetCooldown("lock_asteroid", TimeSpan.FromSeconds(4));
                     var pending = ctx.Blackboard.Get<Dictionary<string, DateTimeOffset>>("assumed_locked") ?? new Dictionary<string, DateTimeOffset>();
                     pending[best.UINode.Node.PythonObjectAddress] = DateTimeOffset.UtcNow;
                     ctx.Blackboard.Set("assumed_locked", pending);
                 }
-                // Target 2+: If we have idle lasers and free HUD slots, lock another one
+                // Target 2+: fill idle laser slots with in-range secondaries
                 else if (ui.Targets.Count < world.TotalLaserCount)
                 {
                     var secondary = world.Asteroids
@@ -74,7 +131,7 @@ public sealed partial class MiningBot
 
                     if (secondary != null)
                     {
-                        ctx.Log($"[Mining] Locking Secondary from Overview: {secondary.Name}");
+                        ctx.Log($"[Mining] Locking Secondary (in range): {secondary.Name}");
                         ctx.Click(secondary.UINode, [VirtualKey.Control]);
                         ctx.Blackboard.SetCooldown("lock_asteroid", TimeSpan.FromSeconds(4));
                         var pending = ctx.Blackboard.Get<Dictionary<string, DateTimeOffset>>("assumed_locked") ?? new Dictionary<string, DateTimeOffset>();

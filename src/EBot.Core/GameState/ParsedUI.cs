@@ -57,8 +57,6 @@ public sealed class ParsedUI
     /// <summary>Mining survey results window.</summary>
     public MiningScanResultsWindow? MiningScanResultsWindow { get; init; }
 
-    /// <summary>Fleet window.</summary>
-    public FleetWindow? FleetWindow { get; init; }
 }
 
 // ─── Ship UI ───────────────────────────────────────────────────────────────
@@ -307,7 +305,6 @@ public sealed class ChatWindow
 {
     public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
     public string? Name { get; init; }
-    public int? UserCount { get; init; }
 }
 
 // ─── Module Button Tooltip ─────────────────────────────────────────────────
@@ -371,7 +368,3 @@ public sealed class MiningScanEntry
     public UITreeNodeWithDisplayRegion? ExpanderNode { get; init; }
 }
 
-public sealed class FleetWindow
-{
-    public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
-}

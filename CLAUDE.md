@@ -197,11 +197,11 @@ EBOT_AI_BACKEND=ollama      EBOT_OLLAMA_URL=http://...  EBOT_OLLAMA_MODEL=llama3
 
 ## Known Bugs & Sharp Edges
 
-1. **Stale `mining_phase` after unload** — `FinishUnload()` does not call `ctx.Blackboard.Remove("mining_phase")`. After undocking, `BT_MineAtBelt()` reads the stale phase (e.g. `"fire_lasers"`) instead of starting fresh from `"open_surveyor"`. Fix: add the Remove call in `FinishUnload()`.
+1. ~~**Stale `mining_phase` after unload**~~ — **Fixed.** `FinishUnload()` now calls `ctx.Blackboard.Remove("mining_phase")`.
 
-2. **Stale `belt_phase` after unload** — same issue; `FinishUnload()` doesn't reset `belt_phase` to `""`. If `WarpToBelt()` is called post-undock with a stale phase, it skips belt selection and continues from a dead state. Fix: add `ctx.Blackboard.Set("belt_phase", "")` in `FinishUnload()`.
+2. ~~**Stale `belt_phase` after unload**~~ — **Fixed.** `FinishUnload()` now resets `belt_phase` to `""`.
 
-3. **`assumed_locked` set grows across belts** — only cleared when target count == 0. Stale asteroid addresses from Belt A persist into Belt B. Fix: clear in `FinishUnload()`.
+3. ~~**`assumed_locked` set grows across belts**~~ — **Fixed.** `FinishUnload()` now clears `assumed_locked`.
 
 4. **`laser_range_m` never reset** — set once on first hover, never cleared. If the cached range is wrong (e.g. after a ship/module change), the bot uses the wrong approach distance. Fix: clear on session start or belt change.
 

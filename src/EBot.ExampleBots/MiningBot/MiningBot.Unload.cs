@@ -236,12 +236,17 @@ public sealed partial class MiningBot
         _totalUnloadedM3 += volume;
         _unloadCycles++;
         SyncStats(ctx);
-        ctx.Blackboard.Set("needs_unload",       false);
-        ctx.Blackboard.Set("unload_phase",        "");
-        ctx.Blackboard.Set("unload_vol_before",   0.0);
-        ctx.Blackboard.Set("belt_index",        0);   // restart belt cycle counter after unload
-        ctx.Blackboard.Set("last_belt_target", -1);  // no current belt after station run
-        ctx.Blackboard.Set("belt_prop_started", false);
+        ctx.Blackboard.Set("needs_unload",      false);
+        ctx.Blackboard.Set("unload_phase",       "");
+        ctx.Blackboard.Set("unload_vol_before",  0.0);
+        ctx.Blackboard.Set("belt_index",         0);
+        ctx.Blackboard.Set("last_belt_target",  -1);
+        ctx.Blackboard.Set("belt_prop_started",  false);
+        ctx.Blackboard.Set("belt_phase",         "");
+        ctx.Blackboard.Set("belt_phase_ticks",   0);
+        ctx.Blackboard.Remove("mining_phase");
+        ctx.Blackboard.Set("mining_tick",        0);
+        ctx.Blackboard.Remove("assumed_locked");
     }
 
     private void SyncStats(BotContext ctx)
