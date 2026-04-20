@@ -104,7 +104,8 @@ public sealed partial class MiningBot
 
                         // Try to find a link in the tree as last resort
                         var link = ctx.GameState.ParsedUI.UITree?.FindFirst(n =>
-                            n.GetAllContainedDisplayTexts().Any(t => t.Contains("Ore Hold", StringComparison.OrdinalIgnoreCase))
+                            (n.GetAllContainedDisplayTexts().Any(t => t.Contains("Ore Hold", StringComparison.OrdinalIgnoreCase)) ||
+                             n.GetAllContainedDisplayTexts().Any(t => t.Contains("ShipGeneralMiningHold", StringComparison.OrdinalIgnoreCase)))
                             && n.Region.Width > 10 && n.Region.Height > 6);
                         
                         if (link != null) 

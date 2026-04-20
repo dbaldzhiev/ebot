@@ -260,6 +260,26 @@ api.MapGet("/debug/state", (BotOrchestrator o) =>
     return state != null ? Results.Ok(state) : Results.NotFound("No bot state available (ensure bot is running)");
 });
 
+// GET /api/debug/inventory  — detailed breakdown of detected inventory windows
+api.MapGet("/debug/inventory", (BotOrchestrator o) => Results.Ok(o.GetInventoryDebug()));
+
+// GET /api/debug/hold-cache  — dump of the orchestrator's hold cache
+api.MapGet("/debug/hold-cache", (BotOrchestrator o) => Results.Ok(o.GetHoldCacheDebug()));
+
+// POST /api/debug/scan-holds — force a full scan of all holds (Alt+C -> cycle entries)
+api.MapPost("/debug/scan-holds", async (BotOrchestrator o) =>
+{
+    try
+    {
+        await o.ScanAllHoldsAsync();
+        return Results.Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { success = false, message = ex.Message });
+    }
+});
+
 // GET /api/ai-info  — returns active AI backend details for the UI
 api.MapGet("/ai-info", () =>
 {

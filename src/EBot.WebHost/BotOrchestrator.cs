@@ -745,6 +745,46 @@ public sealed class BotOrchestrator : IDisposable
     public BotStateDto? GetFullState() => 
         _lastContext != null ? DtoMapper.ToBotStateDto(_lastContext) : null;
 
+    public object GetInventoryDebug()
+    {
+        var ui = _lastContext?.GameState.ParsedUI;
+        if (ui == null) return new { error = "No game state available" };
+
+        return new
+        {
+            tick = _lastContext!.TickCount,
+            windowCount = ui.InventoryWindows.Count,
+            windows = ui.InventoryWindows.Select(w => new
+            {
+                type = w.UINode.Node.PythonObjectTypeName,
+                name = w.UINode.Node.GetDictString("_name"),
+                title = w.SubCaptionLabelText,
+                holdType = w.HoldType.ToString(),
+                gauge = w.CapacityGauge == null ? null : new { w.CapacityGauge.Used, w.CapacityGauge.Maximum, w.CapacityGauge.FillPercent },
+                itemCount = w.Items.Count,
+                navEntryCount = w.NavEntries.Count,
+                navEntries = w.NavEntries.Select(e => new { e.Label, type = e.HoldType.ToString(), e.IsSelected })
+            })
+        };
+    }
+
+    public object GetHoldCacheDebug()
+    {
+        return new
+        {
+            count = _holdCache.Count,
+            entries = _holdCache.Select(kv => new
+            {
+                key = kv.Key,
+                name = kv.Value.Name,
+                type = kv.Value.HoldType,
+                used = kv.Value.UsedM3,
+                max = kv.Value.MaxM3,
+                itemCount = kv.Value.Items.Count
+            })
+        };
+    }
+
     public IReadOnlyList<LogEntry> GetRecentLogs(int count = 50) =>
         _logSink.GetRecent(count);
 
