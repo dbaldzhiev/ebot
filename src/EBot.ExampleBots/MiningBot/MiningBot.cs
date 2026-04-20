@@ -154,6 +154,19 @@ public sealed partial class MiningBot : IBot
                         ctx.Blackboard.Set("return_phase", "");
                         ctx.Blackboard.Set("return_tick", 0);
                     }
+
+                    // SAFE RECOVERY: If needs_unload is stuck on 'true' while in space, 
+                    // only clear it if we can definitively prove the hold is empty.
+                    if (ctx.Blackboard.Get<bool>("needs_unload"))
+                    {
+                        var oreHold = FindOreHoldWindow(ctx);
+                        if (oreHold != null && oreHold.Items.Count == 0)
+                        {
+                            ctx.Log("[Navigation] In space + Empty hold detected. Safely clearing stuck 'needs_unload' flag.");
+                            ctx.Blackboard.Set("needs_unload", false);
+                        }
+                    }
+
                     // Also ensure mining phase and targeting memory is reset so we scan fresh at the next belt
                     if (!AnyAsteroidsInOverview(ctx) && ctx.Blackboard.Get<string>("mining_phase") != "")
                     {

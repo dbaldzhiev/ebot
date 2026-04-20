@@ -54,7 +54,15 @@ public sealed partial class MiningBot
                         if (oreHold != null)
                         {
                             ctx.Log($"[Mining] Unload: Found {oreHold.HoldType} hold.");
-                            if (oreHold.Items.Count == 0) { FinishUnload(ctx, 0); return NodeStatus.Success; }
+                            
+                            // If it's already empty, we are DONE. Clear the flag immediately.
+                            if (oreHold.Items.Count == 0) 
+                            { 
+                                ctx.Log("[Mining] Unload: Hold is already empty. Clearing needs_unload flag.");
+                                FinishUnload(ctx, 0); 
+                                return NodeStatus.Success; 
+                            }
+                            
                             Progress("stack_all");
                             return NodeStatus.Running;
                         }
