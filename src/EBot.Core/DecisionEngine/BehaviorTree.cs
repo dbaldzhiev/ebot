@@ -55,24 +55,33 @@ public sealed class SequenceNode : IBehaviorNode
 
     public NodeStatus Tick(BotContext context)
     {
-        while (_currentIndex < _children.Count)
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
         {
-            var status = _children[_currentIndex].Tick(context);
-            switch (status)
+            while (_currentIndex < _children.Count)
             {
-                case NodeStatus.Failure:
-                    _currentIndex = 0;
-                    return NodeStatus.Failure;
-                case NodeStatus.Running:
-                    return NodeStatus.Running;
-                case NodeStatus.Success:
-                    _currentIndex++;
-                    break;
+                var status = _children[_currentIndex].Tick(context);
+                switch (status)
+                {
+                    case NodeStatus.Failure:
+                        _currentIndex = 0;
+                        return NodeStatus.Failure;
+                    case NodeStatus.Running:
+                        return NodeStatus.Running;
+                    case NodeStatus.Success:
+                        _currentIndex++;
+                        break;
+                }
             }
-        }
 
-        _currentIndex = 0;
-        return NodeStatus.Success;
+            _currentIndex = 0;
+            return NodeStatus.Success;
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
     }
 
     public void Reset()
@@ -101,30 +110,75 @@ public sealed class SelectorNode : IBehaviorNode
 
     public NodeStatus Tick(BotContext context)
     {
-        while (_currentIndex < _children.Count)
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
         {
-            var status = _children[_currentIndex].Tick(context);
-            switch (status)
+            while (_currentIndex < _children.Count)
             {
-                case NodeStatus.Success:
-                    _currentIndex = 0;
-                    return NodeStatus.Success;
-                case NodeStatus.Running:
-                    return NodeStatus.Running;
-                case NodeStatus.Failure:
-                    _currentIndex++;
-                    break;
+                var status = _children[_currentIndex].Tick(context);
+                switch (status)
+                {
+                    case NodeStatus.Success:
+                        _currentIndex = 0;
+                        return NodeStatus.Success;
+                    case NodeStatus.Running:
+                        return NodeStatus.Running;
+                    case NodeStatus.Failure:
+                        _currentIndex++;
+                        break;
+                }
             }
-        }
 
-        _currentIndex = 0;
-        return NodeStatus.Failure;
+            _currentIndex = 0;
+            return NodeStatus.Failure;
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
     }
 
     public void Reset()
     {
         _currentIndex = 0;
         foreach (var child in _children) child.Reset();
+    }
+}
+
+/// <summary>
+/// A non-stateful selector. Restarts from the first child every tick.
+/// Useful for root-level nodes that must always execute (like state synthesis).
+/// </summary>
+public sealed class StatelessSelectorNode : IBehaviorNode
+{
+    private readonly List<IBehaviorNode> _children;
+
+    public string Name { get; }
+
+    public StatelessSelectorNode(string name, params IBehaviorNode[] children)
+    {
+        Name = name;
+        _children = [.. children];
+    }
+
+    public NodeStatus Tick(BotContext context)
+    {
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
+        {
+            foreach (var child in _children)
+            {
+                var status = child.Tick(context);
+                if (status != NodeStatus.Failure) return status;
+            }
+            return NodeStatus.Failure;
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
     }
 }
 
@@ -144,8 +198,19 @@ public sealed class ConditionNode : IBehaviorNode
         _predicate = predicate;
     }
 
-    public NodeStatus Tick(BotContext context) =>
-        _predicate(context) ? NodeStatus.Success : NodeStatus.Failure;
+    public NodeStatus Tick(BotContext context)
+    {
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
+        {
+            return _predicate(context) ? NodeStatus.Success : NodeStatus.Failure;
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
+    }
 }
 
 /// <summary>
@@ -164,7 +229,19 @@ public sealed class ActionNode : IBehaviorNode
         _action = action;
     }
 
-    public NodeStatus Tick(BotContext context) => _action(context);
+    public NodeStatus Tick(BotContext context)
+    {
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
+        {
+            return _action(context);
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
+    }
 }
 
 /// <summary>
@@ -212,28 +289,37 @@ public sealed class RepeatNode : IBehaviorNode
 
     public NodeStatus Tick(BotContext context)
     {
-        if (_maxCount > 0 && _currentCount >= _maxCount)
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
         {
+            if (_maxCount > 0 && _currentCount >= _maxCount)
+            {
+                _currentCount = 0;
+                return NodeStatus.Success;
+            }
+
+            var status = _child.Tick(context);
+            if (status == NodeStatus.Running) return NodeStatus.Running;
+
+            _currentCount++;
+            if (status == NodeStatus.Failure)
+            {
+                _currentCount = 0;
+                return NodeStatus.Failure;
+            }
+
+            // Still repeating
+            if (_maxCount < 0 || _currentCount < _maxCount)
+                return NodeStatus.Running;
+
             _currentCount = 0;
             return NodeStatus.Success;
         }
-
-        var status = _child.Tick(context);
-        if (status == NodeStatus.Running) return NodeStatus.Running;
-
-        _currentCount++;
-        if (status == NodeStatus.Failure)
+        finally
         {
-            _currentCount = 0;
-            return NodeStatus.Failure;
+            context.ActiveNodes.Pop();
         }
-
-        // Still repeating
-        if (_maxCount < 0 || _currentCount < _maxCount)
-            return NodeStatus.Running;
-
-        _currentCount = 0;
-        return NodeStatus.Success;
     }
 
     public void Reset()
@@ -261,15 +347,24 @@ public sealed class WaitNode : IBehaviorNode
 
     public NodeStatus Tick(BotContext context)
     {
-        _startTime ??= DateTimeOffset.UtcNow;
-
-        if (DateTimeOffset.UtcNow - _startTime >= _duration)
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
         {
-            _startTime = null;
-            return NodeStatus.Success;
-        }
+            _startTime ??= DateTimeOffset.UtcNow;
 
-        return NodeStatus.Running;
+            if (DateTimeOffset.UtcNow - _startTime >= _duration)
+            {
+                _startTime = null;
+                return NodeStatus.Success;
+            }
+
+            return NodeStatus.Running;
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
     }
 
     public void Reset()
@@ -295,8 +390,17 @@ public sealed class AlwaysSucceedNode : IBehaviorNode
 
     public NodeStatus Tick(BotContext context)
     {
-        var status = _child.Tick(context);
-        return status == NodeStatus.Running ? NodeStatus.Running : NodeStatus.Success;
+        context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
+        try
+        {
+            var status = _child.Tick(context);
+            return status == NodeStatus.Running ? NodeStatus.Running : NodeStatus.Success;
+        }
+        finally
+        {
+            context.ActiveNodes.Pop();
+        }
     }
 
     public void Reset() => _child.Reset();

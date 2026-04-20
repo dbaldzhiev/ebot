@@ -50,7 +50,17 @@ public sealed partial class UITreeParser
             Neocom = FindNeocom(root),
             MessageBoxes = FindMessageBoxes(root),
             StationWindow = FindStationWindow(root),
+            MiningScanResultsWindow = FindMiningScanResultsWindow(root),
+            CombatMessages = FindCombatMessages(root),
         };
+    }
+
+    private List<string> FindCombatMessages(UITreeNodeWithDisplayRegion root)
+    {
+        return root.FindAll(n => IsType(n, "CombatMessage", "CombatLog"))
+            .SelectMany(n => n.GetAllContainedDisplayTexts())
+            .Where(t => t.Length > 5)
+            .ToList();
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -100,21 +110,17 @@ public sealed partial class UITreeParser
     private List<ContextMenu> FindContextMenus(UITreeNodeWithDisplayRegion root)
     {
         // EVE's context menu container Python type name is exactly "ContextMenu" (Elm reference).
-        // Submenus may also appear as separate ContextMenu nodes (EVE creates them dynamically).
+        // Submenus may also appear as separate ContextMenu or ContextSubMenu nodes (EVE creates them dynamically).
         // Entries are "MenuEntryView" at any descendant depth.
-        return root.FindAll(n => n.Node.PythonObjectTypeName == "ContextMenu")
+        return root.FindAll(n => IsType(n, "ContextMenu", "ContextSubMenu"))
             .Select(n => new ContextMenu
             {
                 UINode = n,
-                Entries = n.FindAll(c => c.Node.PythonObjectTypeName == "MenuEntryView")
+                Entries = n.QueryAll("@MenuEntryView")
                     .Select(c => new ContextMenuEntry
                     {
                         UINode = c,
                         // Skip single-char glyphs (▶, ►, etc.) — prefer any text ≥2 chars with a letter.
-                        // Some menu entries store their label in a child Label node; the MenuEntryView
-                        // itself may have only a glyph in _setText, causing FirstOrDefault() to return
-                        // the wrong text.  We scan all texts and find the first one that looks like a
-                        // real word (≥2 chars, at least one letter), falling back to whatever is first.
                         Text = c.GetAllContainedDisplayTexts()
                                  .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter))
                                ?? c.GetAllContainedDisplayTexts().FirstOrDefault(),
@@ -127,30 +133,27 @@ public sealed partial class UITreeParser
 
     private ShipUI? FindShipUI(UITreeNodeWithDisplayRegion root)
     {
-        var node = root.FindFirst(n => IsType(n, "ShipUI"));
+        var node = root.QueryFirst("@ShipUI");
         if (node == null) return null;
 
         // Each ShipSlot contains a ModuleButton child — pair them for sprite-based state detection
-        var slotNodes = node.FindAll(n =>
-            n.Node.PythonObjectTypeName.Contains("ShipSlot", StringComparison.OrdinalIgnoreCase));
+        var slotNodes = node.QueryAll("@ShipSlot")
+            .Concat(node.QueryAll("@inFlightHighSlot"))
+            .Concat(node.QueryAll("@inFlightMediumSlot"))
+            .Concat(node.QueryAll("@inFlightLowSlot"))
+            .Distinct();
+
         var moduleButtons = slotNodes
             .Select(slot =>
             {
-                var btn = slot.FindFirst(n =>
-                    n.Node.PythonObjectTypeName.Contains("ModuleButton", StringComparison.OrdinalIgnoreCase)
-                    && !ReferenceEquals(n, slot));
-                return BuildModuleButton(btn ?? slot, slot);
+                var btn = slot.QueryFirst("@ModuleButton") ?? slot;
+                return BuildModuleButton(btn, slot);
             })
             .ToList();
 
         // Speed text: currentVelocityLabel or SpeedGauge label
-        var speedText =
-            node.FindFirst(n => string.Equals(n.Node.GetDictString("_name"),
-                "currentVelocityLabel", StringComparison.OrdinalIgnoreCase))
-                ?.GetAllContainedDisplayTexts().FirstOrDefault()
-            ?? node.FindFirst(n =>
-                n.Node.PythonObjectTypeName.Contains("SpeedGauge", StringComparison.OrdinalIgnoreCase))
-                ?.GetAllContainedDisplayTexts().FirstOrDefault();
+        var speedText = node.QueryFirst("[_name=currentVelocityLabel]")?.GetAllContainedDisplayTexts().FirstOrDefault()
+            ?? node.QueryFirst("@SpeedGauge")?.GetAllContainedDisplayTexts().FirstOrDefault();
 
         return new ShipUI
         {
@@ -160,19 +163,18 @@ public sealed partial class UITreeParser
             Indication = FindIndication(node),
             ModuleButtons = moduleButtons,
             ModuleButtonsRows = ClassifyModuleRows(moduleButtons, node),
-            StopButton = node.FindFirst(n => IsType(n, "StopButton")),
-            MaxSpeedButton = node.FindFirst(n =>
-                n.Node.PythonObjectTypeName.Contains("MaxSpeedButton", StringComparison.OrdinalIgnoreCase)),
+            StopButton = node.QueryFirst("@StopButton"),
+            MaxSpeedButton = node.QueryFirst("@MaxSpeedButton"),
             SpeedText = speedText,
         };
     }
 
     private ShipUICapacitor? FindCapacitor(UITreeNodeWithDisplayRegion shipUI)
     {
-        var capNode = shipUI.FindFirst(n => IsType(n, "CapacitorContainer", "Capacitor"));
+        var capNode = shipUI.QueryFirst("@*Capacitor*");
         if (capNode == null) return null;
 
-        var pmarks = capNode.FindAll(n => IsType(n, "Pmark")).ToList();
+        var pmarks = capNode.QueryAll("@Pmark").ToList();
         int? levelPercent = null;
 
         if (pmarks.Count > 0)
@@ -235,8 +237,7 @@ public sealed partial class UITreeParser
 
     private static int? GetGaugePercent(UITreeNodeWithDisplayRegion container, string gaugeName)
     {
-        var gauge = container.FindFirst(n =>
-            string.Equals(n.Node.GetDictString("_name"), gaugeName, StringComparison.OrdinalIgnoreCase));
+        var gauge = container.QueryFirst($"[_name={gaugeName}]");
         if (gauge == null) return null;
 
         var lastValue = gauge.Node.GetDictDouble("_lastValue");
@@ -252,7 +253,7 @@ public sealed partial class UITreeParser
 
     private ShipUIIndication? FindIndication(UITreeNodeWithDisplayRegion shipUI)
     {
-        var node = shipUI.FindFirst(n => IsType(n, "IndicationContainer", "Indication"));
+        var node = shipUI.QueryFirst("@*Indication*");
         if (node == null) return null;
 
         return new ShipUIIndication
@@ -311,6 +312,28 @@ public sealed partial class UITreeParser
             if (moduleName.Length == 0) moduleName = null;
         }
 
+        // Fallback if hint is missing: use node name suffix (type ID)
+        if (moduleName == null)
+        {
+            var nodeName = moduleButton.Node.GetDictString("_name") ?? "";
+            if (nodeName.Contains('_'))
+            {
+                var id = nodeName.Split('_').Last();
+                moduleName = id switch
+                {
+                    "482"   => "Mining Laser",
+                    "17912" => "Mining Laser", // Modulated Strip Miner II
+                    "17911" => "Mining Laser", // Modulated Strip Miner I
+                    "16277" => "Mining Laser", // Strip Miner I
+                    "17914" => "Mining Laser", // Modulated Deep Core Strip Miner II
+                    "6001"  => "Afterburner",
+                    "6002"  => "Microwarpdrive",
+                    "2054"  => "Afterburner",
+                    _       => $"Module {id}"
+                };
+            }
+        }
+
         return new ShipUIModuleButton
         {
             UINode = slotNode,
@@ -364,23 +387,13 @@ public sealed partial class UITreeParser
 
     private List<Target> FindTargets(UITreeNodeWithDisplayRegion root)
     {
-        // Match pythonObjectTypeName only — IsType also checks _name, which picks up
-        // false positives: l_target (LayerCore), canTargetSprite (Sprite).
-        return root.FindAll(n =>
-        {
-            var t = n.Node.PythonObjectTypeName;
-            return t.Equals("TargetInBar", StringComparison.OrdinalIgnoreCase) ||
-                   t.Equals("Target",      StringComparison.OrdinalIgnoreCase);
-        })
+        return root.QueryAll("@TargetInBar")
+            .Concat(root.QueryAll("@Target"))
+            .Distinct()
             .Select(n =>
             {
                 var allTexts = n.GetAllContainedDisplayTexts().ToList();
-
-                // The target label is the first non-distance, non-percentage text
-                var label = allTexts.FirstOrDefault(t =>
-                    !DistanceRegex().IsMatch(t) && !t.EndsWith('%'));
-
-                // Distance text is the first text that looks like a distance
+                var label = allTexts.FirstOrDefault(t => !DistanceRegex().IsMatch(t) && !t.EndsWith('%'));
                 var distText = allTexts.FirstOrDefault(t => DistanceRegex().IsMatch(t));
 
                 return new Target
@@ -468,106 +481,89 @@ public sealed partial class UITreeParser
                ?? secNode.GetAllContainedDisplayTexts().FirstOrDefault())
             : null;
 
+        var nearestNode = node.QueryFirst("[_name=nearestLocationInfo]");
+        var nearestLocationName = nearestNode != null
+            ? (EveTextUtil.StripTags(nearestNode.Node.GetDictString("_setText"))
+               ?? EveTextUtil.StripTags(nearestNode.Node.GetDictString("_text"))
+               ?? nearestNode.GetAllContainedDisplayTexts().FirstOrDefault())
+            : null;
+
         return new InfoPanelLocationInfo
         {
             UINode             = node,
             SystemName         = systemName,
             SecurityStatusText = secText,
+            NearestLocationName = nearestLocationName,
         };
     }
 
     private List<OverviewWindow> FindOverviewWindows(UITreeNodeWithDisplayRegion root)
     {
-        return root.FindAll(n =>
-                n.Node.PythonObjectTypeName.Contains("OverView", StringComparison.OrdinalIgnoreCase))
+        return root.QueryAll("@OverView")
+            .Concat(root.QueryAll("@OverviewWindow"))
+            .Distinct()
             .Select(BuildOverviewWindow)
             .ToList();
     }
 
     private OverviewWindow BuildOverviewWindow(UITreeNodeWithDisplayRegion overviewNode)
     {
-        // Extract column headers: find the dedicated header row container, collect (name, leftX) pairs
+        // Extract column headers
         var headers = new List<(string Name, int X)>();
-
-        // EVE layout: SortHeaders > Container > Header* > EveLabelSmall (_setText=column name)
-        // Each Header has _hint='Icon' etc. — we want _setText/_text from label children only.
-        var sortHeaders = overviewNode.FindFirst(n =>
-            n.Node.PythonObjectTypeName.Contains("SortHeaders", StringComparison.OrdinalIgnoreCase));
+        var sortHeaders = overviewNode.QueryFirst("@SortHeaders") ?? overviewNode.QueryFirst("[_name=headers]");
 
         if (sortHeaders != null)
         {
-            // Header nodes may be direct children or wrapped in one Container level
-            var headerNodes = sortHeaders.FindAll(n =>
-                string.Equals(n.Node.PythonObjectTypeName, "Header",
-                    StringComparison.OrdinalIgnoreCase));
-
+            var headerNodes = sortHeaders.QueryAll("@Header");
             foreach (var headerNode in headerNodes)
             {
-                // Collect _setText / _text from descendants only — skip _hint (contains "Icon" etc.)
-                var text = headerNode
-                    .FindAll(n => n.Node.GetDictString("_setText") != null ||
-                                  n.Node.GetDictString("_text")    != null)
-                    .Select(n => EveTextUtil.StripTags(
-                                     n.Node.GetDictString("_setText") ??
-                                     n.Node.GetDictString("_text")))
-                    .FirstOrDefault(t => t?.Length >= 2 && t.Any(char.IsLetter));
+                var text = headerNode.GetAllContainedDisplayTexts()
+                    .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter));
 
                 if (!string.IsNullOrEmpty(text))
                     headers.Add((text!, headerNode.Region.X));
             }
         }
 
-        // Fallback: _name="headers" container or any non-window Header type
+        // Fallback: search for any nodes of type Header directly in the overview
         if (headers.Count == 0)
         {
-            var headerRow = overviewNode.FindFirst(n =>
-                string.Equals(n.Node.GetDictString("_name"), "headers",
-                    StringComparison.OrdinalIgnoreCase));
-            headerRow ??= overviewNode.FindFirst(n =>
-                n.Node.PythonObjectTypeName.Contains("Header",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !n.Node.PythonObjectTypeName.Contains("SmallWindow",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !n.Node.PythonObjectTypeName.Contains("SortHeaders",
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (headerRow != null)
+            var headerNodes = overviewNode.QueryAll("@Header");
+            foreach (var headerNode in headerNodes)
             {
-                foreach (var child in headerRow.Children)
-                {
-                    var text = (child.GetAllContainedDisplayTexts()
-                                     .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter))
-                               ?? child.GetAllContainedDisplayTexts().FirstOrDefault())?.Trim();
-                    if (!string.IsNullOrEmpty(text))
-                        headers.Add((text, child.Region.X));
-                }
+                var text = headerNode.GetAllContainedDisplayTexts()
+                    .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter));
+
+                if (!string.IsNullOrEmpty(text))
+                    headers.Add((text!, headerNode.Region.X));
             }
         }
 
-        var entries = overviewNode
-            .FindAll(n => n.Node.PythonObjectTypeName.Contains("OverviewScrollEntry",
-                StringComparison.OrdinalIgnoreCase))
+        var entries = overviewNode.QueryAll("@OverviewScrollEntry")
             .Select(e => BuildOverviewEntry(e, headers))
             .ToList();
 
-        // Extract overview filter tabs (TabGroup → individual Tab/Button children)
-        var tabs = new List<OverviewTab>();
-        var tabGroup = overviewNode.FindFirst(n =>
-            n.Node.PythonObjectTypeName.Contains("TabGroup", StringComparison.OrdinalIgnoreCase) ||
-            n.Node.PythonObjectTypeName.Contains("OverviewTab", StringComparison.OrdinalIgnoreCase));
-        if (tabGroup != null)
-        {
-            foreach (var tab in tabGroup.Children)
-            {
+        var tabs = overviewNode.QueryAll("@OverviewTab")
+            .Select(tab => {
                 var name = tab.GetAllContainedDisplayTexts().FirstOrDefault();
-                if (string.IsNullOrWhiteSpace(name)) continue;
-                // "selected" or highlighted tab is the active one
+                
+                // Detection 1: explicit attributes
                 bool isActive = tab.Node.GetDictBool("_selected") == true
                     || tab.Node.GetDictBool("selected") == true
                     || (tab.Node.GetDictString("_state") ?? "").Contains("selected", StringComparison.OrdinalIgnoreCase);
-                tabs.Add(new OverviewTab { UINode = tab, Name = name, IsActive = isActive });
-            }
-        }
+                
+                // Detection 2: label alpha (Active tabs have more opaque labels, usually ~90% vs ~50%)
+                if (!isActive)
+                {
+                    var label = tab.FindFirst(n => n.Node.PythonObjectTypeName.Contains("Label", StringComparison.OrdinalIgnoreCase));
+                    var color = label?.Node.GetDictColor("_color");
+                    if (color != null && color.APercent > 70) isActive = true;
+                }
+
+                return new OverviewTab { UINode = tab, Name = name, IsActive = isActive };
+            })
+            .Where(t => !string.IsNullOrWhiteSpace(t.Name))
+            .ToList();
 
         return new OverviewWindow
         {
@@ -637,6 +633,20 @@ public sealed partial class UITreeParser
         cellsTexts.TryGetValue("Distance", out var cellDistText);
         var resolvedDistText = !string.IsNullOrEmpty(cellDistText) ? cellDistText : distText;
 
+        // Is hostile if hint says so OR if there's a red-ish icon background
+        bool isHostile = n.FindFirst(e => {
+            var hint = (e.Node.GetDictString("_hint") ?? "").ToLowerInvariant();
+            if (hint.Contains("hostile") || hint.Contains("threat") || 
+                hint.Contains("attacking") || hint.Contains("criminal") ||
+                hint.Contains("suspect") || hint.Contains("outlaw")) return true;
+            
+            // Check for red background in icon elements
+            var color = e.Node.GetDictColor("_bgColor") ?? e.Node.GetDictColor("_color");
+            if (color != null && color.RPercent > 70 && color.GPercent < 30 && color.BPercent < 30) return true;
+            
+            return false;
+        }) != null;
+
         return new OverviewEntry
         {
             UINode = n,
@@ -647,6 +657,7 @@ public sealed partial class UITreeParser
             DistanceInMeters = resolvedDistText != null ? ParseDistanceText(resolvedDistText) : null,
             IsAttackingMe = n.FindFirst(e =>
                 (e.Node.GetDictString("_hint") ?? "").Contains("attacking", StringComparison.OrdinalIgnoreCase)) != null,
+            IsHostile = isHostile,
             Texts = texts,
         };
     }
@@ -673,94 +684,165 @@ public sealed partial class UITreeParser
 
     private SelectedItemWindow? FindSelectedItemWindow(UITreeNodeWithDisplayRegion root)
     {
-        var node = root.FindFirst(n => IsType(n, "SelectedItemWnd", "ActiveItem"));
+        var node = root.QueryFirst("@SelectedItemWnd") ?? root.QueryFirst("@ActiveItem");
         if (node == null) return null;
 
         return new SelectedItemWindow
         {
             UINode = node,
-            ActionButtons = node.FindAll(n => IsType(n, "ButtonIcon", "ActionButton")).ToList(),
+            ActionButtons = node.QueryAll("@ButtonIcon")
+                .Concat(node.QueryAll("@ActionButton"))
+                .Distinct()
+                .ToList(),
         };
     }
 
     private DronesWindow? FindDronesWindow(UITreeNodeWithDisplayRegion root)
     {
-        var node = root.FindFirst(n => IsType(n, "DroneView", "DronesWindow"));
+        var node = root.QueryFirst("@DroneView") ?? root.QueryFirst("@DronesWindow");
         if (node == null) return null;
 
         return new DronesWindow
         {
             UINode = node,
-            DronesInBay = FindDronesGroup(node, "bay", "droneBay"),
-            DronesInSpace = FindDronesGroup(node, "space", "droneSpace", "local"),
+            DronesInBay   = FindDronesGroup(node, "DroneGroupHeaderInBay",   "bay",   "droneBay"),
+            DronesInSpace = FindDronesGroup(node, "DroneGroupHeaderInSpace",  "space", "droneSpace", "local"),
         };
     }
 
-    private DronesGroup? FindDronesGroup(UITreeNodeWithDisplayRegion parent, params string[] keywords)
+    private DronesGroup? FindDronesGroup(UITreeNodeWithDisplayRegion parent, string primaryTypeName, params string[] keywordFallback)
     {
+        // Primary: match by PythonObjectTypeName — avoids self-matching on the parent DronesWindow
+        // because FindFirst checks `this` before children and the parent's recursive text contains
+        // descendant keywords (e.g. "bay"), causing it to return the window node instead of the header.
         var groupNode = parent.FindFirst(n =>
-            keywords.Any(k => n.GetAllContainedDisplayTexts()
+            string.Equals(n.Node.PythonObjectTypeName, primaryTypeName, StringComparison.OrdinalIgnoreCase));
+
+        // Fallback: keyword search, but explicitly skip the parent node to avoid self-match.
+        groupNode ??= parent.FindFirst(n =>
+            !ReferenceEquals(n, parent) &&
+            keywordFallback.Any(k => n.GetAllContainedDisplayTexts()
                 .Any(t => t.Contains(k, StringComparison.OrdinalIgnoreCase))));
+
         if (groupNode == null) return null;
+
+        // Read the header text from the node's own direct text fields, not recursively,
+        // so we get "Drones in Bay (8)" and not the window-level "Drones" label.
+        var headerText = groupNode.Node.GetDictString("_setText")
+                      ?? groupNode.Node.GetDictString("_text")
+                      ?? groupNode.GetAllContainedDisplayTexts().FirstOrDefault();
+        int? current = null, max = null;
+
+        if (headerText != null)
+        {
+            // Parse "Drones in Space (5/5)"
+            var match = Regex.Match(headerText, @"\((\d+)/(\d+)\)");
+            if (match.Success)
+            {
+                current = int.Parse(match.Groups[1].Value);
+                max = int.Parse(match.Groups[2].Value);
+            }
+            else
+            {
+                // Parse "Drones in Bay (2)"
+                match = Regex.Match(headerText, @"\((\d+)\)");
+                if (match.Success)
+                    current = int.Parse(match.Groups[1].Value);
+            }
+        }
 
         return new DronesGroup
         {
             UINode = groupNode,
-            HeaderText = groupNode.GetAllContainedDisplayTexts().FirstOrDefault(),
-            Drones = groupNode.FindAll(n => IsType(n, "DroneEntry", "DroneSentry"))
+            HeaderText = headerText,
+            QuantityCurrent = current,
+            QuantityMaximum = max,
+            Drones = groupNode.QueryAll("@DroneEntry")
+                .Concat(groupNode.QueryAll("@DroneSentry"))
                 .Select(d => new DroneEntry
                 {
                     UINode = d,
                     Name = d.GetAllContainedDisplayTexts().FirstOrDefault(),
+                    HitpointsPercent = FindHitpoints(d),
                 })
                 .ToList(),
         };
     }
 
+    private ProbeScannerWindow? FindProbeScannerWindow(UITreeNodeWithDisplayRegion root)
+    {
+        var node = root.FindFirst(n => IsType(n, "ProbeScannerWindow", "Scanner"));
+        if (node == null) return null;
+        return new ProbeScannerWindow { UINode = node };
+    }
+
     private List<InventoryWindow> FindInventoryWindows(UITreeNodeWithDisplayRegion root)
     {
-        // EVE's inventory window Python type has changed across patches; cover all known names.
-        // Filter out individual inventory *items* (InvItem / Item) — they share "Inventory" substring.
-        return root.FindAll(n =>
-                n.Node.PythonObjectTypeName.Contains("InventoryPrimary",   StringComparison.OrdinalIgnoreCase) ||
-                n.Node.PythonObjectTypeName.Contains("ActiveShipCargo",    StringComparison.OrdinalIgnoreCase) ||
-                n.Node.PythonObjectTypeName.Contains("ShipCargo",          StringComparison.OrdinalIgnoreCase) ||
-                // Generic fallback — must have a capacity gauge child to qualify as an inventory container
-                (n.Node.PythonObjectTypeName.Contains("Inventory",         StringComparison.OrdinalIgnoreCase) &&
-                 n.Region.Width > 100 && n.Region.Height > 100))
-            .Where(n =>
-                !n.Node.PythonObjectTypeName.Contains("InvItem",   StringComparison.OrdinalIgnoreCase) &&
-                !n.Node.PythonObjectTypeName.Contains("Item",      StringComparison.OrdinalIgnoreCase))
-            .Select(n => {
-                var title = ExtractInventoryTitle(n);
-                return new InventoryWindow
-                {
+        // EVE's inventory windows: InventoryPrimary (main wnd), ActiveShipCargo, ShipCargo, etc.
+        // Based on reference implementation, we look for these specific top-level types.
+        var windows = root.QueryAll("@InventoryPrimary")
+            .Concat(root.QueryAll("@ActiveShipCargo"))
+            .Concat(root.QueryAll("@ShipCargo"))
+            .Concat(root.QueryAll("@InventoryWindow"))
+            .Distinct();
+
+        // Fallback: any node with "Inventory" in its type and a capacity gauge
+        if (!windows.Any())
+        {
+            windows = root.FindAll(n => 
+                (n.Node.PythonObjectTypeName.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
+                 n.Node.PythonObjectTypeName.Contains("Cargo",     StringComparison.OrdinalIgnoreCase)) &&
+                n.QueryFirst("@CapacityGauge") != null);
+        }
+
+        return windows.Select(n => {
+            // Reference logic: look for specialized container nodes INSIDE the window
+            var specializedContainer = n.FindFirst(c =>
+                c.Node.PythonObjectTypeName.Contains("ShipGeneralMiningHold", StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("MiningHold",           StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("ShipDroneBay",          StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("ShipHangar",            StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("StationItems",          StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("ItemHangar",           StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("StructureItemHangar",   StringComparison.OrdinalIgnoreCase));
+            
+            var title = ExtractInventoryTitle(n) ?? (specializedContainer != null ? specializedContainer.Node.PythonObjectTypeName : null);
+            var navEntries = ExtractNavEntries(n);
+            var holdType = ClassifyHoldType(title);
+
+            if (specializedContainer != null)
+            {
+                holdType = ClassifyHoldType(specializedContainer.Node.PythonObjectTypeName);
+            }
+
+            // Strategy 2: If still unknown, use the selected nav entry
+            if (holdType == InventoryHoldType.Unknown)
+            {
+                var selected = navEntries.FirstOrDefault(e => e.IsSelected);
+                if (selected != null) holdType = selected.HoldType;
+            }
+
+            return new InventoryWindow
+            {
                 UINode = n,
                 SubCaptionLabelText = title,
-                HoldType = ClassifyHoldType(title),
-                NavEntries = ExtractNavEntries(n),
+                HoldType = holdType,
+                NavEntries = navEntries,
                 CapacityGauge = ExtractCapacityGauge(n),
-                Items = n.FindAll(i =>
-                        i.Node.PythonObjectTypeName.Contains("InvItem", StringComparison.OrdinalIgnoreCase) ||
-                        i.Node.PythonObjectTypeName.Contains("Item",    StringComparison.OrdinalIgnoreCase))
-                    .Where(i => i.Region.Width > 20 && i.Region.Height > 6)
+                Items = n.QueryAll("@InvItem")
+                    .Concat(n.QueryAll("@Item"))
+                    .Where(i => i.Region.Width > 10 && i.Region.Height > 6)
                     .Select(i => new InventoryItem
                     {
                         UINode = i,
-                        // Prefer the item's own _setText/_text; skip short glyphs.
-                        Name = EveTextUtil.StripTags(i.Node.GetDictString("_setText"))
-                            ?? EveTextUtil.StripTags(i.Node.GetDictString("_text"))
-                            ?? i.GetAllContainedDisplayTexts()
-                                .FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter)),
+                        Name = i.GetAllContainedDisplayTexts().FirstOrDefault(t => t.Length >= 2 && t.Any(char.IsLetter)),
                         Quantity = ExtractItemQuantity(i),
                     })
                     .ToList(),
-                ButtonToStackAll = n.FindFirst(b =>
-                    b.GetAllContainedDisplayTexts().Any(t =>
-                        t.Contains("stack", StringComparison.OrdinalIgnoreCase))),
-                };
-            })
-            .ToList();
+                ButtonToStackAll = n.QueryFirst("[_name=stackAllButton]") ?? 
+                                   n.QueryFirst(":has-text('Stack All')"),
+            };
+        }).ToList();
     }
 
     /// <summary>
@@ -787,13 +869,27 @@ public sealed partial class UITreeParser
         {
             var nm = n.Node.GetDictString("_name") ?? "";
             return nm.Contains("caption", StringComparison.OrdinalIgnoreCase)
-                || nm.Contains("header",  StringComparison.OrdinalIgnoreCase);
+                || nm.Contains("header",  StringComparison.OrdinalIgnoreCase)
+                || nm.Contains("title",   StringComparison.OrdinalIgnoreCase);
         });
         if (captionNode != null)
         {
             var t = EveTextUtil.StripTags(captionNode.Node.GetDictString("_setText"))
                  ?? EveTextUtil.StripTags(captionNode.Node.GetDictString("_text"));
             if (!string.IsNullOrWhiteSpace(t)) return t;
+        }
+
+        // Approach 2.5: Any label in the right-side header area (if not in compact mode)
+        var rightHeader = invNode.FindFirst(n =>
+            n.Region.X > invNode.Region.X + invNode.Region.Width * 0.4 &&
+            n.Region.Y < invNode.Region.Y + 60 &&
+            (n.Node.PythonObjectTypeName.Contains("Label", StringComparison.OrdinalIgnoreCase) ||
+             n.Node.PythonObjectTypeName.Contains("Text", StringComparison.OrdinalIgnoreCase)));
+        if (rightHeader != null)
+        {
+             var t = EveTextUtil.StripTags(rightHeader.Node.GetDictString("_setText"))
+                  ?? EveTextUtil.StripTags(rightHeader.Node.GetDictString("_text"));
+             if (!string.IsNullOrWhiteSpace(t) && ClassifyHoldType(t) != InventoryHoldType.Unknown) return t;
         }
 
         // Approach 3: scan ONLY the top strip of the window for a hold keyword —
@@ -878,6 +974,15 @@ public sealed partial class UITreeParser
                                   || n.Node.GetDictBool("selected")  == true
                                   || (n.Node.GetDictString("_state") ?? "")
                                          .Contains("selected", StringComparison.OrdinalIgnoreCase);
+
+                    // Robust fallback for non-compact mode: check for SelectionIndicatorLine with high alpha
+                    var sil = n.QueryFirst("@SelectionIndicatorLine");
+                    if (sil != null)
+                    {
+                        var color = sil.Node.GetDictColor("_color");
+                        if (color != null && color.APercent > 50) isSelected = true;
+                    }
+
                     result.Add(new InventoryNavEntry
                     {
                         UINode     = n,
@@ -1011,6 +1116,112 @@ public sealed partial class UITreeParser
         };
     }
 
+    private MiningScanResultsWindow? FindMiningScanResultsWindow(UITreeNodeWithDisplayRegion root)
+    {
+        var node = root.QueryFirst("@MiningScanResultsWindow") ?? root.QueryFirst("@SurveyScanView");
+        if (node == null) return null;
+
+        var entries = new List<MiningScanEntry>();
+        
+        // Find all nodes that look like they contain entry text (ListGroups or labels/entries)
+        var allScanNodes = node.FindAll(n => 
+            IsType(n, "ListGroup", "MiningScanEntry", "SurveyScanEntry") ||
+            (n.Node.GetDictString("_name") ?? "").Contains("entry", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n.Region.Y)
+            .ToList();
+
+        double? currentGroupValue = null;
+
+        for (int i = 0; i < allScanNodes.Count; i++)
+        {
+            var n = allScanNodes[i];
+            var text = n.GetAllContainedDisplayTexts().FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(text)) continue;
+
+            bool isGroup = n.Node.PythonObjectTypeName.Contains("ListGroup", StringComparison.OrdinalIgnoreCase);
+            
+            if (isGroup)
+            {
+                var match = Regex.Match(text, @"^(.*?)\s+\[(\d+)\].*?([\d,.]+)\s*ISK", RegexOptions.IgnoreCase);
+                
+                // Robust expansion detection: if any subsequent nodes are NOT groups and have similar/larger Y, we are expanded.
+                bool isExpanded = false;
+                for (int j = i + 1; j < Math.Min(i + 10, allScanNodes.Count); j++)
+                {
+                    var next = allScanNodes[j];
+                    if (!next.Node.PythonObjectTypeName.Contains("ListGroup", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isExpanded = true;
+                        break;
+                    }
+                    if (next.Region.Y > n.Region.Y + n.Region.Height + 50) break; // Too far down
+                }
+
+                currentGroupValue = null;
+                if (match.Success)
+                {
+                    var valStr = match.Groups[3].Value.Replace(",", "");
+                    if (double.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
+                        currentGroupValue = val;
+                }
+
+                entries.Add(new MiningScanEntry
+                {
+                    UINode = n,
+                    OreName = match.Success ? match.Groups[1].Value.Trim() : text,
+                    Quantity = match.Success ? int.Parse(match.Groups[2].Value) : null,
+                    IsGroup = true,
+                    IsExpanded = isExpanded,
+                    IsLocked = n.FindFirst(c => (c.Node.GetDictString("_texturePath") ?? "").Contains("activeTarget.png")) != null,
+                    ExpanderNode = n.QueryFirst("@GlowSprite") ?? n.QueryFirst("@Sprite"),
+                    ValueText = text.Contains("ISK") ? text : null,
+                    ValuePerM3 = currentGroupValue,
+                });
+            }
+            else
+            {
+                // entryLabel example: "Scordite41,4696,220 m3675,000.00 ISK28 km"
+                var match = Regex.Match(text, @"^([a-zA-Z\s\-]+?)([\d,.]+?)(?=[\d,.]+\s*m3)([\d,.]+\s*m3)([\d,.]+\s*ISK)([\d,.]+\s*(?:m|km|au))", RegexOptions.IgnoreCase);
+                
+                if (match.Success)
+                {
+                    entries.Add(new MiningScanEntry
+                    {
+                        UINode = n,
+                        OreName = match.Groups[1].Value.Trim(),
+                        Quantity = int.TryParse(match.Groups[2].Value.Replace(",", ""), out var q) ? q : null,
+                        IsGroup = false,
+                        IsLocked = n.FindFirst(c => (c.Node.GetDictString("_texturePath") ?? "").Contains("activeTarget.png")) != null,
+                        DistanceInMeters = ParseDistanceText(match.Groups[5].Value),
+                        ValueText = match.Groups[4].Value.Trim(),
+                        ValuePerM3 = currentGroupValue,
+                    });
+                }
+                else if (text.Length > 5 && !text.Contains("ISK / m"))
+                {
+                    // Fallback for simple names
+                    entries.Add(new MiningScanEntry
+                    {
+                        UINode = n,
+                        OreName = text.Length > 20 ? text[..15].Trim() : text,
+                        IsGroup = false,
+                        IsLocked = n.FindFirst(c => (c.Node.GetDictString("_texturePath") ?? "").Contains("activeTarget.png")) != null,
+                        ValuePerM3 = currentGroupValue,
+                    });
+                }
+            }
+        }
+
+        return new MiningScanResultsWindow
+        {
+            UINode = node,
+            ScanButton = node.QueryFirst("@Button:has-text('Scan')") ?? 
+                         node.QueryFirst("[_name=buttonScan]") ??
+                         node.QueryFirst("@Button"),
+            Entries = entries,
+        };
+    }
+
     /// <summary>
     /// Finds the undock button in the station lobby. Prefers a Button-type container
     /// over a text-label child so that clicks land on the full clickable region.
@@ -1056,7 +1267,10 @@ public sealed partial class UITreeParser
     private static double? ParseDistanceText(string text)
     {
         var match = DistanceRegex().Match(text);
-        if (!match.Success || !double.TryParse(match.Groups[1].Value.Replace(",", ""), out var value))
+        if (!match.Success) return null;
+        
+        var valGroup = match.Groups[1].Value;
+        if (!double.TryParse(valGroup.Replace(",", ""), out var value))
             return null;
 
         var unit = match.Groups[2].Value.Trim().ToLowerInvariant();

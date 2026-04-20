@@ -164,33 +164,45 @@ public sealed class InputSimulator
     }
 
     /// <summary>
-    /// Left-click at EVE client-area coordinates.
+    /// Left-click at EVE client-area coordinates, with optional modifiers.
     /// Translates to screen coords, applies jitter, moves (with bezier arc), clicks.
     /// </summary>
-    public async Task Click(int clientX, int clientY, CancellationToken ct = default)
+    public async Task Click(int clientX, int clientY, CancellationToken ct = default, VirtualKey[]? modifiers = null)
     {
+        modifiers ??= [];
         var (sx, sy) = ClientToScreen(clientX, clientY);
         var (jx, jy) = ApplyJitter(sx, sy);
 
         await MoveToSmooth(jx, jy, ct);
+
+        foreach (var mod in modifiers) SendKey((ushort)mod, keyUp: false);
         SendMouseButton(NativeMethods.MOUSEEVENTF_LEFTDOWN);
         await Task.Delay(_rng.Next(ClickHoldMinMs, ClickHoldMaxMs + 1), ct);
         SendMouseButton(NativeMethods.MOUSEEVENTF_LEFTUP);
-        _logger.LogDebug("Click  client({CX},{CY}) → screen({SX},{SY})", clientX, clientY, jx, jy);
+        foreach (var mod in modifiers.Reverse()) SendKey((ushort)mod, keyUp: true);
+
+        _logger.LogDebug("Click  client({CX},{CY}) + {Mods} → screen({SX},{SY})",
+            clientX, clientY, string.Join("+", modifiers), jx, jy);
         await HumanDelay(ct);
     }
 
-    /// <summary>Right-click at EVE client-area coordinates.</summary>
-    public async Task RightClick(int clientX, int clientY, CancellationToken ct = default)
+    /// <summary>Right-click at EVE client-area coordinates, with optional modifiers.</summary>
+    public async Task RightClick(int clientX, int clientY, CancellationToken ct = default, VirtualKey[]? modifiers = null)
     {
+        modifiers ??= [];
         var (sx, sy) = ClientToScreen(clientX, clientY);
         var (jx, jy) = ApplyJitter(sx, sy);
 
         await MoveToSmooth(jx, jy, ct);
+
+        foreach (var mod in modifiers) SendKey((ushort)mod, keyUp: false);
         SendMouseButton(NativeMethods.MOUSEEVENTF_RIGHTDOWN);
         await Task.Delay(_rng.Next(ClickHoldMinMs, ClickHoldMaxMs + 1), ct);
         SendMouseButton(NativeMethods.MOUSEEVENTF_RIGHTUP);
-        _logger.LogDebug("RClick client({CX},{CY}) → screen({SX},{SY})", clientX, clientY, jx, jy);
+        foreach (var mod in modifiers.Reverse()) SendKey((ushort)mod, keyUp: true);
+
+        _logger.LogDebug("RClick client({CX},{CY}) + {Mods} → screen({SX},{SY})",
+            clientX, clientY, string.Join("+", modifiers), jx, jy);
         await HumanDelay(ct);
     }
 
@@ -201,6 +213,19 @@ public sealed class InputSimulator
         await Task.Delay(_rng.Next(50, 120), ct);
         await Click(clientX, clientY, ct);
         _logger.LogDebug("DblClick client({X},{Y})", clientX, clientY);
+    }
+
+    /// <summary>Scroll the mouse wheel. Positive = scroll up, negative = scroll down.</summary>
+    public async Task Scroll(int delta, CancellationToken ct = default)
+    {
+        var input = new NativeMethods.INPUT();
+        input.type = NativeMethods.INPUT_MOUSE;
+        input.u.mi.mouseData = (uint)delta;
+        input.u.mi.dwFlags = NativeMethods.MOUSEEVENTF_WHEEL;
+        NativeMethods.SendInput(1, [input], NativeMethods.InputSize);
+        
+        _logger.LogDebug("Scroll delta={Delta}", delta);
+        await HumanDelay(ct);
     }
 
     /// <summary>Click-drag from one EVE client-area position to another.</summary>
@@ -366,8 +391,9 @@ internal static partial class NativeMethods
     public const uint MOUSEEVENTF_MOVE      = 0x0001;
     public const uint MOUSEEVENTF_LEFTDOWN  = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP    = 0x0004;
-    public const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
-    public const uint MOUSEEVENTF_RIGHTUP   = 0x0010;
+    public const uint MOUSEEVENTF_RIGHTDOWN = 0x08;
+    public const uint MOUSEEVENTF_RIGHTUP   = 0x10;
+    public const uint MOUSEEVENTF_WHEEL     = 0x0800;
     public const uint MOUSEEVENTF_ABSOLUTE  = 0x8000;
 
     // ─── KEYEVENTF flags ──────────────────────────────────────────────────
@@ -462,6 +488,35 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool IsWindow(nint hWnd);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint GetWindowDC(nint hWnd);
+
+    [LibraryImport("user32.dll")]
+    public static partial int ReleaseDC(nint hWnd, nint hDC);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial nint CreateCompatibleDC(nint hDC);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial nint CreateCompatibleBitmap(nint hDC, int nWidth, int nHeight);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial nint SelectObject(nint hDC, nint hObject);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool BitBlt(nint hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, nint hdcSrc, int nXSrc, int nYSrc, uint dwRop);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DeleteDC(nint hDC);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DeleteObject(nint hObject);
+
+    public const uint SRCCOPY = 0x00CC0020;
 
     // ─── Thread input attachment (robust SetForegroundWindow in VMs) ──────
     [LibraryImport("user32.dll")]

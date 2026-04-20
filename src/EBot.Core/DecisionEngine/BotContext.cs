@@ -39,6 +39,27 @@ public sealed class BotContext
     /// </summary>
     public TimeSpan RunDuration => DateTimeOffset.UtcNow - StartTime;
 
+    /// <summary>
+    /// Trace of currently executing behavior tree nodes (stack).
+    /// Used for debugging hangs and verbose logging.
+    /// </summary>
+    public Stack<string> ActiveNodes { get; } = new();
+
+    /// <summary>
+    /// A snapshot of the execution path (Bottom -> Top) from the last time
+    /// a node was ticked during the current tick.
+    /// </summary>
+    public IReadOnlyList<string> ActivePathSnapshot { get; private set; } = [];
+
+    /// <summary>
+    /// Captures the current ActiveNodes stack into ActivePathSnapshot.
+    /// Called by behavior tree nodes during execution.
+    /// </summary>
+    public void SnapshotActivePath()
+    {
+        ActivePathSnapshot = ActiveNodes.ToList();
+    }
+
     // ─── Diagnostic log (per-tick messages forwarded to ILogger by BotRunner) ──
 
     private readonly List<string> _diagMessages = [];
@@ -89,6 +110,16 @@ public sealed class BotContext
     }
 
     /// <summary>
+    /// Enqueues a left-click on a UI node's center with optional modifiers.
+    /// (e.g. Ctrl+Click to lock a target).
+    /// </summary>
+    public void Click(UITreeNodeWithDisplayRegion node, params VirtualKey[] modifiers)
+    {
+        var (x, y) = node.Center;
+        Actions.Enqueue(new ClickAction(x, y, modifiers));
+    }
+
+    /// <summary>
     /// Enqueues a right-click on a UI node's center.
     /// </summary>
     public void RightClick(UITreeNodeWithDisplayRegion node)
@@ -131,11 +162,40 @@ public sealed class BotContext
         Actions.Enqueue(new MoveMouseAction(x, y));
     }
 
+    public void Scroll(UITreeNodeWithDisplayRegion node, int delta)
+    {
+        var (x, y) = node.Center;
+        Actions.Enqueue(new MoveMouseAction(x, y));
+        Actions.Enqueue(new ScrollAction(delta));
+    }
+
+    /// <summary>
+    /// Finds a context menu entry by text and enqueues a click on it.
+    /// </summary>
+    public void ClickMenuEntry(string text)
+    {
+        var entry = GameState.ParsedUI.ContextMenus
+            .SelectMany(m => m.Entries)
+            .FirstOrDefault(e => e.Text?.Contains(text, StringComparison.OrdinalIgnoreCase) == true);
+        
+        if (entry != null) Click(entry.UINode);
+    }
+
     /// <summary>
     /// Enqueues typing a string (character by character via TypeTextAction).
     /// </summary>
     public void TypeText(string text)
     {
         Actions.Enqueue(new TypeTextAction(text));
+    }
+
+    /// <summary>
+    /// Enqueues a drag-and-drop action from one UI node to another.
+    /// </summary>
+    public void Drag(UITreeNodeWithDisplayRegion from, UITreeNodeWithDisplayRegion to)
+    {
+        var (fx, fy) = from.Center;
+        var (tx, ty) = to.Center;
+        Actions.Enqueue(new DragAction(fx, fy, tx, ty));
     }
 }

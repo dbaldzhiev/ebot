@@ -194,6 +194,47 @@ api.MapPost("/resume", async (BotOrchestrator o) =>
     return Results.Ok(new { success = true });
 });
 
+// POST /api/debug/step  — executes a single tick if the bot is paused
+api.MapPost("/debug/step", async (BotOrchestrator o) =>
+{
+    try
+    {
+        await o.StepAsync();
+        return Results.Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { success = false, message = ex.Message });
+    }
+});
+
+// ─── Session Recording API ────────────────────────────────────────────────
+
+// POST /api/debug/record/start
+api.MapPost("/debug/record/start", (BotOrchestrator o) =>
+{
+    o.StartRecording();
+    return Results.Ok(new { success = true });
+});
+
+// POST /api/debug/record/stop
+api.MapPost("/debug/record/stop", (BotOrchestrator o) =>
+{
+    o.StopRecording();
+    return Results.Ok(new { success = true });
+});
+
+// GET /api/debug/record/download
+api.MapGet("/debug/record/download", (BotOrchestrator o) =>
+{
+    var json = o.GetRecordingJson();
+    if (string.IsNullOrEmpty(json))
+        return Results.BadRequest(new { success = false, message = "No recording available" });
+
+    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+    return Results.File(bytes, "application/json", $"ebot_session_{DateTime.Now:yyyyMMdd_HHmmss}.json");
+});
+
 // POST /api/survival  { "enabled": true }
 api.MapPost("/survival", ([FromBody] SurvivalRequest req, BotOrchestrator o) =>
 {
@@ -201,9 +242,43 @@ api.MapPost("/survival", ([FromBody] SurvivalRequest req, BotOrchestrator o) =>
     return Results.Ok(new { success = true, survival_enabled = o.SurvivalEnabled });
 });
 
+// POST /api/mining/settings  — update ore hold % and shield % at runtime
+api.MapPost("/mining/settings", ([FromBody] UpdateMiningSettingsRequest req, BotOrchestrator o) =>
+{
+    o.UpdateMiningSettings(req.OreHoldFull, req.ShieldEscape);
+    return Results.Ok(new { success = true });
+});
+
 // GET /api/log
 api.MapGet("/log", (BotOrchestrator o, [FromQuery] int count = 50) =>
     Results.Ok(o.GetRecentLogs(Math.Clamp(count, 1, 200))));
+
+// GET /api/debug/state  — full JSON dump of bot blackboard, stack, and actions
+api.MapGet("/debug/state", (BotOrchestrator o) =>
+{
+    var state = o.GetFullState();
+    return state != null ? Results.Ok(state) : Results.NotFound("No bot state available (ensure bot is running)");
+});
+
+// GET /api/debug/inventory  — detailed breakdown of detected inventory windows
+api.MapGet("/debug/inventory", (BotOrchestrator o) => Results.Ok(o.GetInventoryDebug()));
+
+// GET /api/debug/hold-cache  — dump of the orchestrator's hold cache
+api.MapGet("/debug/hold-cache", (BotOrchestrator o) => Results.Ok(o.GetHoldCacheDebug()));
+
+// POST /api/debug/scan-holds — force a full scan of all holds (Alt+C -> cycle entries)
+api.MapPost("/debug/scan-holds", async (BotOrchestrator o) =>
+{
+    try
+    {
+        await o.ScanAllHoldsAsync();
+        return Results.Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { success = false, message = ex.Message });
+    }
+});
 
 // GET /api/ai-info  — returns active AI backend details for the UI
 api.MapGet("/ai-info", () =>

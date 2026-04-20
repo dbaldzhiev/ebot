@@ -1,8 +1,12 @@
+#pragma warning disable CA1416 // Windows only
+
 using EBot.Core.DecisionEngine;
 using EBot.Core.Execution;
 using EBot.Core.GameState;
 using EBot.Core.MemoryReading;
 using Microsoft.Extensions.Logging;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace EBot.Core.Bot;
 
@@ -23,11 +27,15 @@ public sealed class BotRunner : IDisposable
     private readonly ActionExecutor _executor;
     private readonly ILogger<BotRunner> _logger;
 
+    public SessionRecorder Recorder { get; } = new();
+
     private readonly BotContext _context = new();
     private IBehaviorNode? _behaviorTree;
     private CancellationTokenSource? _cts;
     private Task? _runTask;
     private long _snapshotSequence;
+
+    private volatile bool _stepRequested;
 
     // Pending hot-swap — applied at the top of the next tick so the read cycle is never interrupted
     private sealed class SwapRequest(IBot bot, bool isMonitorMode)
@@ -66,7 +74,7 @@ public sealed class BotRunner : IDisposable
     }
 
     /// <summary>Fired on each completed tick with the current context.</summary>
-    public event Action<BotContext>? OnTick;
+    public event Action<BotContext, IBot>? OnTick;
 
     /// <summary>Fired when the bot state changes.</summary>
     public event Action<BotRunnerState>? OnStateChanged;
@@ -155,6 +163,16 @@ public sealed class BotRunner : IDisposable
     }
 
     /// <summary>
+    /// Executes a single tick if the bot is currently paused.
+    /// </summary>
+    public void Step()
+    {
+        if (State != BotRunnerState.Paused) return;
+        _stepRequested = true;
+        _logger.LogInformation("Step requested");
+    }
+
+    /// <summary>
     /// Stops the bot and waits for it to shut down.
     /// </summary>
     public async Task StopAsync()
@@ -205,12 +223,14 @@ public sealed class BotRunner : IDisposable
                     break;
                 }
 
-                // Skip tick if paused
-                if (State == BotRunnerState.Paused)
+                // Skip tick if paused (unless a single step is requested)
+                if (State == BotRunnerState.Paused && !_stepRequested)
                 {
                     await Task.Delay(500, ct);
                     continue;
                 }
+
+                _stepRequested = false;
 
                 // STEP 1: Read game state
                 var readResult = await _reader.ReadMemoryAsync(ct);
@@ -225,10 +245,11 @@ public sealed class BotRunner : IDisposable
                 LastRawJson = readResult.Json;
                 var parsedUI = _parser.Parse(readResult.Json!);
 
-                // Optionally log the raw JSON
+                // Optionally log the raw JSON and screenshot
                 if (_settings.LogMemoryReadings)
                 {
                     await LogMemoryReading(readResult.Json!, ct);
+                    CaptureScreenshot();
                 }
 
                 // STEP 3: Create snapshot
@@ -244,9 +265,31 @@ public sealed class BotRunner : IDisposable
                 _context.GameState = snapshot;
                 _context.TickCount++;
 
-                // STEP 4: Run the behavior tree
+                // RECORDING: Capture state before BT tick
+                IReadOnlyDictionary<string, object>? blackboardBefore = null;
+                if (Recorder.IsRecording)
+                {
+                    blackboardBefore = new Dictionary<string, object>(_context.Blackboard.GetData());
+                }
+
+                // STEP 4: Run the behavior tree with a watchdog
                 _context.Actions.Clear();
-                _behaviorTree?.Tick(_context);
+                _context.ActiveNodes.Clear();
+                _context.SnapshotActivePath(); // Reset snapshot for the new tick
+                
+                try 
+                {
+                    // Note: BT is currently synchronous, so this CTS is for documentation/future async use.
+                    // To truly break a sync hang, we'd need a separate thread or async BT nodes.
+                    _behaviorTree?.Tick(_context);
+                }
+                catch (Exception ex)
+                {
+                    var trace = string.Join(" -> ", _context.ActiveNodes.Reverse());
+                    _logger.LogError(ex, "Behavior tree crashed during tick {Tick}. Trace: {Trace}", _context.TickCount, trace);
+                    EmergencyDiagnosticDump($"NodeCrash_{_context.ActiveNodes.Peek()}");
+                    throw;
+                }
 
                 // STEP 5: Execute queued actions
                 if (!_context.Actions.IsEmpty)
@@ -272,7 +315,19 @@ public sealed class BotRunner : IDisposable
                 lock (_tpmLock)
                     _tickTimestampsMs.Enqueue(Environment.TickCount64);
 
-                OnTick?.Invoke(_context);
+                if (Recorder.IsRecording)
+                {
+                    Recorder.Record(new RecordedTick
+                    {
+                        TickCount = _context.TickCount,
+                        Timestamp = DateTimeOffset.UtcNow,
+                        FrameJson = LastRawJson,
+                        BlackboardBefore = blackboardBefore,
+                        Actions = _context.Actions.GetDescriptions()
+                    });
+                }
+
+                OnTick?.Invoke(_context, _bot);
 
                 // Wait before next tick
                 await Task.Delay(_settings.TickIntervalMs, ct);
@@ -290,14 +345,48 @@ public sealed class BotRunner : IDisposable
         }
     }
 
+    /// <summary>
+    /// Manually trigger an emergency diagnostic dump (screenshot + frame).
+    /// </summary>
+    public void TriggerEmergencyDump(string reason) => EmergencyDiagnosticDump(reason);
+
+    private void EmergencyDiagnosticDump(string reason)
+    {
+        try
+        {
+            var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd_HHmmss");
+            Directory.CreateDirectory(_settings.LogDirectory);
+
+            if (LastRawJson != null)
+            {
+                var jsonPath = Path.Combine(_settings.LogDirectory, $"emergency_{reason}_{timestamp}.json");
+                File.WriteAllText(jsonPath, LastRawJson);
+            }
+
+            CaptureScreenshot(); // This uses internal naming, but it's enough
+            _logger.LogInformation("Emergency diagnostic dump completed (Reason: {Reason})", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to perform emergency dump: {Msg}", ex.Message);
+        }
+    }
+
     private nint GetEveWindowHandle()
     {
-        var client = _settings.Sanderling.ProcessId > 0
-            ? EveProcessFinder.FindEveClients()
-                .FirstOrDefault(c => c.ProcessId == _settings.Sanderling.ProcessId)
-            : EveProcessFinder.FindFirstClient();
+        if (_settings.Sanderling.ProcessId <= 0)
+        {
+            var client = EveProcessFinder.FindFirstClient();
+            if (client != null)
+                _settings.Sanderling.ProcessId = client.ProcessId;
+        }
 
-        return client?.MainWindowHandle ?? 0;
+        var clients = EveProcessFinder.FindEveClients();
+        var target = _settings.Sanderling.ProcessId > 0
+            ? clients.FirstOrDefault(c => c.ProcessId == _settings.Sanderling.ProcessId)
+            : clients.FirstOrDefault();
+
+        return target?.MainWindowHandle ?? 0;
     }
 
     private async Task LogMemoryReading(string json, CancellationToken ct)
@@ -312,6 +401,43 @@ public sealed class BotRunner : IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to log memory reading");
+        }
+    }
+
+    private void CaptureScreenshot()
+    {
+        try
+        {
+            var hWnd = GetEveWindowHandle();
+            if (hWnd == 0) return;
+
+            if (!NativeMethods.GetWindowRect(hWnd, out var rect)) return;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            using var bmp = new Bitmap(rect.Width, rect.Height, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                var hdcDest = g.GetHdc();
+                var hdcSrc = NativeMethods.GetWindowDC(hWnd);
+                try
+                {
+                    NativeMethods.BitBlt(hdcDest, 0, 0, rect.Width, rect.Height, hdcSrc, 0, 0, NativeMethods.SRCCOPY);
+                }
+                finally
+                {
+                    g.ReleaseHdc(hdcDest);
+                    NativeMethods.ReleaseDC(hWnd, hdcSrc);
+                }
+            }
+
+            Directory.CreateDirectory(_settings.LogDirectory);
+            var filename = Path.Combine(_settings.LogDirectory,
+                $"screenshot_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss}_{_snapshotSequence}.png");
+            bmp.Save(filename, ImageFormat.Png);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to capture screenshot: {Msg}", ex.Message);
         }
     }
 

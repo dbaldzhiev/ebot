@@ -1,33 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:www.nuget.org)",
-      "WebFetch(domain:csharp.sdk.modelcontextprotocol.io)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(xargs grep:*)",
       "Bash(dotnet build:*)",
-      "Skill(claude-api)",
-      "Skill(claude-api:*)",
-      "Bash(dotnet add:*)",
-      "Bash(taskkill /PID 85076 /F)",
-      "Bash(powershell -Command \"Stop-Process -Id 85076 -Force -ErrorAction SilentlyContinue; Start-Sleep 1; cd ''c:\\\\Users\\\\Dimitar\\\\ebot''; dotnet build EBot.slnx 2>&1 | Select-Object -Last 15\")",
-      "Bash(curl -s \"https://raw.githubusercontent.com/Arcitectus/Sanderling/main/implement/alternate-ui/source/src/EveOnline/VolatileProcessInterface.elm\")",
-      "Bash(curl -s \"https://raw.githubusercontent.com/Arcitectus/Sanderling/main/implement/alternate-ui/source/src/Backend/Main.elm\")",
-      "WebFetch(domain:api.github.com)",
-      "Bash(curl -s https://raw.githubusercontent.com/Arcitectus/Sanderling/main/implement/alternate-ui/source/src/EveOnline/ParseUserInterface.elm)",
-      "Read(//tmp/**)",
-      "Bash(python3:*)",
-      "Bash(where python:*)",
-      "Bash(where py:*)",
-      "Bash(git clone:*)",
-      "Bash(grep -r \"RouteElement\\\\|routeElement\\\\|RouteMarker\\\\|routeMarker\\\\|autopilot\\\\|AutopilotDestination\" c:/Users/Dimitar/sanderling-ref --include=*.elm -l)",
-      "Bash(find c:/Users/Dimitar/sanderling-ref -name *.elm)",
-      "Bash(find c:/Users/Dimitar/ebot/sanderling-ref -name *.elm)",
-      "Bash(ls -lh c:UsersDimitarebotsrcEBot.WebHost/*.json)",
-      "Bash(ls c:/Users/dbaldzhiev/ebot/*.bat)",
-      "Bash(grep -n \"Each entry: { group, id, label\\\\|cnvInit\\(\\);\" /c/Users/dbaldzhiev/ebot/src/EBot.WebHost/wwwroot/index.html)",
-      "Bash(node -e ':*)",
-      "Bash(powershell -Command ':*)"
+      "Bash(dotnet test:*)",
+      "Bash(grep -l \"Mining hold\" logs/session_*.log)",
+      "Bash(grep -l \"full\\\\|unload\\\\|needs_unload\" logs/session_*.log)",
+      "Bash(grep -h \"Mining hold\\\\|needs_unload\\\\|Unload\\\\|unload\\\\|FindOreHold\\\\|CapacityGauge\\\\|full_hold\\\\|ore hold\\\\|FillPercent\" logs/session_*.log)"
     ]
   }
 }

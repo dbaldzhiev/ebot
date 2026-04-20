@@ -60,7 +60,9 @@ public sealed class BotOrchestrator : IDisposable
     public static readonly IReadOnlyList<IBot> AvailableBots =
     [
         new MiningBot(),
-        new TravelBot(),   // shown in dropdown; destination set at start time
+        new MiningBotScripted(),
+        new TravelBot(),
+        new TravelBotScripted(),
     ];
 
     // ─── State ──────────────────────────────────────────────────────────────
@@ -80,11 +82,51 @@ public sealed class BotOrchestrator : IDisposable
 
     public bool SurvivalEnabled { get; private set; } = false;
 
+    /// <summary>Access to the underlying runner for diagnostic tools.</summary>
+    public BotRunner? Runner => _runner;
+
+    /// <summary>Manually trigger a diagnostic dump via the runner.</summary>
+    public void TriggerEmergencyDump(string reason) => _runner?.TriggerEmergencyDump(reason);
+
     /// <summary>Returns the active MiningBot instance if one is running, otherwise null.</summary>
-    public MiningBot? ActiveMiningBot => _activeBot as MiningBot;
+    public MiningBot? ActiveMiningBot
+    {
+        get
+        {
+            if (_activeBot is MiningBot mb) return mb;
+            if (_activeBot is SurvivalWrappedBot swb && swb.Inner is MiningBot smb) return smb;
+            return null;
+        }
+    }
 
     /// <summary>Toggle a belt's user-excluded status on the active mining bot.</summary>
     public void ToggleBeltExcluded(int idx) => ActiveMiningBot?.ToggleBeltExcluded(idx);
+
+    /// <summary>Updates mining parameters on the active bot instance without stopping it.</summary>
+    public void UpdateMiningSettings(int oreHoldPct, int shieldPct)
+    {
+        var bot = ActiveMiningBot;
+        if (bot != null)
+        {
+            bot.OreHoldFullPercent = oreHoldPct;
+            bot.ShieldEscapePercent = shieldPct;
+            _logSink.Add("Info", "Orchestrator", $"Updated mining settings: OreHold={oreHoldPct}%, ShieldEscape={shieldPct}%");
+        }
+    }
+
+    public void StartRecording()
+    {
+        _runner?.Recorder.Start();
+        _logSink.Add("Info", "Orchestrator", "Session recording started");
+    }
+
+    public void StopRecording()
+    {
+        _runner?.Recorder.Stop();
+        _logSink.Add("Info", "Orchestrator", "Session recording stopped");
+    }
+
+    public string? GetRecordingJson() => _runner?.Recorder.ExportJson();
 
     public BotOrchestrator(
         IHubContext<BotHub> hub,
@@ -242,6 +284,18 @@ public sealed class BotOrchestrator : IDisposable
         _runner?.Resume();
         _logSink.Add("Info", "Orchestrator", "Bot resumed");
         await _hub.Clients.All.SendAsync("StateChanged", State.ToString());
+    }
+
+    /// <summary>Executes exactly one tick while paused.</summary>
+    public async Task StepAsync()
+    {
+        if (_isMonitorMode || _runner == null) return;
+        if (State != BotRunnerState.Paused)
+            throw new InvalidOperationException("Bot must be paused to step.");
+        
+        _runner.Step();
+        _logSink.Add("Info", "Orchestrator", "Single tick executed (Step)");
+        await Task.CompletedTask;
     }
 
     /// <summary>
@@ -619,7 +673,7 @@ public sealed class BotOrchestrator : IDisposable
         var runner = new BotRunner(bot, settings, reader, parser, input, executor,
             _loggerFactory.CreateLogger<BotRunner>());
 
-        runner.OnTick += ctx =>
+        runner.OnTick += (ctx, bot) =>
         {
             _lastContext = ctx;
             // Update hold cache from whatever hold is currently visible in the inventory window
@@ -636,7 +690,24 @@ public sealed class BotOrchestrator : IDisposable
                     w.CapacityGauge.Used, w.CapacityGauge.Maximum,
                     (w.Items ?? []).Select(i => new CargoItemDto(i.Name, i.Quantity)).ToList());
             }
-            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache));
+
+            var miningBot = bot as MiningBot;
+            if (miningBot == null && bot is SurvivalWrappedBot swb && swb.Inner is MiningBot mb)
+            {
+                miningBot = mb;
+            }
+
+            _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache, TicksPerMinute, miningBot));
+
+            // LIVE DEBUG BRIDGE: Write full state to disk for Gemini analysis
+            try
+            {
+                var stateDto = DtoMapper.ToBotStateDto(ctx);
+                var debugPath = Path.Combine(SessionFileLogger.GetLogsDirectory(), "live_debug.json");
+                var json = JsonSerializer.Serialize(stateDto, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(debugPath, json);
+            }
+            catch { /* ignore debug I/O errors */ }
         };
 
         runner.OnError += ex =>
@@ -654,13 +725,65 @@ public sealed class BotOrchestrator : IDisposable
 
     // ─── Query ──────────────────────────────────────────────────────────────
 
-    public BotStatusResponse GetStatus(int port) => new(
-        State.ToString(),
-        CurrentBotName,
-        _activeBot?.Description,
-        _lastContext != null ? DtoMapper.ToDto(_lastContext, _holdCache) : null,
-        port,
-        SurvivalEnabled);
+    public BotStatusResponse GetStatus(int port)
+    {
+        var miningBot = _activeBot as MiningBot;
+        if (miningBot == null && _activeBot is SurvivalWrappedBot swb && swb.Inner is MiningBot mb)
+        {
+            miningBot = mb;
+        }
+
+        return new BotStatusResponse(
+            State.ToString(),
+            CurrentBotName,
+            _activeBot?.Description,
+            _lastContext != null ? DtoMapper.ToDto(_lastContext, _holdCache, TicksPerMinute, miningBot) : null,
+            port,
+            SurvivalEnabled);
+    }
+
+    public BotStateDto? GetFullState() => 
+        _lastContext != null ? DtoMapper.ToBotStateDto(_lastContext) : null;
+
+    public object GetInventoryDebug()
+    {
+        var ui = _lastContext?.GameState.ParsedUI;
+        if (ui == null) return new { error = "No game state available" };
+
+        return new
+        {
+            tick = _lastContext!.TickCount,
+            windowCount = ui.InventoryWindows.Count,
+            windows = ui.InventoryWindows.Select(w => new
+            {
+                type = w.UINode.Node.PythonObjectTypeName,
+                name = w.UINode.Node.GetDictString("_name"),
+                title = w.SubCaptionLabelText,
+                holdType = w.HoldType.ToString(),
+                gauge = w.CapacityGauge == null ? null : new { w.CapacityGauge.Used, w.CapacityGauge.Maximum, w.CapacityGauge.FillPercent },
+                itemCount = w.Items.Count,
+                navEntryCount = w.NavEntries.Count,
+                navEntries = w.NavEntries.Select(e => new { e.Label, type = e.HoldType.ToString(), e.IsSelected })
+            })
+        };
+    }
+
+    public object GetHoldCacheDebug()
+    {
+        return new
+        {
+            count = _holdCache.Count,
+            entries = _holdCache.Select(kv => new
+            {
+                key = kv.Key,
+                name = kv.Value.Name,
+                type = kv.Value.HoldType,
+                used = kv.Value.UsedM3,
+                max = kv.Value.MaxM3,
+                itemCount = kv.Value.Items.Count
+            })
+        };
+    }
 
     public IReadOnlyList<LogEntry> GetRecentLogs(int count = 50) =>
         _logSink.GetRecent(count);
@@ -676,8 +799,9 @@ public sealed class BotOrchestrator : IDisposable
 
     // ─── Survival wrapper ────────────────────────────────────────────────────
 
-    private sealed class SurvivalWrappedBot(IBot inner) : IBot
+    public sealed class SurvivalWrappedBot(IBot inner) : IBot
     {
+        public IBot Inner => inner;
         public string Name => inner.Name;
         public string Description => inner.Description;
         public BotSettings GetDefaultSettings() => inner.GetDefaultSettings();

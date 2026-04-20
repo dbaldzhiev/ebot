@@ -150,9 +150,36 @@ public sealed class EveBotMcpTools(BotOrchestrator orchestrator)
         }
     }
 
+    [McpServerTool(Name = "step_bot")]
+    [Description("Execute a single bot tick while the bot is paused. Useful for step-by-step debugging.")]
+    public async Task<string> StepBot()
+    {
+        try
+        {
+            await orchestrator.StepAsync();
+            return "Single tick executed (Step).";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to step bot: {ex.Message}";
+        }
+    }
+
     // ─── Game state detail ─────────────────────────────────────────────────
 
+    [McpServerTool(Name = "get_bot_state")]
+    [Description("Get the deep internal state of the bot, including the full blackboard (variables) and current execution stack.")]
+    public string GetBotState()
+    {
+        var state = orchestrator.GetFullState();
+        if (state == null)
+            return "No bot state available. Start a bot first.";
+
+        return Serialize(state);
+    }
+
     [McpServerTool(Name = "get_overview")]
+
     [Description("Get the current overview window entries (objects visible in space: asteroids, ships, gates, etc.).")]
     public string GetOverview()
     {
@@ -243,6 +270,39 @@ public sealed class EveBotMcpTools(BotOrchestrator orchestrator)
             message = l.Message,
         });
         return Serialize(result);
+    }
+
+    [McpServerTool(Name = "get_bt_state")]
+    [Description("Get the current execution path of the behavior tree and the world state synthesis.")]
+    public string GetBTState()
+    {
+        var runner = orchestrator.Runner;
+        if (runner == null) return "Bot not running.";
+
+        var ctx = orchestrator.LastContext;
+        var trace = ctx != null ? string.Join(" -> ", ctx.ActivePathSnapshot.Reverse()) : "N/A";
+        var world = ctx?.Blackboard.Get<object>("world"); // Generic object for serialization
+
+        return Serialize(new
+        {
+            trace,
+            tick = ctx?.TickCount ?? 0,
+            world_state = world
+        });
+    }
+
+    [McpServerTool(Name = "trigger_diagnostic_dump")]
+    [Description("Manually trigger a full diagnostic dump (JSON frame + Screenshot).")]
+    public string TriggerDump(
+        [Description("Reason for the dump (e.g. 'Stuck', 'ManualCheck')")] string reason = "Manual")
+    {
+        var runner = orchestrator.Runner;
+        if (runner == null) return "Bot not running.";
+
+        // Use reflection or make internal method public? 
+        // Let's assume we can add a public method to orchestrator to trigger this.
+        orchestrator.TriggerEmergencyDump(reason);
+        return $"Diagnostic dump triggered with reason: {reason}. Check the logs folder.";
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────
