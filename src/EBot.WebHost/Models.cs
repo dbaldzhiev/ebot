@@ -50,7 +50,11 @@ public sealed record GameStateSummary(
     SelectedItemDto? SelectedItem,
     // Current Bot Settings
     int? MiningOreHoldPct,
-    int? MiningShieldPct);
+    int? MiningShieldPct,
+    // Mining session statistics
+    double? TotalMinedM3,
+    int? UnloadCycles,
+    double? MiningRateM3Hr);
 
 public sealed record AsteroidDto(
     string Name,
@@ -258,8 +262,7 @@ public static class DtoMapper
             var key  = w.HoldType != InventoryHoldType.Unknown
                        ? w.HoldType.ToString()
                        : (w.SubCaptionLabelText ?? "Unknown");
-            var name = w.SubCaptionLabelText ?? (w.HoldType != InventoryHoldType.Unknown
-                       ? w.HoldType.ToString() : "Hold");
+            var name = FriendlyHoldName(w.SubCaptionLabelText, w.HoldType);
             holdsDict[key] = new HoldInfoDto(
                 name, key,
                 w.CapacityGauge.Used, w.CapacityGauge.Maximum,
@@ -284,7 +287,10 @@ public static class DtoMapper
 
         // Nav entries from the currently-open inventory window
         var navEntries = ui.InventoryWindows.FirstOrDefault()?.NavEntries
-            .Select(e => new HoldNavEntryDto(e.Label ?? e.HoldType.ToString(), e.HoldType.ToString(), e.IsSelected))
+            .Select(e => new HoldNavEntryDto(
+                FriendlyHoldNavLabel(e.Label, e.HoldType),
+                e.HoldType.ToString(),
+                e.IsSelected))
             .ToList() ?? [];
 
         // ── Expanded UI ──────────────────────────────────────────────────────
@@ -297,7 +303,11 @@ public static class DtoMapper
             ui.SelectedItemWindow.UINode.GetAllContainedDisplayTexts().FirstOrDefault(),
             ui.SelectedItemWindow.ActionButtons.Select(b => b.Node.GetDictString("_hint") ?? b.Node.PythonObjectTypeName).ToList());
 
-        var stationName = ui.StationWindow?.UINode.GetAllContainedDisplayTexts().FirstOrDefault(t => t.Length > 3);
+        var stationName = ui.StationWindow?.UINode.GetAllContainedDisplayTexts()
+            .FirstOrDefault(t => t.Length > 3
+                && !t.Contains("minimized", StringComparison.OrdinalIgnoreCase)
+                && !t.Contains("minimize",  StringComparison.OrdinalIgnoreCase)
+                && !t.Contains("caption",   StringComparison.OrdinalIgnoreCase));
 
         return new GameStateSummary(
             gs.IsInSpace,
@@ -331,7 +341,10 @@ public static class DtoMapper
             MapDroneGroup(ui.DronesWindow?.DronesInSpace),
             selectedItem,
             miningBot?.OreHoldFullPercent,
-            miningBot?.ShieldEscapePercent);
+            miningBot?.ShieldEscapePercent,
+            miningBot?.TotalUnloadedM3,
+            (int?)miningBot?.UnloadCycles,
+            miningBot?.SessionRateM3Hr);
     }
 
     public static BotStateDto ToBotStateDto(EBot.Core.DecisionEngine.BotContext ctx)
@@ -342,6 +355,43 @@ public static class DtoMapper
             ctx.ActivePathSnapshot.ToList(),
             ctx.Blackboard.GetData(),
             ctx.Actions.GetDescriptions());
+    }
+
+    public static string FriendlyHoldName(string? raw, InventoryHoldType holdType)
+    {
+        // Map EVE's raw Python type names / subcaption strings to readable labels
+        if (!string.IsNullOrEmpty(raw))
+        {
+            return raw switch
+            {
+                "ShipGeneralMiningHold"    => "Ore Hold",
+                "ShipGeneralCargoHold"     => "Cargo Hold",
+                "ShipFleetHangar"          => "Fleet Hangar",
+                "ShipFuelBay"              => "Fuel Bay",
+                "ShipMaintBay"             => "Ship Maintenance Bay",
+                "ShipInfrastructureHold"   => "Infrastructure Hold",
+                _                          => raw,
+            };
+        }
+        return holdType switch
+        {
+            InventoryHoldType.Mining          => "Ore Hold",
+            InventoryHoldType.Cargo           => "Cargo Hold",
+            InventoryHoldType.Fleet           => "Fleet Hangar",
+            InventoryHoldType.Fuel            => "Fuel Bay",
+            InventoryHoldType.Infrastructure  => "Infrastructure Hold",
+            InventoryHoldType.ShipMaintenance => "Ship Maintenance Bay",
+            InventoryHoldType.Item            => "Item Hangar",
+            _                                 => "Hold",
+        };
+    }
+
+    private static string FriendlyHoldNavLabel(string? label, InventoryHoldType holdType)
+    {
+        if (!string.IsNullOrEmpty(label) &&
+            !label.StartsWith("Ship", StringComparison.OrdinalIgnoreCase))
+            return label;
+        return FriendlyHoldName(label, holdType);
     }
 
     private static string FormatDistance(double meters)

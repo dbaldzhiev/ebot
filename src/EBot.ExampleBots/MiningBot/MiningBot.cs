@@ -32,6 +32,12 @@ public sealed partial class MiningBot : IBot
     public IReadOnlyDictionary<int, bool>   BeltExcluded => _beltExcluded;
     public int BeltCount => _beltCount;
 
+    public double TotalUnloadedM3 => _totalUnloadedM3;
+    public int    UnloadCycles    => _unloadCycles;
+    public double SessionRateM3Hr =>
+        _sessionStart != default && (DateTimeOffset.UtcNow - _sessionStart).TotalHours > 0.01
+        ? _totalUnloadedM3 / (DateTimeOffset.UtcNow - _sessionStart).TotalHours : 0;
+
     public void ToggleBeltExcluded(int idx) =>
         _beltExcluded.AddOrUpdate(idx, true, (_, v) => !v);
 

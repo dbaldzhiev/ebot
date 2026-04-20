@@ -386,7 +386,7 @@ public sealed class BotOrchestrator : IDisposable
                 var key = w.HoldType != InventoryHoldType.Unknown
                           ? w.HoldType.ToString()
                           : (w.SubCaptionLabelText ?? "Unknown");
-                var name = w.SubCaptionLabelText ?? key;
+                var name = DtoMapper.FriendlyHoldName(w.SubCaptionLabelText, w.HoldType);
                 _holdCache[key] = new HoldInfoDto(
                     name, key,
                     w.CapacityGauge.Used, w.CapacityGauge.Maximum,
