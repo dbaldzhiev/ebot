@@ -27,11 +27,15 @@ public sealed class BotRunner : IDisposable
     private readonly ActionExecutor _executor;
     private readonly ILogger<BotRunner> _logger;
 
+    public SessionRecorder Recorder { get; } = new();
+
     private readonly BotContext _context = new();
     private IBehaviorNode? _behaviorTree;
     private CancellationTokenSource? _cts;
     private Task? _runTask;
     private long _snapshotSequence;
+
+    private volatile bool _stepRequested;
 
     // Pending hot-swap — applied at the top of the next tick so the read cycle is never interrupted
     private sealed class SwapRequest(IBot bot, bool isMonitorMode)
@@ -159,6 +163,16 @@ public sealed class BotRunner : IDisposable
     }
 
     /// <summary>
+    /// Executes a single tick if the bot is currently paused.
+    /// </summary>
+    public void Step()
+    {
+        if (State != BotRunnerState.Paused) return;
+        _stepRequested = true;
+        _logger.LogInformation("Step requested");
+    }
+
+    /// <summary>
     /// Stops the bot and waits for it to shut down.
     /// </summary>
     public async Task StopAsync()
@@ -209,12 +223,14 @@ public sealed class BotRunner : IDisposable
                     break;
                 }
 
-                // Skip tick if paused
-                if (State == BotRunnerState.Paused)
+                // Skip tick if paused (unless a single step is requested)
+                if (State == BotRunnerState.Paused && !_stepRequested)
                 {
                     await Task.Delay(500, ct);
                     continue;
                 }
+
+                _stepRequested = false;
 
                 // STEP 1: Read game state
                 var readResult = await _reader.ReadMemoryAsync(ct);
@@ -248,6 +264,13 @@ public sealed class BotRunner : IDisposable
 
                 _context.GameState = snapshot;
                 _context.TickCount++;
+
+                // RECORDING: Capture state before BT tick
+                IReadOnlyDictionary<string, object>? blackboardBefore = null;
+                if (Recorder.IsRecording)
+                {
+                    blackboardBefore = new Dictionary<string, object>(_context.Blackboard.GetData());
+                }
 
                 // STEP 4: Run the behavior tree with a watchdog
                 _context.Actions.Clear();
@@ -290,6 +313,18 @@ public sealed class BotRunner : IDisposable
                 // Record tick timestamp for TPM
                 lock (_tpmLock)
                     _tickTimestampsMs.Enqueue(Environment.TickCount64);
+
+                if (Recorder.IsRecording)
+                {
+                    Recorder.Record(new RecordedTick
+                    {
+                        TickCount = _context.TickCount,
+                        Timestamp = DateTimeOffset.UtcNow,
+                        FrameJson = LastRawJson,
+                        BlackboardBefore = blackboardBefore,
+                        Actions = _context.Actions.GetDescriptions()
+                    });
+                }
 
                 OnTick?.Invoke(_context, _bot);
 

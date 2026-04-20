@@ -89,10 +89,44 @@ public sealed class BotOrchestrator : IDisposable
     public void TriggerEmergencyDump(string reason) => _runner?.TriggerEmergencyDump(reason);
 
     /// <summary>Returns the active MiningBot instance if one is running, otherwise null.</summary>
-    public MiningBot? ActiveMiningBot => _activeBot as MiningBot;
+    public MiningBot? ActiveMiningBot
+    {
+        get
+        {
+            if (_activeBot is MiningBot mb) return mb;
+            if (_activeBot is SurvivalWrappedBot swb && swb.Inner is MiningBot smb) return smb;
+            return null;
+        }
+    }
 
     /// <summary>Toggle a belt's user-excluded status on the active mining bot.</summary>
     public void ToggleBeltExcluded(int idx) => ActiveMiningBot?.ToggleBeltExcluded(idx);
+
+    /// <summary>Updates mining parameters on the active bot instance without stopping it.</summary>
+    public void UpdateMiningSettings(int oreHoldPct, int shieldPct)
+    {
+        var bot = ActiveMiningBot;
+        if (bot != null)
+        {
+            bot.OreHoldFullPercent = oreHoldPct;
+            bot.ShieldEscapePercent = shieldPct;
+            _logSink.Add("Info", "Orchestrator", $"Updated mining settings: OreHold={oreHoldPct}%, ShieldEscape={shieldPct}%");
+        }
+    }
+
+    public void StartRecording()
+    {
+        _runner?.Recorder.Start();
+        _logSink.Add("Info", "Orchestrator", "Session recording started");
+    }
+
+    public void StopRecording()
+    {
+        _runner?.Recorder.Stop();
+        _logSink.Add("Info", "Orchestrator", "Session recording stopped");
+    }
+
+    public string? GetRecordingJson() => _runner?.Recorder.ExportJson();
 
     public BotOrchestrator(
         IHubContext<BotHub> hub,
@@ -250,6 +284,18 @@ public sealed class BotOrchestrator : IDisposable
         _runner?.Resume();
         _logSink.Add("Info", "Orchestrator", "Bot resumed");
         await _hub.Clients.All.SendAsync("StateChanged", State.ToString());
+    }
+
+    /// <summary>Executes exactly one tick while paused.</summary>
+    public async Task StepAsync()
+    {
+        if (_isMonitorMode || _runner == null) return;
+        if (State != BotRunnerState.Paused)
+            throw new InvalidOperationException("Bot must be paused to step.");
+        
+        _runner.Step();
+        _logSink.Add("Info", "Orchestrator", "Single tick executed (Step)");
+        await Task.CompletedTask;
     }
 
     /// <summary>
@@ -652,6 +698,16 @@ public sealed class BotOrchestrator : IDisposable
             }
 
             _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache, TicksPerMinute, miningBot));
+
+            // LIVE DEBUG BRIDGE: Write full state to disk for Gemini analysis
+            try
+            {
+                var stateDto = DtoMapper.ToBotStateDto(ctx);
+                var debugPath = Path.Combine(SessionFileLogger.GetLogsDirectory(), "live_debug.json");
+                var json = JsonSerializer.Serialize(stateDto, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(debugPath, json);
+            }
+            catch { /* ignore debug I/O errors */ }
         };
 
         runner.OnError += ex =>
@@ -685,6 +741,9 @@ public sealed class BotOrchestrator : IDisposable
             port,
             SurvivalEnabled);
     }
+
+    public BotStateDto? GetFullState() => 
+        _lastContext != null ? DtoMapper.ToBotStateDto(_lastContext) : null;
 
     public IReadOnlyList<LogEntry> GetRecentLogs(int count = 50) =>
         _logSink.GetRecent(count);

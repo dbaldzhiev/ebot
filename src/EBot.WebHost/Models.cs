@@ -45,7 +45,10 @@ public sealed record GameStateSummary(
     // Expanded UI
     DroneGroupDto? DronesInBay,
     DroneGroupDto? DronesInSpace,
-    SelectedItemDto? SelectedItem);
+    SelectedItemDto? SelectedItem,
+    // Current Bot Settings
+    int? MiningOreHoldPct,
+    int? MiningShieldPct);
 
 public sealed record AsteroidDto(
     string Name,
@@ -149,7 +152,25 @@ public sealed record OllamaModelRequest(string Model);
 
 public sealed record DpiScaleRequest(float Scale);
 
+public sealed record UpdateMiningSettingsRequest(int OreHoldFull, int ShieldEscape);
+
 public sealed record SwitchHoldRequest(string HoldType);
+
+// ─── Debug & Simulation DTOs ───────────────────────────────────────────────
+
+public sealed record BotStateDto(
+    long TickCount,
+    string Runtime,
+    IReadOnlyList<string> ActiveNodes,
+    IReadOnlyDictionary<string, object> Blackboard,
+    IReadOnlyList<string> QueuedActions);
+
+public sealed record RecordedTickDto(
+    long TickCount,
+    DateTimeOffset Timestamp,
+    string FrameJson,
+    IReadOnlyDictionary<string, object> BlackboardBefore,
+    IReadOnlyList<string> Actions);
 
 /// <summary>A saved autopilot destination (loaded from or stored via ESI).</summary>
 public sealed record TravelDestination(
@@ -305,7 +326,19 @@ public static class DtoMapper
             engineRpm,
             MapDroneGroup(ui.DronesWindow?.DronesInBay),
             MapDroneGroup(ui.DronesWindow?.DronesInSpace),
-            selectedItem);
+            selectedItem,
+            miningBot?.OreHoldFullPercent,
+            miningBot?.ShieldEscapePercent);
+    }
+
+    public static BotStateDto ToBotStateDto(EBot.Core.DecisionEngine.BotContext ctx)
+    {
+        return new BotStateDto(
+            ctx.TickCount,
+            ctx.RunDuration.ToString(@"hh\:mm\:ss"),
+            ctx.ActiveNodes.ToList(),
+            ctx.Blackboard.GetData(),
+            ctx.Actions.GetDescriptions());
     }
 
     private static string FormatDistance(double meters)

@@ -108,4 +108,10 @@ public sealed class Blackboard
     /// Gets all keys currently stored in the blackboard.
     /// </summary>
     public IEnumerable<string> Keys => _data.Keys;
+
+    /// <summary>
+    /// Gets all data currently stored in the blackboard as a read-only dictionary.
+    /// Useful for debugging and serialization.
+    /// </summary>
+    public IReadOnlyDictionary<string, object> GetData() => _data;
 }

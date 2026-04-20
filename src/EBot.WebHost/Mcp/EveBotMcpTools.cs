@@ -150,9 +150,36 @@ public sealed class EveBotMcpTools(BotOrchestrator orchestrator)
         }
     }
 
+    [McpServerTool(Name = "step_bot")]
+    [Description("Execute a single bot tick while the bot is paused. Useful for step-by-step debugging.")]
+    public async Task<string> StepBot()
+    {
+        try
+        {
+            await orchestrator.StepAsync();
+            return "Single tick executed (Step).";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to step bot: {ex.Message}";
+        }
+    }
+
     // ─── Game state detail ─────────────────────────────────────────────────
 
+    [McpServerTool(Name = "get_bot_state")]
+    [Description("Get the deep internal state of the bot, including the full blackboard (variables) and current execution stack.")]
+    public string GetBotState()
+    {
+        var state = orchestrator.GetFullState();
+        if (state == null)
+            return "No bot state available. Start a bot first.";
+
+        return Serialize(state);
+    }
+
     [McpServerTool(Name = "get_overview")]
+
     [Description("Get the current overview window entries (objects visible in space: asteroids, ships, gates, etc.).")]
     public string GetOverview()
     {

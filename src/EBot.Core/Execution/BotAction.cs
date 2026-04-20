@@ -60,42 +60,69 @@ public abstract record BotAction
 public sealed record ClickAction(int X, int Y, VirtualKey[] Modifiers) : BotAction
 {
     public ClickAction(int x, int y) : this(x, y, []) { }
+    public override string ToString() => Modifiers.Length > 0 
+        ? $"Click({X},{Y}, {string.Join("+", Modifiers)})" 
+        : $"Click({X},{Y})";
 }
 
 /// <summary>Right-click at screen coordinates, optionally with modifiers.</summary>
 public sealed record RightClickAction(int X, int Y, VirtualKey[] Modifiers) : BotAction
 {
     public RightClickAction(int x, int y) : this(x, y, []) { }
+    public override string ToString() => Modifiers.Length > 0 
+        ? $"RightClick({X},{Y}, {string.Join("+", Modifiers)})" 
+        : $"RightClick({X},{Y})";
 }
 
 /// <summary>Double-click at screen coordinates.</summary>
-public sealed record DoubleClickAction(int X, int Y) : BotAction;
+public sealed record DoubleClickAction(int X, int Y) : BotAction
+{
+    public override string ToString() => $"DoubleClick({X},{Y})";
+}
 
 /// <summary>Drag from one point to another.</summary>
-public sealed record DragAction(int FromX, int FromY, int ToX, int ToY) : BotAction;
+public sealed record DragAction(int FromX, int FromY, int ToX, int ToY) : BotAction
+{
+    public override string ToString() => $"Drag({FromX},{FromY} -> {ToX},{ToY})";
+}
 
 /// <summary>Press and release a key, optionally with modifiers.</summary>
 public sealed record KeyPressAction(VirtualKey Key, VirtualKey[] Modifiers) : BotAction
 {
     public KeyPressAction(VirtualKey key) : this(key, []) { }
+    public override string ToString() => Modifiers.Length > 0 
+        ? $"KeyPress({Key}, {string.Join("+", Modifiers)})" 
+        : $"KeyPress({Key})";
 }
 
 /// <summary>Wait for a specified duration.</summary>
-public sealed record WaitAction(TimeSpan Duration) : BotAction;
+public sealed record WaitAction(TimeSpan Duration) : BotAction
+{
+    public override string ToString() => $"Wait({Duration.TotalSeconds:F1}s)";
+}
 
 /// <summary>Type a text string character by character.</summary>
-public sealed record TypeTextAction(string Text) : BotAction;
+public sealed record TypeTextAction(string Text) : BotAction
+{
+    public override string ToString() => $"Type(\"{Text}\")";
+}
 
 /// <summary>
 /// Move the mouse cursor to screen coordinates without pressing any button.
 /// Used to hover over context-menu entries that have submenus (they expand on hover, not click).
 /// </summary>
-public sealed record MoveMouseAction(int X, int Y) : BotAction;
+public sealed record MoveMouseAction(int X, int Y) : BotAction
+{
+    public override string ToString() => $"MoveTo({X},{Y})";
+}
 
 /// <summary>
 /// Scroll the mouse wheel. Negative delta = scroll down, positive = scroll up.
 /// </summary>
-public sealed record ScrollAction(int Delta) : BotAction;
+public sealed record ScrollAction(int Delta) : BotAction
+{
+    public override string ToString() => $"Scroll({Delta})";
+}
 
 /// <summary>
 /// A queue of bot actions to be executed by the execution engine.
@@ -116,4 +143,7 @@ public sealed class ActionQueue
     public void Clear() => _queue.Clear();
 
     public IReadOnlyList<BotAction> ToList() => [.. _queue];
+
+    public IReadOnlyList<string> GetDescriptions() => 
+        _queue.Select(a => a.ToString() ?? "Unknown").ToList();
 }

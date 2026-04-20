@@ -315,7 +315,14 @@ public sealed partial class MiningBot
                                 ctx.Blackboard.Set("home_menu_type", wonMenu);
                                 ctx.Log($"[Mining] Home station is under '{wonMenu}' — remembered for this session.");
                             }
+
+                            // CLEANUP: Reset navigation AND mining variables for the next cycle
                             ctx.Blackboard.Set("return_phase", "");
+                            ctx.Blackboard.Set("return_tick", 0);
+                            ctx.Blackboard.Remove("mining_phase"); // Ensure fresh start at next belt
+                            ctx.Blackboard.Set("mining_tick", 0);
+                            
+                            ctx.Log("[Mining] Docking confirmed. Resetting states for next cycle.");
                             return NodeStatus.Success;
                         }
                         int tick = ctx.Blackboard.Get<int>("return_tick") + 1;

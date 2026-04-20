@@ -25,7 +25,7 @@ public sealed partial class MiningBot
         var root = ctx.GameState.ParsedUI.UITree;
         if (root == null)
         {
-            ctx.Actions.Enqueue(new RightClickAction(400, 300));
+            ctx.Actions.Enqueue(new RightClickAction(400, 400));
             return;
         }
 
@@ -34,21 +34,24 @@ public sealed partial class MiningBot
         var cx = root.Region.X;
         var cy = root.Region.Y;
 
-        // EVE's ship model is usually centered. Clicking near the top-left (but clear of Neocom/Menus)
-        // or top-right (if overview allows) is safer than 1/3, 1/4.
-        // Let's target a safe zone in the top-left quadrant with randomized offset.
-        int targetX = cx + 400 + Random.Shared.Next(-80, 80);
-        int targetY = cy + 180 + Random.Shared.Next(-40, 40);
+        // Ship is usually centered. UI is at edges.
+        // Let's target a safe "True Empty" zone in the mid-left area, 
+        // avoiding Neocom (left 80px) and top-left info panels (top 200px).
+        // Moving further right (450px) and further down (250px) from top-left.
+        int targetX = cx + 450 + Random.Shared.Next(-60, 60);
+        int targetY = cy + 250 + Random.Shared.Next(-40, 40);
 
-        var overview = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
-        if (overview != null)
+        // Check if Overview or another window is covering our target spot
+        var overlappingWindow = ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault(w => w.UINode.Region.Contains(targetX, targetY))
+            ?? ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault(w => w.UINode.Region.Contains(targetX, targetY)) as object;
+
+        if (overlappingWindow != null)
         {
-            // If overview is on the left, move right
-            if (overview.UINode.Region.X < cw / 2)
-                targetX = cx + cw - 400 + Random.Shared.Next(-80, 80);
+            // If that spot is busy, try a spot further towards the middle-right
+            targetX = cx + cw - 450 + Random.Shared.Next(-60, 60);
         }
 
-        ctx.Log($"[Navigation] Right-clicking space at ({targetX}, {targetY}) to open context menu.");
+        ctx.Log($"[Navigation] Right-clicking space at ({targetX}, {targetY}) to open context menu (Avoiding UI text).");
         ctx.Actions.Enqueue(new RightClickAction(targetX, targetY));
     }
 

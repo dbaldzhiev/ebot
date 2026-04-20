@@ -13,8 +13,8 @@ public sealed partial class MiningBot : IBot
 {
     // ─── Configurable settings ──────────────────────────────────────────────
     public string? HomeStationOverride { get; init; }
-    public int OreHoldFullPercent { get; init; } = 95;
-    public int ShieldEscapePercent { get; init; } = 25;
+    public int OreHoldFullPercent { get; set; } = 95;
+    public int ShieldEscapePercent { get; set; } = 25;
 
     // ─── Session statistics ──────────────────────────────────────────────────
     private double         _totalUnloadedM3;
@@ -141,20 +141,36 @@ public sealed partial class MiningBot : IBot
     // ─── Core infrastructure behaviors ──────────────────────────────────────
 
     private IBehaviorNode HandleInSpace() =>
-        new SequenceNode("In space",
-            new ConditionNode("Is in space?", ctx => ctx.GameState.IsInSpace),
-            // StatelessSelectorNode: re-evaluates ALL children from index 0 every tick.
-            // This ensures ReturnToStation and other high-priority nodes are always checked
-            // even when the mining state machine is Running. A regular SelectorNode would
-            // lock its cursor at BT_MineAtBelt and never re-check ReturnToStation.
-            new StatelessSelectorNode("Space actions",
-                WaitCapRegen(),
-                ReturnToStation(),
-                BT_DroneSecurity(),
-                EnsureMiningTab(),
-                NavigateToMiningHold(),
-                BT_MineAtBelt(),
-                WarpToBelt()));
+        new StatelessSelectorNode("Space actions",
+            new ConditionNode("Wait: not in space", ctx => !ctx.GameState.IsInSpace),
+            new ActionNode("Space state cleanup", ctx => {
+                // SAFETY: If we are in space and don't need to unload, 
+                // ensure the return-to-station machine is fully reset.
+                if (!ctx.Blackboard.Get<bool>("needs_unload") && !IsOreHoldFull(ctx))
+                {
+                    if (ctx.Blackboard.Get<string>("return_phase") != "")
+                    {
+                        ctx.Log("[Navigation] Hold is empty — clearing stale return states to enable warp.");
+                        ctx.Blackboard.Set("return_phase", "");
+                        ctx.Blackboard.Set("return_tick", 0);
+                    }
+                    // Also ensure mining phase and targeting memory is reset so we scan fresh at the next belt
+                    if (!AnyAsteroidsInOverview(ctx) && ctx.Blackboard.Get<string>("mining_phase") != "")
+                    {
+                        ctx.Blackboard.Remove("mining_phase");
+                        ctx.Blackboard.Set("mining_tick", 0);
+                        ctx.Blackboard.Remove("assumed_locked"); // CRITICAL: Clear ghost targets on arrival
+                    }
+                }
+                return NodeStatus.Failure; // Always fall through to actual actions
+            }),
+            WaitCapRegen(),
+            ReturnToStation(),
+            BT_DroneSecurity(),
+            EnsureMiningTab(),
+            NavigateToMiningHold(),
+            BT_MineAtBelt(),
+            WarpToBelt());
 
     private static IBehaviorNode WaitCapRegen() =>
         new SequenceNode("Capacitor regen",
