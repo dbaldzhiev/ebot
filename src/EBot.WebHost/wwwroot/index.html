@@ -113,10 +113,18 @@
     /* ─── Main Content ───────────────────────────────────────────────────── */
     main {
       display: grid;
-      grid-template-rows: auto auto 1fr auto;
+      /* 5 explicit rows: HUD | mining(capped) | info(capped) | overview(flex) | footer */
+      grid-template-rows: auto minmax(0, 145px) minmax(0, 160px) 1fr auto;
       overflow: hidden;
       background: var(--bg);
+      height: 100%;
     }
+    /* Pin each child to its row so display:none on mining collapses row 2 to 0 */
+    .hud-row          { grid-row: 1; }
+    #mining-dashboard { grid-row: 2; }
+    .info-row         { grid-row: 3; }
+    .content-row      { grid-row: 4; }
+    main > footer     { grid-row: 5; }
 
     /* Row 1: HUD */
     .hud-row {
@@ -126,7 +134,9 @@
       background: var(--border);
       border-bottom: 1px solid var(--border);
     }
-    .hud-panel { background: var(--panel); padding: 12px 15px; }
+    .hud-panel { background: var(--panel); padding: 12px 15px; min-height: 0; }
+    /* Panels inside the capped info-row need to scroll their content */
+    .info-row .hud-panel { overflow-y: auto; }
 
     /* HP Bars */
     .ship-bars { display: flex; flex-direction: column; gap: 8px; }
@@ -162,7 +172,7 @@
       background: var(--border);
       border-bottom: 1px solid var(--border);
     }
-    .mining-panel { background: var(--panel); padding: 10px 12px; overflow: hidden; }
+    .mining-panel { background: var(--panel); padding: 10px 12px; overflow-y: auto; min-height: 0; }
 
     /* Mining session stats cards */
     .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -264,10 +274,45 @@
     .panel-sub-title { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
 
     @media (max-width: 1100px) {
-      .app-container { grid-template-columns: 1fr; grid-template-rows: auto; height: auto; overflow-y: auto; }
       html, body { overflow-y: auto; height: auto; }
+
+      .app-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        height: auto;
+        overflow-y: auto;
+      }
+
+      main {
+        grid-template-rows: auto auto auto auto auto;
+        overflow: visible;
+        height: auto;
+      }
+
+      /* Remove row pinning so auto-flow works on mobile */
+      .hud-row, #mining-dashboard, .info-row, .content-row, main > footer {
+        grid-row: auto !important;
+      }
+
+      .hud-row          { grid-template-columns: 1fr; }
+      .mining-row       { grid-template-columns: 1fr; }
+      .info-row         { grid-template-columns: 1fr 1fr; }
+      .content-row      { grid-template-columns: 1fr; }
+
+      .hud-panel        { overflow-y: visible; min-height: unset; }
+      .mining-panel     { overflow-y: visible; min-height: unset; }
+
       aside, aside.launcher-sidebar { border: none; border-bottom: 1px solid var(--border); }
-      .hud-row, .mining-row, .info-row, .content-row { grid-template-columns: 1fr; }
+
+      /* Let panels grow naturally on mobile */
+      .targets-list     { flex-wrap: wrap; height: auto; }
+      .content-row      { height: 400px; }
+      .main-table-container { height: 300px; }
+      .log-feed         { height: 200px; }
+    }
+
+    @media (max-width: 600px) {
+      .info-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
