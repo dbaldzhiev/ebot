@@ -74,6 +74,17 @@ public sealed partial class MiningBot
             var ui    = ctx.GameState.ParsedUI;
             var range = world.LaserRangeM > 0 ? world.LaserRangeM : 15000;
 
+            // Hover a mining module once to populate laser_range_m from tooltip
+            if (world.LaserRangeM <= 0 && ui.ShipUI != null && ctx.Blackboard.IsCooldownReady("hover_laser_range"))
+            {
+                var laserForTooltip = GetMiningModules(ui.ShipUI).FirstOrDefault();
+                if (laserForTooltip != null)
+                {
+                    ctx.Hover(laserForTooltip.UINode);
+                    ctx.Blackboard.SetCooldown("hover_laser_range", TimeSpan.FromSeconds(8));
+                }
+            }
+
             // 1. Propulsion & Positioning
             var best = world.PrimaryTarget;
             if (best != null && ui.ShipUI != null)
@@ -112,7 +123,7 @@ public sealed partial class MiningBot
             if (ctx.Blackboard.IsCooldownReady("lock_asteroid"))
             {
                 // Target 1: Primary — only lock when it's within laser range so we never need to unlock it
-                if (best != null && !best.IsLocked && !best.IsLockPending && best.DistanceM <= range + 2000)
+                if (best != null && !best.IsLocked && !best.IsLockPending && best.DistanceM <= range + 500)
                 {
                     ctx.Log($"[Mining] Locking Primary (in range): {best.Name}");
                     ctx.Click(best.UINode, [VirtualKey.Control]);
@@ -150,13 +161,35 @@ public sealed partial class MiningBot
     private static void TryFireIdleLasers(BotContext ctx, WorldState world, ParsedUI ui)
     {
         if (ui.ShipUI == null || ui.Targets.Count == 0) return;
-        
+
         var allLasers = GetMiningModules(ui.ShipUI).ToList();
-        var idleLasers = allLasers.Where(m => m.IsActive != true && !m.IsBusy && ctx.Blackboard.IsCooldownReady($"fire_module_{m.UINode.Node.PythonObjectAddress}")).ToList();
+
+        // Refire check: if a laser was fired but never activated within 4 s, the fire was rejected
+        // (e.g. target out of range). Clear the cooldown so it retries immediately next tick.
+        var fireTimes = ctx.Blackboard.Get<Dictionary<string, DateTimeOffset>>("laser_fire_times") ?? new();
+        foreach (var laser in allLasers)
+        {
+            var addr = laser.UINode.Node.PythonObjectAddress;
+            if (laser.IsActive == true)
+            {
+                fireTimes.Remove(addr); // confirmed active — no longer tracking
+            }
+            else if (!laser.IsBusy && fireTimes.TryGetValue(addr, out var firedAt) &&
+                     (DateTimeOffset.UtcNow - firedAt).TotalSeconds > 4)
+            {
+                ctx.Log($"[Mining] {laser.Name} did not activate after fire — clearing for retry.");
+                fireTimes.Remove(addr);
+                ctx.Blackboard.Remove($"fire_module_{addr}");
+            }
+        }
+        ctx.Blackboard.Set("laser_fire_times", fireTimes);
+
+        var idleLasers = allLasers.Where(m => m.IsActive != true && !m.IsBusy &&
+            ctx.Blackboard.IsCooldownReady($"fire_module_{m.UINode.Node.PythonObjectAddress}")).ToList();
         if (idleLasers.Count == 0) return;
 
         var assignments = ctx.Blackboard.Get<Dictionary<int, string>>("laser_targets") ?? new Dictionary<int, string>();
-        
+
         // Cleanup stale assignments using HUD addresses only
         var currentHudAddresses = new HashSet<string>(ui.Targets.Select(t => t.UINode.Node.PythonObjectAddress));
         foreach (var key in assignments.Keys.ToList())
@@ -165,20 +198,22 @@ public sealed partial class MiningBot
         foreach (var laser in idleLasers)
         {
             var assignedHudAddresses = new HashSet<string>(assignments.Values);
-            
-            // Find any circle in HUD that isn't being mined yet
+
             var targetToFire = ui.Targets.FirstOrDefault(t => !assignedHudAddresses.Contains(t.UINode.Node.PythonObjectAddress));
-                
+
             if (targetToFire != null)
             {
                 ctx.Log($"[Mining] Firing {laser.Name} at HUD target circle.");
                 ctx.Click(targetToFire.UINode);
                 ctx.Wait(TimeSpan.FromMilliseconds(650));
                 ctx.Click(laser.UINode);
-                
+
+                var laserAddr = laser.UINode.Node.PythonObjectAddress;
                 assignments[allLasers.IndexOf(laser)] = targetToFire.UINode.Node.PythonObjectAddress;
                 ctx.Blackboard.Set("laser_targets", assignments);
-                ctx.Blackboard.SetCooldown($"fire_module_{laser.UINode.Node.PythonObjectAddress}", TimeSpan.FromSeconds(12));
+                ctx.Blackboard.SetCooldown($"fire_module_{laserAddr}", TimeSpan.FromSeconds(12));
+                fireTimes[laserAddr] = DateTimeOffset.UtcNow;
+                ctx.Blackboard.Set("laser_fire_times", fireTimes);
                 break; // One per tick
             }
         }
@@ -232,8 +267,23 @@ public sealed partial class MiningBot
 
     private static ShipUIModuleButton? FindPropulsionModule(ShipUI shipUI)
     {
+        static bool IsPropName(ShipUIModuleButton m) => m.Name != null && (
+            m.Name.Contains("Afterburner",   StringComparison.OrdinalIgnoreCase) ||
+            m.Name.Contains("Microwarpdrive",StringComparison.OrdinalIgnoreCase) ||
+            m.Name.Contains("MWD",           StringComparison.OrdinalIgnoreCase) ||
+            m.Name.Contains("Propulsion",    StringComparison.OrdinalIgnoreCase));
+
         var mid = shipUI.ModuleButtonsRows.Middle.Where(m => !m.IsOffline).ToList();
-        return mid.FirstOrDefault(m => m.Name != null && (m.Name.Contains("Afterburner") || m.Name.Contains("Microwarpdrive") || m.Name.Contains("MWD")));
+
+        var named = mid.FirstOrDefault(IsPropName);
+        if (named != null) return named;
+
+        // Fallback: if there is exactly one unidentified module in the mid rack it must be the prop
+        var unnamed = mid.Where(m => m.Name == null || m.Name.StartsWith("Module ")).ToList();
+        if (unnamed.Count == 1) return unnamed[0];
+
+        // Last resort: scan all module buttons (handles rare row-parsing misplacements)
+        return shipUI.ModuleButtons.FirstOrDefault(m => !m.IsOffline && IsPropName(m));
     }
 
     private static void StopAllModules(BotContext ctx)

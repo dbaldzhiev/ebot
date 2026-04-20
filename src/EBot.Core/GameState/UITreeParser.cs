@@ -1074,8 +1074,19 @@ public sealed class UITreeParser
         if (node == null) return null;
 
         var texts = node.GetAllContainedDisplayTexts().ToList();
-        var rangeText = texts.FirstOrDefault(t => t.Contains("m", StringComparison.OrdinalIgnoreCase)
-            && EveConstants.DistanceRegex().IsMatch(t));
+
+        // "Range within 15 km" (Strip Miners) or "Optimal Range: 15 km" (regular lasers)
+        var rangeText = texts.FirstOrDefault(t =>
+            t.Contains("range", StringComparison.OrdinalIgnoreCase) &&
+            EveConstants.DistanceRegex().IsMatch(t));
+
+        // Separate label/value nodes: ["Optimal Range", "15 km"]
+        if (rangeText == null)
+        {
+            var optIdx = texts.FindIndex(t => t.Contains("range", StringComparison.OrdinalIgnoreCase));
+            if (optIdx >= 0 && optIdx + 1 < texts.Count && EveConstants.DistanceRegex().IsMatch(texts[optIdx + 1]))
+                rangeText = texts[optIdx + 1];
+        }
 
         return new ModuleButtonTooltip
         {
