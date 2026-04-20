@@ -101,7 +101,7 @@ public sealed partial class MiningBot
                     ctx.KeyPress(VirtualKey.Space, [VirtualKey.Control]);
                     ctx.Blackboard.SetCooldown("hard_break", TimeSpan.FromSeconds(10));
                 }
-                if (best.DistanceM > 5000 && world.ShipSpeed < 20 && ctx.Blackboard.IsCooldownReady("approach_cmd"))
+                if (best.DistanceM > 5000 && ctx.Blackboard.IsCooldownReady("approach_cmd"))
                 {
                     // Pre-lock: approach via overview. Post-lock: approach via HUD target bar to avoid
                     // overlap with the overview-only locking logic and the unlock-loop.
