@@ -313,11 +313,27 @@ public sealed partial class MiningBot
         }
 
         // 3. Broad text match on caption (handles "Ore Hold", "Mining Hold", "Mining Frigate Hold", etc.)
-        // Excludes "Cargo Hold" by requiring ore/mining keyword without cargo keyword.
-        return invWindows.FirstOrDefault(w =>
+        var byCaption = invWindows.FirstOrDefault(w =>
             (w.SubCaptionLabelText?.Contains("ore",    StringComparison.OrdinalIgnoreCase) == true ||
              w.SubCaptionLabelText?.Contains("mining", StringComparison.OrdinalIgnoreCase) == true) &&
              w.SubCaptionLabelText?.Contains("cargo",  StringComparison.OrdinalIgnoreCase) != true);
+        if (byCaption != null) return byCaption;
+
+        // 4. BRUTE FORCE: Final fallback for when memory reader fails to map captions
+        // Scan the UI tree for any visible text node saying "Mining Hold" or "Ore Hold"
+        var link = ctx.GameState.ParsedUI.UITree?.FindFirst(n =>
+            (n.GetAllContainedDisplayTexts().Any(t => t.Contains("Mining Hold", StringComparison.OrdinalIgnoreCase)) ||
+             n.GetAllContainedDisplayTexts().Any(t => t.Contains("Ore Hold", StringComparison.OrdinalIgnoreCase)) ||
+             n.GetAllContainedDisplayTexts().Any(t => t.Contains("ShipGeneralMiningHold", StringComparison.OrdinalIgnoreCase)))
+            && n.Region.Width > 15 && n.Region.Height > 5);
+
+        if (link != null)
+        {
+            // Find which InventoryWindow contains this text node
+            return invWindows.FirstOrDefault(w => w.UINode.Region.Contains(link.Region.X + 5, link.Region.Y + 5));
+        }
+
+        return null;
     }
 
     private bool IsOreHoldFull(BotContext ctx)

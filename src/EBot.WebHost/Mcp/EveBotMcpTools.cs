@@ -280,7 +280,7 @@ public sealed class EveBotMcpTools(BotOrchestrator orchestrator)
         if (runner == null) return "Bot not running.";
 
         var ctx = orchestrator.LastContext;
-        var trace = ctx != null ? string.Join(" -> ", ctx.ActiveNodes.Reverse()) : "N/A";
+        var trace = ctx != null ? string.Join(" -> ", ctx.ActivePathSnapshot.Reverse()) : "N/A";
         var world = ctx?.Blackboard.Get<object>("world"); // Generic object for serialization
 
         return Serialize(new

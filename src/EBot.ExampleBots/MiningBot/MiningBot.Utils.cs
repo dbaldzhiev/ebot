@@ -61,7 +61,9 @@ public sealed partial class MiningBot
 
     private static bool AnyAsteroidsInOverview(BotContext ctx)
     {
-        return AsteroidsInOverview(ctx).Any();
+        var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
+        if (ov == null) return false;
+        return ov.Entries.Any(IsAsteroid);
     }
     private static IEnumerable<OverviewEntry> AsteroidsInOverview(BotContext ctx)
     {

@@ -275,6 +275,7 @@ public sealed class BotRunner : IDisposable
                 // STEP 4: Run the behavior tree with a watchdog
                 _context.Actions.Clear();
                 _context.ActiveNodes.Clear();
+                _context.SnapshotActivePath(); // Reset snapshot for the new tick
                 
                 try 
                 {

@@ -12,7 +12,9 @@ public sealed partial class MiningBot
             if (!ctx.GameState.IsInSpace || FindOreHoldWindow(ctx) != null) return NodeStatus.Success;
             var anyInv = ctx.GameState.ParsedUI.InventoryWindows.FirstOrDefault();
             if (anyInv == null) { ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]); ctx.Wait(TimeSpan.FromSeconds(1.5)); return NodeStatus.Running; }
-            var oreEntry = anyInv.NavEntries.FirstOrDefault(e => e.HoldType == InventoryHoldType.Mining || e.Label?.Contains("ore", StringComparison.OrdinalIgnoreCase) == true);
+            var oreEntry = anyInv.NavEntries.FirstOrDefault(e => e.HoldType == InventoryHoldType.Mining || 
+                e.Label?.Contains("ore", StringComparison.OrdinalIgnoreCase) == true ||
+                e.Label?.Contains("ShipGeneralMiningHold", StringComparison.OrdinalIgnoreCase) == true);
             if (oreEntry != null) { ctx.Click(oreEntry.UINode); ctx.Wait(TimeSpan.FromSeconds(1)); return NodeStatus.Success; }
             ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]); return NodeStatus.Running;
         });

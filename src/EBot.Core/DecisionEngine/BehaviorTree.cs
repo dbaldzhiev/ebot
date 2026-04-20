@@ -56,6 +56,7 @@ public sealed class SequenceNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             while (_currentIndex < _children.Count)
@@ -110,6 +111,7 @@ public sealed class SelectorNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             while (_currentIndex < _children.Count)
@@ -163,6 +165,7 @@ public sealed class StatelessSelectorNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             foreach (var child in _children)
@@ -198,6 +201,7 @@ public sealed class ConditionNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             return _predicate(context) ? NodeStatus.Success : NodeStatus.Failure;
@@ -228,6 +232,7 @@ public sealed class ActionNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             return _action(context);
@@ -285,6 +290,7 @@ public sealed class RepeatNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             if (_maxCount > 0 && _currentCount >= _maxCount)
@@ -342,6 +348,7 @@ public sealed class WaitNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             _startTime ??= DateTimeOffset.UtcNow;
@@ -384,6 +391,7 @@ public sealed class AlwaysSucceedNode : IBehaviorNode
     public NodeStatus Tick(BotContext context)
     {
         context.ActiveNodes.Push(Name);
+        context.SnapshotActivePath();
         try
         {
             var status = _child.Tick(context);

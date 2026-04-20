@@ -778,8 +778,8 @@ public sealed partial class UITreeParser
 
     private List<InventoryWindow> FindInventoryWindows(UITreeNodeWithDisplayRegion root)
     {
-        // EVE's inventory windows: InventoryPrimary, ActiveShipCargo, ShipCargo, etc.
-        // We look for any window that identifies as an inventory container.
+        // EVE's inventory windows: InventoryPrimary (main wnd), ActiveShipCargo, ShipCargo, etc.
+        // Based on reference implementation, we look for these specific top-level types.
         var windows = root.QueryAll("@InventoryPrimary")
             .Concat(root.QueryAll("@ActiveShipCargo"))
             .Concat(root.QueryAll("@ShipCargo"))
@@ -790,21 +790,26 @@ public sealed partial class UITreeParser
         if (!windows.Any())
         {
             windows = root.FindAll(n => 
-                n.Node.PythonObjectTypeName.Contains("Inventory", StringComparison.OrdinalIgnoreCase) &&
+                (n.Node.PythonObjectTypeName.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
+                 n.Node.PythonObjectTypeName.Contains("Cargo",     StringComparison.OrdinalIgnoreCase)) &&
                 n.QueryFirst("@CapacityGauge") != null);
         }
 
         return windows.Select(n => {
-            var title = ExtractInventoryTitle(n);
+            // Reference logic: look for specialized container nodes INSIDE the window
+            var specializedContainer = n.FindFirst(c =>
+                c.Node.PythonObjectTypeName.Contains("ShipGeneralMiningHold", StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("MiningHold",           StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("ShipDroneBay",          StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("ShipHangar",            StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("StationItems",          StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("ItemHangar",           StringComparison.OrdinalIgnoreCase) ||
+                c.Node.PythonObjectTypeName.Contains("StructureItemHangar",   StringComparison.OrdinalIgnoreCase));
+            
+            var title = ExtractInventoryTitle(n) ?? (specializedContainer != null ? specializedContainer.Node.PythonObjectTypeName : null);
             var navEntries = ExtractNavEntries(n);
             var holdType = ClassifyHoldType(title);
 
-            // Strategy 1: Look for specialized container types in the right panel (most reliable)
-            var specializedContainer = n.FindFirst(c =>
-                c.Node.PythonObjectTypeName.Contains("MiningHold", StringComparison.OrdinalIgnoreCase) ||
-                c.Node.PythonObjectTypeName.Contains("ShipHangar", StringComparison.OrdinalIgnoreCase) ||
-                c.Node.PythonObjectTypeName.Contains("ItemHangar", StringComparison.OrdinalIgnoreCase));
-            
             if (specializedContainer != null)
             {
                 holdType = ClassifyHoldType(specializedContainer.Node.PythonObjectTypeName);
@@ -814,10 +819,7 @@ public sealed partial class UITreeParser
             if (holdType == InventoryHoldType.Unknown)
             {
                 var selected = navEntries.FirstOrDefault(e => e.IsSelected);
-                if (selected != null)
-                {
-                    holdType = selected.HoldType;
-                }
+                if (selected != null) holdType = selected.HoldType;
             }
 
             return new InventoryWindow

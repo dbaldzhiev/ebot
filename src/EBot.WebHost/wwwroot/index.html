@@ -277,6 +277,13 @@
     </div>
 
     <div class="nav-section">
+      <div class="nav-title">Decision Tree</div>
+      <div id="decision-tree-path" style="font-size: 0.65rem; font-family: monospace; color: var(--green); line-height: 1.4; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid var(--border);">
+        Initializing...
+      </div>
+    </div>
+
+    <div class="nav-section">
       <div class="nav-title">System Tools</div>
       <button class="btn" id="btn-capture-frame" onclick="captureFrame()">💾 Capture Frame</button>
       <button class="btn btn-danger" onclick="if(confirm('Kill EBot Server?'))api('POST','/api/kill')">☢ Terminate Server</button>
@@ -782,6 +789,10 @@ function renderDashboard(gs) {
   $('info-ticks').textContent = `Ticks: ${gs.tickCount}`;
   $('info-system').textContent = `System: ${gs.systemName || 'Unknown'} (${gs.securityStatus || '?'})`;
   $('runtime-display').textContent = gs.runtime;
+
+  if (gs.activeNodes) {
+    $('decision-tree-path').innerHTML = gs.activeNodes.slice().reverse().join('<br>↳ ');
+  }
 
   let locText = 'In Space';
   if (gs.isDocked) locText = `Docked @ ${gs.currentStation || 'Station'}`;

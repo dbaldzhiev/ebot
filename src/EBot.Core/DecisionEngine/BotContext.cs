@@ -45,6 +45,21 @@ public sealed class BotContext
     /// </summary>
     public Stack<string> ActiveNodes { get; } = new();
 
+    /// <summary>
+    /// A snapshot of the execution path (Bottom -> Top) from the last time
+    /// a node was ticked during the current tick.
+    /// </summary>
+    public IReadOnlyList<string> ActivePathSnapshot { get; private set; } = [];
+
+    /// <summary>
+    /// Captures the current ActiveNodes stack into ActivePathSnapshot.
+    /// Called by behavior tree nodes during execution.
+    /// </summary>
+    public void SnapshotActivePath()
+    {
+        ActivePathSnapshot = ActiveNodes.ToList();
+    }
+
     // ─── Diagnostic log (per-tick messages forwarded to ILogger by BotRunner) ──
 
     private readonly List<string> _diagMessages = [];

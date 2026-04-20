@@ -181,9 +181,12 @@ public sealed partial class MiningBot : IBot
             ReturnToStation(),
             BT_DroneSecurity(),
             EnsureMiningTab(),
+            DiscoverBeltsOnce(),
+            WarpToBelt(),
             NavigateToMiningHold(),
             BT_MineAtBelt(),
-            WarpToBelt());
+            // THE HEARTBEAT
+            new ActionNode("Waiting for cooldowns", _ => NodeStatus.Running));
 
     private static IBehaviorNode WaitCapRegen() =>
         new SequenceNode("Capacitor regen",

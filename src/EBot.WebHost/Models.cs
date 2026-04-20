@@ -42,6 +42,8 @@ public sealed record GameStateSummary(
     // Decision / Engine
     string? ThoughtProcess,
     double EngineRpm,
+    // Behavior Tree Visualization
+    IReadOnlyList<string> ActiveNodes,
     // Expanded UI
     DroneGroupDto? DronesInBay,
     DroneGroupDto? DronesInSpace,
@@ -322,8 +324,9 @@ public static class DtoMapper
             belts,
             holds,
             navEntries,
-            string.Join(" > ", ctx.ActiveNodes.Reverse()),
+            string.Join(" > ", ctx.ActivePathSnapshot.Reverse()),
             engineRpm,
+            ctx.ActivePathSnapshot.ToList(),
             MapDroneGroup(ui.DronesWindow?.DronesInBay),
             MapDroneGroup(ui.DronesWindow?.DronesInSpace),
             selectedItem,
@@ -336,7 +339,7 @@ public static class DtoMapper
         return new BotStateDto(
             ctx.TickCount,
             ctx.RunDuration.ToString(@"hh\:mm\:ss"),
-            ctx.ActiveNodes.ToList(),
+            ctx.ActivePathSnapshot.ToList(),
             ctx.Blackboard.GetData(),
             ctx.Actions.GetDescriptions());
     }
