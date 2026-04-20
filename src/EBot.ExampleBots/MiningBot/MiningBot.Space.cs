@@ -190,10 +190,16 @@ public sealed partial class MiningBot
 
         var assignments = ctx.Blackboard.Get<Dictionary<int, string>>("laser_targets") ?? new Dictionary<int, string>();
 
-        // Cleanup stale assignments using HUD addresses only
+        // Cleanup stale assignments: HUD target gone, or laser is idle (fire didn't stick)
         var currentHudAddresses = new HashSet<string>(ui.Targets.Select(t => t.UINode.Node.PythonObjectAddress));
+        var idleAddresses = new HashSet<string>(idleLasers.Select(l => l.UINode.Node.PythonObjectAddress));
         foreach (var key in assignments.Keys.ToList())
-            if (!currentHudAddresses.Contains(assignments[key])) assignments.Remove(key);
+        {
+            var laserAddr = key < allLasers.Count ? allLasers[key].UINode.Node.PythonObjectAddress : null;
+            if (!currentHudAddresses.Contains(assignments[key]) ||
+                (laserAddr != null && idleAddresses.Contains(laserAddr)))
+                assignments.Remove(key);
+        }
 
         foreach (var laser in idleLasers)
         {

@@ -236,8 +236,8 @@ public sealed partial class MiningBot
 
     private static double ParseSpeed(string text)
     {
-        // "324 m/s" or "1,234.5 m/s"
-        var m = Regex.Match(text, @"([\d,.]+)\s*m/s", RegexOptions.IgnoreCase);
+        // "324 m/s", "1,234.5 m/s", or bare "324 m" (some UI localizations omit /s)
+        var m = Regex.Match(text, @"([\d,.]+)\s*m(?:/s)?", RegexOptions.IgnoreCase);
         if (!m.Success) return 0;
         if (double.TryParse(m.Groups[1].Value.Replace(",", ""),
                 System.Globalization.NumberStyles.Float,
