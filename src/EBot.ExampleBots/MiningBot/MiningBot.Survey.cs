@@ -61,8 +61,24 @@ public sealed partial class MiningBot
 
                     ctx.Log("[Survey] Clicking Scan...");
                     ctx.Click(window.ScanButton);
-                    ctx.Blackboard.Set(SurveyPhaseKey, "collapse");
+                    ctx.Blackboard.Set(SurveyPhaseKey, "scroll");
                     ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(3));
+                    return waiting;
+
+                case "scroll":
+                    if (!ctx.Blackboard.IsCooldownReady("survey_wait"))
+                        return waiting;
+
+                    if (window == null) { ctx.Blackboard.Set(SurveyPhaseKey, "scan"); return waiting; }
+
+                    // Scroll to top → bottom → top so every ore type is rendered in the virtual list
+                    ctx.Scroll(window.UINode, 3000);
+                    ctx.Wait(TimeSpan.FromMilliseconds(200));
+                    ctx.Scroll(window.UINode, -3000);
+                    ctx.Wait(TimeSpan.FromMilliseconds(200));
+                    ctx.Scroll(window.UINode, 3000);
+                    ctx.Blackboard.Set(SurveyPhaseKey, "collapse");
+                    ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(1));
                     return waiting;
 
                 case "collapse":
@@ -89,7 +105,7 @@ public sealed partial class MiningBot
                         if (ctx.Blackboard.IsCooldownReady("survey_retry"))
                         {
                             ctx.Log("[Survey] No group entries after scan — retrying.");
-                            ctx.Blackboard.Set(SurveyPhaseKey, "scan");
+                            ctx.Blackboard.Set(SurveyPhaseKey, "scroll");
                             ctx.Blackboard.SetCooldown("survey_retry", TimeSpan.FromSeconds(10));
                         }
                         return waiting;

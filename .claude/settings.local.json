@@ -7,7 +7,8 @@
       "Bash(dotnet test:*)",
       "Bash(grep -l \"Mining hold\" logs/session_*.log)",
       "Bash(grep -l \"full\\\\|unload\\\\|needs_unload\" logs/session_*.log)",
-      "Bash(grep -h \"Mining hold\\\\|needs_unload\\\\|Unload\\\\|unload\\\\|FindOreHold\\\\|CapacityGauge\\\\|full_hold\\\\|ore hold\\\\|FillPercent\" logs/session_*.log)"
+      "Bash(grep -h \"Mining hold\\\\|needs_unload\\\\|Unload\\\\|unload\\\\|FindOreHold\\\\|CapacityGauge\\\\|full_hold\\\\|ore hold\\\\|FillPercent\" logs/session_*.log)",
+      "Bash(curl -s http://localhost:5000/api/debug/survey)"
     ]
   }
 }

@@ -118,8 +118,10 @@ public sealed partial class MiningBot
                     // sits in the upper half of the node region; clicking dead-center lands behind it.
                     ctx.Hover(approachNode);
                     ctx.Wait(TimeSpan.FromMilliseconds(220));
+                    ctx.KeyPress(VirtualKey.Q);
+                    ctx.Wait(TimeSpan.FromMilliseconds(100));
                     var r = approachNode.Region;
-                    ctx.ClickAt(r.X + r.Width / 2, r.Y + r.Height / 4, VirtualKey.Q);
+                    ctx.ClickAt(r.X + r.Width / 2, r.Y + r.Height / 4);
                     ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
                 }
             }
@@ -240,25 +242,40 @@ public sealed partial class MiningBot
 
             if (hostiles.Count > 0)
             {
-                if (dronesInSpace == 0 && dronesInBay > 0 && ctx.Blackboard.IsCooldownReady("drone_launch"))
-                {
-                    ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
-                    ctx.Blackboard.SetCooldown("drone_launch", TimeSpan.FromSeconds(10));
-                }
                 var nearest = hostiles.OrderBy(h => h.DistanceInMeters ?? 1e9).First();
-                bool locked = ui.Targets.Any(t => t.TextLabel != null && nearest.Name != null && t.TextLabel.Contains(nearest.Name, StringComparison.OrdinalIgnoreCase));
+
+                // Find the nearest hostile's HUD target node (if already locked)
+                var hudTarget = ui.Targets.FirstOrDefault(t =>
+                    t.TextLabel != null && nearest.Name != null &&
+                    (t.TextLabel.Contains(nearest.Name, StringComparison.OrdinalIgnoreCase) ||
+                     nearest.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
+
+                bool locked = hudTarget != null;
+
+                // 1. Lock the hostile if not yet locked
                 if (!locked && ctx.Blackboard.IsCooldownReady("drone_lock"))
                 {
                     ctx.Click(nearest.UINode, VirtualKey.Control);
                     ctx.Blackboard.SetCooldown("drone_lock", TimeSpan.FromSeconds(5));
                 }
-                if (dronesInSpace > 0 && ui.Targets.Count > 0 && ctx.Blackboard.IsCooldownReady("drone_engage"))
+
+                // 2. Launch drones if none in space
+                if (dronesInSpace == 0 && dronesInBay > 0 && ctx.Blackboard.IsCooldownReady("drone_launch"))
                 {
+                    ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
+                    ctx.Blackboard.SetCooldown("drone_launch", TimeSpan.FromSeconds(10));
+                }
+
+                // 3. Engage: click the hostile HUD target to make it active, then press F
+                if (locked && dronesInSpace > 0 && hudTarget != null && ctx.Blackboard.IsCooldownReady("drone_engage"))
+                {
+                    ctx.Click(hudTarget.UINode);
+                    ctx.Wait(TimeSpan.FromMilliseconds(300));
                     ctx.KeyPress(VirtualKey.F);
                     ctx.Blackboard.SetCooldown("drone_engage", TimeSpan.FromSeconds(10));
                 }
             }
-            return NodeStatus.Failure; 
+            return NodeStatus.Failure;
         });
 
     private static int OreValueOf(OverviewEntry e)
