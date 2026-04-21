@@ -88,10 +88,9 @@ public sealed partial class MiningBot
 
             bool locked = IsLocked(ov);
             var dist = ov.DistanceInMeters ?? 1e9;
-            double effectiveRange = state.LaserRangeM > 0 ? state.LaserRangeM : 15000;
-            double iskPerM3       = sMatch?.ValuePerM3 ?? GetSurveyIsk(ctx, ov.Name) ?? 100.0;
-            double travelKm       = Math.Max(0, dist - effectiveRange) / 1000.0;
-            double score          = iskPerM3 - (iskPerM3 * travelKm * 0.015);
+            double iskPerM3 = sMatch?.ValuePerM3 ?? GetSurveyIsk(ctx, ov.Name) ?? 100.0;
+            double travelKm = dist / 1000.0;
+            double score    = iskPerM3 - (iskPerM3 * travelKm * 0.015);
             if (locked) score    += iskPerM3 * 2.5;
 
             state.Asteroids.Add(new AsteroidEntity

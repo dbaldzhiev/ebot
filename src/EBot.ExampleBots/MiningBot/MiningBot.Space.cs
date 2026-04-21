@@ -114,12 +114,12 @@ public sealed partial class MiningBot
                              best.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
                         if (hudMatch != null) approachNode = hudMatch.UINode;
                     }
-                    // Hover first so the cursor fully lands on the node, then wait for it
-                    // to settle before the Q+click — prevents the click landing in empty space
-                    // behind the target sprite when the mouse is still moving.
+                    // Hover first, then Q+click slightly above center — the HUD target sprite
+                    // sits in the upper half of the node region; clicking dead-center lands behind it.
                     ctx.Hover(approachNode);
                     ctx.Wait(TimeSpan.FromMilliseconds(220));
-                    ctx.Click(approachNode, [VirtualKey.Q]);
+                    var (ax, ay) = approachNode.Center;
+                    ctx.ClickAt(ax, ay - 20, VirtualKey.Q);
                     ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
                 }
             }

@@ -27,6 +27,16 @@ public sealed partial class MiningBot
 
             if (!beltChanged && !stale && phase == "") return NodeStatus.Failure;
 
+            // For a new belt: block BT_MineAtBelt until scan completes so the primary
+            // target is chosen with real ISK/m³ scores, not the flat-100 fallback.
+            // For a stale re-scan on the same belt: run non-blocking in the background.
+            NodeStatus waiting = beltChanged ? NodeStatus.Running : NodeStatus.Failure;
+
+            // Clear stale cache when moving to a new belt so scoring falls back to
+            // distance-only (100.0) rather than showing last belt's values while we scan.
+            if (beltChanged && phase == "")
+                ctx.Blackboard.Remove(SurveyIskCacheKey);
+
             var ui     = ctx.GameState.ParsedUI;
             var window = ui.MiningScanResultsWindow;
 
@@ -36,50 +46,61 @@ public sealed partial class MiningBot
                     ctx.KeyPress(VirtualKey.M);
                     ctx.Blackboard.Set(SurveyPhaseKey, "scan");
                     ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(1.5));
-                    return NodeStatus.Failure;
+                    return waiting;
 
                 case "scan":
                     if (!ctx.Blackboard.IsCooldownReady("survey_wait"))
-                        return NodeStatus.Failure;
+                        return waiting;
 
                     if (window?.ScanButton == null)
                     {
                         ctx.KeyPress(VirtualKey.M);
                         ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(1.5));
-                        return NodeStatus.Failure;
+                        return waiting;
                     }
 
                     ctx.Log("[Survey] Clicking Scan...");
                     ctx.Click(window.ScanButton);
-                    ctx.Blackboard.Set(SurveyPhaseKey, "await");
+                    ctx.Blackboard.Set(SurveyPhaseKey, "collapse");
                     ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(3));
-                    return NodeStatus.Failure;
+                    return waiting;
 
-                case "await":
+                case "collapse":
                     if (!ctx.Blackboard.IsCooldownReady("survey_wait"))
-                        return NodeStatus.Failure;
+                        return waiting;
 
-                    var populated = (window?.Entries ?? [])
-                        .Where(e => !e.IsGroup && e.ValuePerM3 > 0)
+                    var expanded = (window?.Entries ?? [])
+                        .FirstOrDefault(e => e.IsGroup && e.IsExpanded && e.ExpanderNode != null);
+
+                    if (expanded != null)
+                    {
+                        ctx.Log($"[Survey] Collapsing expanded group: {expanded.OreName}");
+                        ctx.Click(expanded.ExpanderNode!);
+                        ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(1));
+                        return waiting;
+                    }
+
+                    var groups = (window?.Entries ?? [])
+                        .Where(e => e.IsGroup && e.ValuePerM3 > 0)
                         .ToList();
 
-                    if (populated.Count == 0)
+                    if (groups.Count == 0)
                     {
                         if (ctx.Blackboard.IsCooldownReady("survey_retry"))
                         {
-                            ctx.Log("[Survey] No entries yet — retrying scan.");
+                            ctx.Log("[Survey] No group entries after scan — retrying.");
                             ctx.Blackboard.Set(SurveyPhaseKey, "scan");
                             ctx.Blackboard.SetCooldown("survey_retry", TimeSpan.FromSeconds(10));
                         }
-                        return NodeStatus.Failure;
+                        return waiting;
                     }
 
-                    CacheSurveyValues(ctx, populated);
+                    CacheSurveyValues(ctx, groups);
                     ctx.Blackboard.Set(SurveyPhaseKey, "");
                     ctx.Blackboard.Set(SurveyLastBeltKey, currentBelt);
                     ctx.Blackboard.Set(SurveyLastTickKey, ctx.TickCount);
-                    ctx.Log($"[Survey] Cached {populated.Count} ore type(s) with ISK/m³ values.");
-                    return NodeStatus.Failure;
+                    ctx.Log($"[Survey] Cached {groups.Count} ore type(s) with ISK/m³ values.");
+                    return NodeStatus.Failure; // done — always unblock
 
                 default:
                     ctx.Blackboard.Set(SurveyPhaseKey, "");
