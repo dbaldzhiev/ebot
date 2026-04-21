@@ -62,7 +62,12 @@ public sealed partial class MiningBot
         state.LaserRangeM = ctx.Blackboard.Get<double>("laser_range_m", 0);
 
         var overviewAsteroids = AsteroidsInOverview(ctx).ToList();
-        var surveyorEntries = ui.MiningScanResultsWindow?.Entries ?? [];
+        // Only use group-level entries from the survey window (IsGroup=true).
+        // Individual asteroid entries (IsGroup=false) appear only when a group is expanded
+        // and cause virtual-scroll to evict other ore types from the UI tree.
+        var surveyorEntries = (ui.MiningScanResultsWindow?.Entries ?? [])
+            .Where(e => e.IsGroup)
+            .ToList();
         var assumedLocked = ctx.Blackboard.Get<Dictionary<string, DateTimeOffset>>("assumed_locked") ?? new Dictionary<string, DateTimeOffset>();
         var now = DateTimeOffset.UtcNow;
 
@@ -88,9 +93,10 @@ public sealed partial class MiningBot
 
             bool locked = IsLocked(ov);
             var dist = ov.DistanceInMeters ?? 1e9;
-            double iskPerM3 = sMatch?.ValuePerM3 ?? GetSurveyIsk(ctx, ov.Name) ?? 100.0;
-            double travelKm = dist / 1000.0;
-            double score    = iskPerM3 - (iskPerM3 * travelKm * 0.015);
+            double effectiveRange = state.LaserRangeM > 0 ? state.LaserRangeM : 15000;
+            double iskPerM3       = sMatch?.ValuePerM3 ?? GetSurveyIsk(ctx, ov.Name) ?? 100.0;
+            double travelKm       = Math.Max(0, dist - effectiveRange) / 1000.0;
+            double score          = iskPerM3 - (iskPerM3 * travelKm * 0.05);
             if (locked) score    += iskPerM3 * 2.5;
 
             state.Asteroids.Add(new AsteroidEntity

@@ -125,14 +125,16 @@ public sealed partial class MiningBot
         var cache = ctx.Blackboard.Get<Dictionary<string, double>>(SurveyIskCacheKey);
         if (cache == null) return null;
 
+        // Exact match first
         if (cache.TryGetValue(asteroidName, out var v)) return v;
 
-        foreach (var (oreName, val) in cache)
-        {
-            if (asteroidName.Contains(oreName, StringComparison.OrdinalIgnoreCase) ||
-                oreName.Contains(asteroidName, StringComparison.OrdinalIgnoreCase))
-                return val;
-        }
-        return null;
+        // Partial match: prefer the most specific (longest key) to avoid "Scordite"
+        // matching "Scordite III-Grade" when a plain "Scordite" entry also exists.
+        return cache
+            .Where(kv => asteroidName.Contains(kv.Key, StringComparison.OrdinalIgnoreCase) ||
+                         kv.Key.Contains(asteroidName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(kv => kv.Key.Length)
+            .Select(kv => (double?)kv.Value)
+            .FirstOrDefault();
     }
 }

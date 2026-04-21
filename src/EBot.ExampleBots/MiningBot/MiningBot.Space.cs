@@ -93,10 +93,10 @@ public sealed partial class MiningBot
                 if (prop != null && !prop.IsBusy && ctx.Blackboard.IsCooldownReady("prop_toggle"))
                 {
                     bool active = prop.IsActive == true;
-                    if (best.DistanceM > 8000 && !active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
-                    else if (best.DistanceM < 5000 && active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
+                    if (best.DistanceM > 16000 && !active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
+                    else if (best.DistanceM < 8000 && active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
                 }
-                if (best.DistanceM < 4500 && world.ShipSpeed > 10 && ctx.Blackboard.IsCooldownReady("hard_break"))
+                if (best.DistanceM < 5500 && world.ShipSpeed > 10 && ctx.Blackboard.IsCooldownReady("hard_break"))
                 {
                     ctx.KeyPress(VirtualKey.Space, [VirtualKey.Control]);
                     ctx.Blackboard.SetCooldown("hard_break", TimeSpan.FromSeconds(10));
@@ -118,8 +118,8 @@ public sealed partial class MiningBot
                     // sits in the upper half of the node region; clicking dead-center lands behind it.
                     ctx.Hover(approachNode);
                     ctx.Wait(TimeSpan.FromMilliseconds(220));
-                    var (ax, ay) = approachNode.Center;
-                    ctx.ClickAt(ax, ay - 20, VirtualKey.Q);
+                    var r = approachNode.Region;
+                    ctx.ClickAt(r.X + r.Width / 2, r.Y + r.Height / 4, VirtualKey.Q);
                     ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
                 }
             }

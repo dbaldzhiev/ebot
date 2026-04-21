@@ -26,7 +26,7 @@
       --purple:      #bc8cff;
     }
 
-    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; overflow-x: hidden; max-width: 100%; }
 
     .app-container {
       display: grid;
@@ -255,7 +255,7 @@
     .belt-item.excluded span { color: var(--red); }
 
     /* Asteroid table */
-    .ast-row { display: grid; grid-template-columns: 1fr 60px 52px 60px; gap: 4px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.72rem; align-items: center; }
+    .ast-row { display: grid; grid-template-columns: 1fr 58px 52px 46px 52px; gap: 4px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.72rem; align-items: center; }
     .ast-row:last-child { border-bottom: none; }
     .ast-hdr { color: var(--text-dim); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.8px; }
     .ast-status-mining { color: var(--green); font-weight: 700; font-size: 0.65rem; }
@@ -274,7 +274,7 @@
     .panel-sub-title { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
 
     @media (max-width: 1100px) {
-      html, body { overflow-y: auto; height: auto; }
+      html, body { overflow-y: auto; overflow-x: hidden; height: auto; }
 
       .app-container {
         grid-template-columns: 1fr;
@@ -311,8 +311,28 @@
       .log-feed         { height: 200px; }
     }
 
-    @media (max-width: 600px) {
-      .info-row { grid-template-columns: 1fr; }
+    @media (max-width: 768px) {
+      html, body { overflow-x: hidden; }
+      * { max-width: 100%; box-sizing: border-box; }
+
+      .hud-row      { grid-template-columns: 1fr !important; }
+      .mining-row   { grid-template-columns: 1fr !important; }
+      .info-row     { grid-template-columns: 1fr !important; }
+      .content-row  { grid-template-columns: 1fr !important; }
+
+      /* Sidebar target cards: allow wrapping, don't enforce min-width */
+      .targets-list { flex-wrap: wrap; overflow-x: hidden; }
+      .target-card  { min-width: 0; flex: 1 1 calc(50% - 4px); }
+
+      /* Stat grid: single column on tiny screens */
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+
+      /* Buttons: full width, no horizontal overflow */
+      .btn { width: 100%; min-width: 0; }
+
+      /* Tables: allow horizontal scroll within their container only */
+      .main-table-container, .log-feed { overflow-x: auto; }
+      table { min-width: 0; }
     }
   </style>
 </head>
@@ -451,7 +471,7 @@
       <div class="mining-panel" style="border-right: 1px solid var(--border); overflow-y: auto;">
         <div class="panel-sub-title">Target Queue</div>
         <div class="ast-row ast-hdr">
-          <span>Asteroid</span><span>Dist</span><span>Score</span><span>State</span>
+          <span>Asteroid</span><span>ISK/m³</span><span>Dist</span><span>Score</span><span>State</span>
         </div>
         <div id="list-asteroids"></div>
       </div>
@@ -929,6 +949,9 @@ function renderDashboard(gs) {
     $('list-asteroids').innerHTML = gs.topAsteroids.map(a => `
       <div class="ast-row">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name)}</span>
+        <span style="font-family:monospace;${a.scoreSource==='survey'?'color:var(--green)':'color:var(--text-dim)'}">
+          ${a.iskPerM3 != null ? a.iskPerM3 : '—'}
+        </span>
         <span style="color:var(--text-dim)">${esc(a.distanceText)}</span>
         <span style="color:var(--accent);font-family:monospace">${a.score}</span>
         <span class="${a.isBeingMined?'ast-status-mining':a.isLocked?'ast-status-locked':'ast-status-queue'}">
