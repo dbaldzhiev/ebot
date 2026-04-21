@@ -118,10 +118,8 @@ public sealed partial class MiningBot
                     // sits in the upper half of the node region; clicking dead-center lands behind it.
                     ctx.Hover(approachNode);
                     ctx.Wait(TimeSpan.FromMilliseconds(220));
-                    ctx.KeyPress(VirtualKey.Q);
-                    ctx.Wait(TimeSpan.FromMilliseconds(100));
                     var r = approachNode.Region;
-                    ctx.ClickAt(r.X + r.Width / 2, r.Y + r.Height / 4);
+                    ctx.ClickAt(r.X + r.Width / 2, r.Y + r.Height / 4, VirtualKey.Q);
                     ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
                 }
             }

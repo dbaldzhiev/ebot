@@ -90,6 +90,7 @@ public sealed partial class MiningBot
             double iskPerM3   = surveyIsk ?? 100.0;
             double travelKm   = Math.Max(0, dist - effectiveRange) / 1000.0;
             double score      = iskPerM3 - (iskPerM3 * travelKm * 0.05);
+            if (dist <= effectiveRange) score += iskPerM3 * 0.10; // prefer in-range over marginally better out-of-range
             if (locked) score += iskPerM3 * 2.5;
 
             state.Asteroids.Add(new AsteroidEntity
