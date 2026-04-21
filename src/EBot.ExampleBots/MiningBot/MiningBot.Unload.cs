@@ -371,7 +371,11 @@ public sealed partial class MiningBot
         // causing a false trigger on the first in-space tick after undocking.
         if (pct >= OreHoldFullPercent && w.Items.Count > 0)
         {
-            ctx.Log($"[Mining] Mining hold is FULL ({pct:F1}%). Ready to unload.");
+            if (ctx.Blackboard.IsCooldownReady("hold_full_fired"))
+            {
+                ctx.Log($"[Mining] Mining hold is FULL ({pct:F1}%). Ready to unload.");
+                ctx.Blackboard.SetCooldown("hold_full_fired", TimeSpan.FromSeconds(5));
+            }
             return true;
         }
 

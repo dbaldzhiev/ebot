@@ -86,6 +86,10 @@ builder.Services.AddHostedService<SessionFileLogger>();
 builder.Services.AddSingleton<EBot.WebHost.Services.SdeService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EBot.WebHost.Services.SdeService>());
 
+// Discord webhook notifications (opt-in via DISCORD_WEBHOOK_URL env var)
+builder.Services.AddSingleton<EBot.WebHost.Services.DiscordNotificationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EBot.WebHost.Services.DiscordNotificationService>());
+
 // ─── App ───────────────────────────────────────────────────────────────────
 
 var app = builder.Build();
@@ -703,6 +707,29 @@ api.MapGet("/debug/infopanel", (BotOrchestrator orch, ILoggerFactory lf) =>
     return Results.Ok(sb.ToString());
 });
 
+
+// ─── Discord API ──────────────────────────────────────────────────────────
+
+// GET /api/discord/status  — current settings (url, enabled, interval)
+api.MapGet("/discord/status", (EBot.WebHost.Services.DiscordNotificationService discord) =>
+    Results.Ok(discord.GetStatus()));
+
+// POST /api/discord/settings  — full settings object; any missing field uses server default
+api.MapPost("/discord/settings", async ([FromBody] EBot.WebHost.Services.DiscordSettings req,
+    EBot.WebHost.Services.DiscordNotificationService discord) =>
+{
+    await discord.SaveSettingsAsync(req);
+    return Results.Ok(discord.GetStatus());
+});
+
+// POST /api/discord/test  — sends a test message to confirm the webhook works
+api.MapPost("/discord/test", async (EBot.WebHost.Services.DiscordNotificationService discord) =>
+{
+    var ok = await discord.SendTestAsync();
+    return ok
+        ? Results.Ok(new { success = true, message = "Test message sent to Discord." })
+        : Results.BadRequest(new { success = false, message = "Webhook delivery failed — check the URL." });
+});
 
 // ─── Auto-start monitor ────────────────────────────────────────────────────
 

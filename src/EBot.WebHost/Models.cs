@@ -164,6 +164,8 @@ public sealed record UpdateMiningSettingsRequest(int OreHoldFull, int ShieldEsca
 
 public sealed record SwitchHoldRequest(string HoldType);
 
+// DiscordSettings lives in EBot.WebHost.Services.DiscordSettings (used directly as request/response)
+
 // ─── Debug & Simulation DTOs ───────────────────────────────────────────────
 
 public sealed record BotStateDto(

@@ -71,12 +71,10 @@ public sealed partial class MiningBot
 
                     if (window == null) { ctx.Blackboard.Set(SurveyPhaseKey, "scan"); return waiting; }
 
-                    // Scroll to top → bottom → top so every ore type is rendered in the virtual list
+                    // Scroll bottom → top so every ore type is rendered in the virtual list
                     ctx.Scroll(window.UINode, 3000);
                     ctx.Wait(TimeSpan.FromMilliseconds(200));
                     ctx.Scroll(window.UINode, -3000);
-                    ctx.Wait(TimeSpan.FromMilliseconds(200));
-                    ctx.Scroll(window.UINode, 3000);
                     ctx.Blackboard.Set(SurveyPhaseKey, "collapse");
                     ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(1));
                     return waiting;

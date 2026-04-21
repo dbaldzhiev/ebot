@@ -177,14 +177,28 @@ public sealed partial class MiningBot
             var addr = laser.UINode.Node.PythonObjectAddress;
             if (laser.IsActive == true)
             {
-                fireTimes.Remove(addr); // confirmed active — no longer tracking
+                fireTimes.Remove(addr);
+                ctx.Blackboard.Remove($"laser_retries_{addr}");
             }
             else if (!laser.IsBusy && fireTimes.TryGetValue(addr, out var firedAt) &&
                      (DateTimeOffset.UtcNow - firedAt).TotalSeconds > 4)
             {
-                ctx.Log($"[Mining] {laser.Name} did not activate after fire — clearing for retry.");
+                var retryKey = $"laser_retries_{addr}";
+                var retries  = ctx.Blackboard.Get<int>(retryKey) + 1;
                 fireTimes.Remove(addr);
                 ctx.Blackboard.Remove($"fire_module_{addr}");
+
+                if (retries >= 5)
+                {
+                    ctx.Log($"[Mining] {laser.Name} failed to activate {retries} times — backing off 60 s.");
+                    ctx.Blackboard.SetCooldown($"fire_module_{addr}", TimeSpan.FromSeconds(60));
+                    ctx.Blackboard.Set(retryKey, 0);
+                }
+                else
+                {
+                    ctx.Log($"[Mining] {laser.Name} did not activate after fire — retry {retries}/5.");
+                    ctx.Blackboard.Set(retryKey, retries);
+                }
             }
         }
         ctx.Blackboard.Set("laser_fire_times", fireTimes);
