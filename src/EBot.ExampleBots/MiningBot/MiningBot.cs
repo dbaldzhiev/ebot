@@ -93,6 +93,7 @@ public sealed partial class MiningBot : IBot
         ctx.Blackboard.Set("discover_tick",  0);
         ctx.Blackboard.Set("menu_expected",  false);
         ctx.Blackboard.Set("belt_prop_started", false);
+        ctx.Blackboard.Set(SurveyLastTickKey, -1L); // force initial scan
 
         if (!string.IsNullOrWhiteSpace(HomeStationOverride))
         {
@@ -191,6 +192,7 @@ public sealed partial class MiningBot : IBot
             DiscoverBeltsOnce(),
             WarpToBelt(),
             NavigateToMiningHold(),
+            EnsureSurveyScanned(),
             BT_MineAtBelt(),
             // THE HEARTBEAT
             new ActionNode("Waiting for cooldowns", _ => NodeStatus.Running));

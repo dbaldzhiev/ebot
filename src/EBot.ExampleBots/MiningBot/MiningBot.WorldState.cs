@@ -88,19 +88,20 @@ public sealed partial class MiningBot
 
             bool locked = IsLocked(ov);
             var dist = ov.DistanceInMeters ?? 1e9;
-            double value = sMatch?.ValuePerM3 ?? OreValueOf(ov);
-            double distToTravel = Math.Max(0, dist - (state.LaserRangeM > 0 ? state.LaserRangeM : 15000) + 1000);
-            double score = value - ((distToTravel / 150.0) * 2.0);
-            if (locked) score += 10000;
+            double effectiveRange = state.LaserRangeM > 0 ? state.LaserRangeM : 15000;
+            double iskPerM3       = sMatch?.ValuePerM3 ?? GetSurveyIsk(ctx, ov.Name) ?? 100.0;
+            double travelKm       = Math.Max(0, dist - effectiveRange) / 1000.0;
+            double score          = iskPerM3 - (iskPerM3 * travelKm * 0.015);
+            if (locked) score    += iskPerM3 * 2.5;
 
             state.Asteroids.Add(new AsteroidEntity
             {
                 Name = ov.Name ?? "Unknown",
                 DistanceText = ov.DistanceText ?? "???",
                 DistanceM = dist,
-                Value = value,
+                Value = iskPerM3,
                 Score = score,
-                ValuePerM3 = sMatch?.ValuePerM3,
+                ValuePerM3 = sMatch?.ValuePerM3 ?? GetSurveyIsk(ctx, ov.Name),
                 IsLocked = locked,
                 IsLockPending = assumedLocked.ContainsKey(ov.UINode.Node.PythonObjectAddress),
                 IsBeingMined = locked && state.ActiveLaserCount > 0,

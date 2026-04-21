@@ -1,0 +1,117 @@
+using EBot.Core.DecisionEngine;
+using EBot.Core.Execution;
+using EBot.Core.GameState;
+
+namespace EBot.ExampleBots.MiningBot;
+
+public sealed partial class MiningBot
+{
+    private const string SurveyIskCacheKey = "survey_isk_cache";
+    private const string SurveyPhaseKey    = "survey_phase";
+    private const string SurveyLastBeltKey = "survey_last_belt";
+    private const string SurveyLastTickKey = "survey_scan_tick";
+    private const int    SurveyStaleTicks  = 150; // ~5 min at 2 s/tick
+
+    private IBehaviorNode EnsureSurveyScanned() =>
+        new ActionNode("Survey scanner", ctx =>
+        {
+            if (!ctx.GameState.IsInSpace) return NodeStatus.Failure;
+
+            var currentBelt = ctx.Blackboard.Get<int>("last_belt_target", -1);
+            var lastBelt    = ctx.Blackboard.Get<int>(SurveyLastBeltKey, -2);
+            var lastTick    = ctx.Blackboard.Get<long>(SurveyLastTickKey, -1L);
+            var phase       = ctx.Blackboard.Get<string>(SurveyPhaseKey) ?? "";
+
+            bool beltChanged = currentBelt != lastBelt;
+            bool stale       = (ctx.TickCount - lastTick) >= SurveyStaleTicks;
+
+            if (!beltChanged && !stale && phase == "") return NodeStatus.Failure;
+
+            var ui     = ctx.GameState.ParsedUI;
+            var window = ui.MiningScanResultsWindow;
+
+            switch (phase)
+            {
+                case "":
+                    ctx.KeyPress(VirtualKey.M);
+                    ctx.Blackboard.Set(SurveyPhaseKey, "scan");
+                    ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(1.5));
+                    return NodeStatus.Failure;
+
+                case "scan":
+                    if (!ctx.Blackboard.IsCooldownReady("survey_wait"))
+                        return NodeStatus.Failure;
+
+                    if (window?.ScanButton == null)
+                    {
+                        ctx.KeyPress(VirtualKey.M);
+                        ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(1.5));
+                        return NodeStatus.Failure;
+                    }
+
+                    ctx.Log("[Survey] Clicking Scan...");
+                    ctx.Click(window.ScanButton);
+                    ctx.Blackboard.Set(SurveyPhaseKey, "await");
+                    ctx.Blackboard.SetCooldown("survey_wait", TimeSpan.FromSeconds(3));
+                    return NodeStatus.Failure;
+
+                case "await":
+                    if (!ctx.Blackboard.IsCooldownReady("survey_wait"))
+                        return NodeStatus.Failure;
+
+                    var populated = (window?.Entries ?? [])
+                        .Where(e => !e.IsGroup && e.ValuePerM3 > 0)
+                        .ToList();
+
+                    if (populated.Count == 0)
+                    {
+                        if (ctx.Blackboard.IsCooldownReady("survey_retry"))
+                        {
+                            ctx.Log("[Survey] No entries yet — retrying scan.");
+                            ctx.Blackboard.Set(SurveyPhaseKey, "scan");
+                            ctx.Blackboard.SetCooldown("survey_retry", TimeSpan.FromSeconds(10));
+                        }
+                        return NodeStatus.Failure;
+                    }
+
+                    CacheSurveyValues(ctx, populated);
+                    ctx.Blackboard.Set(SurveyPhaseKey, "");
+                    ctx.Blackboard.Set(SurveyLastBeltKey, currentBelt);
+                    ctx.Blackboard.Set(SurveyLastTickKey, ctx.TickCount);
+                    ctx.Log($"[Survey] Cached {populated.Count} ore type(s) with ISK/m³ values.");
+                    return NodeStatus.Failure;
+
+                default:
+                    ctx.Blackboard.Set(SurveyPhaseKey, "");
+                    return NodeStatus.Failure;
+            }
+        });
+
+    private static void CacheSurveyValues(BotContext ctx, IEnumerable<MiningScanEntry> entries)
+    {
+        var cache = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in entries)
+        {
+            if (e.OreName == null || !(e.ValuePerM3 > 0)) continue;
+            cache[e.OreName] = e.ValuePerM3!.Value;
+        }
+        ctx.Blackboard.Set(SurveyIskCacheKey, cache);
+    }
+
+    private static double? GetSurveyIsk(BotContext ctx, string? asteroidName)
+    {
+        if (string.IsNullOrEmpty(asteroidName)) return null;
+        var cache = ctx.Blackboard.Get<Dictionary<string, double>>(SurveyIskCacheKey);
+        if (cache == null) return null;
+
+        if (cache.TryGetValue(asteroidName, out var v)) return v;
+
+        foreach (var (oreName, val) in cache)
+        {
+            if (asteroidName.Contains(oreName, StringComparison.OrdinalIgnoreCase) ||
+                oreName.Contains(asteroidName, StringComparison.OrdinalIgnoreCase))
+                return val;
+        }
+        return null;
+    }
+}
