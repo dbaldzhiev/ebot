@@ -152,6 +152,11 @@ public sealed class BotContext
         Actions.Enqueue(new ClickAction(x, y));
     }
 
+    public void ClickAt(int x, int y, params VirtualKey[] modifiers)
+    {
+        Actions.Enqueue(new ClickAction(x, y, modifiers));
+    }
+
     /// <summary>
     /// Enqueues a mouse move (hover) to a UI node's center — no button press.
     /// Use for context-menu entries that expand submenus on hover.

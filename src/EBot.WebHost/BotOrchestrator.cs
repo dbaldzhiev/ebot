@@ -76,6 +76,9 @@ public sealed class BotOrchestrator : IDisposable
 
     public bool SurvivalEnabled { get; private set; } = false;
 
+    /// <summary>Fires after each tick completes. Subscribers must not block.</summary>
+    public event Action<BotContext>? TickCompleted;
+
     /// <summary>Access to the underlying runner for diagnostic tools.</summary>
     public BotRunner? Runner => _runner;
 
@@ -400,6 +403,7 @@ public sealed class BotOrchestrator : IDisposable
             }
 
             _ = _hub.Clients.All.SendAsync("TickUpdate", DtoMapper.ToDto(ctx, _holdCache, TicksPerMinute, miningBot));
+            TickCompleted?.Invoke(ctx);
         };
 
         runner.OnError += ex =>

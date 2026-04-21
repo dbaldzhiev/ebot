@@ -86,6 +86,10 @@ builder.Services.AddHostedService<SessionFileLogger>();
 builder.Services.AddSingleton<EBot.WebHost.Services.SdeService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EBot.WebHost.Services.SdeService>());
 
+// Discord webhook notifications (opt-in via DISCORD_WEBHOOK_URL env var)
+builder.Services.AddSingleton<EBot.WebHost.Services.DiscordNotificationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EBot.WebHost.Services.DiscordNotificationService>());
+
 // ─── App ───────────────────────────────────────────────────────────────────
 
 var app = builder.Build();
@@ -512,6 +516,42 @@ api.MapDelete("/destinations/{id}", (string id) =>
     return Results.Ok(list);
 });
 
+// GET /api/debug/survey  — survey ISK cache + scored asteroid list for live diagnostics
+api.MapGet("/debug/survey", (BotOrchestrator o) =>
+{
+    var bb  = o.LastContext?.Blackboard;
+    var world = bb?.Get<EBot.ExampleBots.MiningBot.WorldState>("world");
+    var cache = bb?.Get<Dictionary<string, double>>("survey_isk_cache");
+    var phase = bb?.Get<string>("survey_phase") ?? "";
+    var lastBelt = bb?.Get<int>("survey_last_belt", -1) ?? -1;
+    var lastTick = bb?.Get<long>("survey_scan_tick", -1L) ?? -1L;
+
+    var asteroids = (world?.Asteroids ?? [])
+        .OrderByDescending(a => a.Score)
+        .Select(a => new
+        {
+            name       = a.Name,
+            distance   = a.DistanceText,
+            isk_per_m3 = a.ValuePerM3.HasValue ? Math.Round(a.ValuePerM3.Value, 1) : (double?)null,
+            source     = a.ValuePerM3.HasValue ? "survey" : "fallback",
+            score      = Math.Round(a.Score, 1),
+            locked     = a.IsLocked,
+            pending    = a.IsLockPending,
+            mining     = a.IsBeingMined,
+        });
+
+    return Results.Ok(new
+    {
+        survey_phase    = phase,
+        last_belt       = lastBelt,
+        last_scan_tick  = lastTick,
+        cache_entries   = cache?.Count ?? 0,
+        cache           = cache ?? [],
+        laser_range_m   = world?.LaserRangeM ?? 0,
+        asteroids,
+    });
+});
+
 // GET /api/mining-stats  — current session mining statistics from the blackboard
 api.MapGet("/mining-stats", (BotOrchestrator o) =>
 {
@@ -667,6 +707,29 @@ api.MapGet("/debug/infopanel", (BotOrchestrator orch, ILoggerFactory lf) =>
     return Results.Ok(sb.ToString());
 });
 
+
+// ─── Discord API ──────────────────────────────────────────────────────────
+
+// GET /api/discord/status  — current settings (url, enabled, interval)
+api.MapGet("/discord/status", (EBot.WebHost.Services.DiscordNotificationService discord) =>
+    Results.Ok(discord.GetStatus()));
+
+// POST /api/discord/settings  — full settings object; any missing field uses server default
+api.MapPost("/discord/settings", async ([FromBody] EBot.WebHost.Services.DiscordSettings req,
+    EBot.WebHost.Services.DiscordNotificationService discord) =>
+{
+    await discord.SaveSettingsAsync(req);
+    return Results.Ok(discord.GetStatus());
+});
+
+// POST /api/discord/test  — sends a test message to confirm the webhook works
+api.MapPost("/discord/test", async (EBot.WebHost.Services.DiscordNotificationService discord) =>
+{
+    var ok = await discord.SendTestAsync();
+    return ok
+        ? Results.Ok(new { success = true, message = "Test message sent to Discord." })
+        : Results.BadRequest(new { success = false, message = "Webhook delivery failed — check the URL." });
+});
 
 // ─── Auto-start monitor ────────────────────────────────────────────────────
 

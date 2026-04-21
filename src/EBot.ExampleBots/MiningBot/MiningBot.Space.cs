@@ -93,10 +93,10 @@ public sealed partial class MiningBot
                 if (prop != null && !prop.IsBusy && ctx.Blackboard.IsCooldownReady("prop_toggle"))
                 {
                     bool active = prop.IsActive == true;
-                    if (best.DistanceM > 8000 && !active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
-                    else if (best.DistanceM < 5000 && active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
+                    if (best.DistanceM > 16000 && !active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
+                    else if (best.DistanceM < 8000 && active) { ctx.Click(prop.UINode); ctx.Blackboard.SetCooldown("prop_toggle", TimeSpan.FromSeconds(5)); }
                 }
-                if (best.DistanceM < 4500 && world.ShipSpeed > 10 && ctx.Blackboard.IsCooldownReady("hard_break"))
+                if (best.DistanceM < 5500 && world.ShipSpeed > 10 && ctx.Blackboard.IsCooldownReady("hard_break"))
                 {
                     ctx.KeyPress(VirtualKey.Space, [VirtualKey.Control]);
                     ctx.Blackboard.SetCooldown("hard_break", TimeSpan.FromSeconds(10));
@@ -114,12 +114,12 @@ public sealed partial class MiningBot
                              best.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
                         if (hudMatch != null) approachNode = hudMatch.UINode;
                     }
-                    // Hover first so the cursor fully lands on the node, then wait for it
-                    // to settle before the Q+click — prevents the click landing in empty space
-                    // behind the target sprite when the mouse is still moving.
+                    // Hover first, then Q+click slightly above center — the HUD target sprite
+                    // sits in the upper half of the node region; clicking dead-center lands behind it.
                     ctx.Hover(approachNode);
                     ctx.Wait(TimeSpan.FromMilliseconds(220));
-                    ctx.Click(approachNode, [VirtualKey.Q]);
+                    var r = approachNode.Region;
+                    ctx.ClickAt(r.X + r.Width / 2, r.Y + r.Height / 4, VirtualKey.Q);
                     ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
                 }
             }
@@ -177,14 +177,28 @@ public sealed partial class MiningBot
             var addr = laser.UINode.Node.PythonObjectAddress;
             if (laser.IsActive == true)
             {
-                fireTimes.Remove(addr); // confirmed active — no longer tracking
+                fireTimes.Remove(addr);
+                ctx.Blackboard.Remove($"laser_retries_{addr}");
             }
             else if (!laser.IsBusy && fireTimes.TryGetValue(addr, out var firedAt) &&
                      (DateTimeOffset.UtcNow - firedAt).TotalSeconds > 4)
             {
-                ctx.Log($"[Mining] {laser.Name} did not activate after fire — clearing for retry.");
+                var retryKey = $"laser_retries_{addr}";
+                var retries  = ctx.Blackboard.Get<int>(retryKey) + 1;
                 fireTimes.Remove(addr);
                 ctx.Blackboard.Remove($"fire_module_{addr}");
+
+                if (retries >= 5)
+                {
+                    ctx.Log($"[Mining] {laser.Name} failed to activate {retries} times — backing off 60 s.");
+                    ctx.Blackboard.SetCooldown($"fire_module_{addr}", TimeSpan.FromSeconds(60));
+                    ctx.Blackboard.Set(retryKey, 0);
+                }
+                else
+                {
+                    ctx.Log($"[Mining] {laser.Name} did not activate after fire — retry {retries}/5.");
+                    ctx.Blackboard.Set(retryKey, retries);
+                }
             }
         }
         ctx.Blackboard.Set("laser_fire_times", fireTimes);
@@ -240,25 +254,40 @@ public sealed partial class MiningBot
 
             if (hostiles.Count > 0)
             {
-                if (dronesInSpace == 0 && dronesInBay > 0 && ctx.Blackboard.IsCooldownReady("drone_launch"))
-                {
-                    ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
-                    ctx.Blackboard.SetCooldown("drone_launch", TimeSpan.FromSeconds(10));
-                }
                 var nearest = hostiles.OrderBy(h => h.DistanceInMeters ?? 1e9).First();
-                bool locked = ui.Targets.Any(t => t.TextLabel != null && nearest.Name != null && t.TextLabel.Contains(nearest.Name, StringComparison.OrdinalIgnoreCase));
+
+                // Find the nearest hostile's HUD target node (if already locked)
+                var hudTarget = ui.Targets.FirstOrDefault(t =>
+                    t.TextLabel != null && nearest.Name != null &&
+                    (t.TextLabel.Contains(nearest.Name, StringComparison.OrdinalIgnoreCase) ||
+                     nearest.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
+
+                bool locked = hudTarget != null;
+
+                // 1. Lock the hostile if not yet locked
                 if (!locked && ctx.Blackboard.IsCooldownReady("drone_lock"))
                 {
                     ctx.Click(nearest.UINode, VirtualKey.Control);
                     ctx.Blackboard.SetCooldown("drone_lock", TimeSpan.FromSeconds(5));
                 }
-                if (dronesInSpace > 0 && ui.Targets.Count > 0 && ctx.Blackboard.IsCooldownReady("drone_engage"))
+
+                // 2. Launch drones if none in space
+                if (dronesInSpace == 0 && dronesInBay > 0 && ctx.Blackboard.IsCooldownReady("drone_launch"))
                 {
+                    ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
+                    ctx.Blackboard.SetCooldown("drone_launch", TimeSpan.FromSeconds(10));
+                }
+
+                // 3. Engage: click the hostile HUD target to make it active, then press F
+                if (locked && dronesInSpace > 0 && hudTarget != null && ctx.Blackboard.IsCooldownReady("drone_engage"))
+                {
+                    ctx.Click(hudTarget.UINode);
+                    ctx.Wait(TimeSpan.FromMilliseconds(300));
                     ctx.KeyPress(VirtualKey.F);
                     ctx.Blackboard.SetCooldown("drone_engage", TimeSpan.FromSeconds(10));
                 }
             }
-            return NodeStatus.Failure; 
+            return NodeStatus.Failure;
         });
 
     private static int OreValueOf(OverviewEntry e)

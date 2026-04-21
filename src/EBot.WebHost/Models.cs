@@ -61,7 +61,9 @@ public sealed record AsteroidDto(
     string DistanceText,
     double Score,
     bool IsLocked,
-    bool IsBeingMined);
+    bool IsBeingMined,
+    double? IskPerM3,
+    string ScoreSource);  // "survey" | "fallback"
 
 public sealed record BeltDto(
     int Index,
@@ -162,6 +164,8 @@ public sealed record UpdateMiningSettingsRequest(int OreHoldFull, int ShieldEsca
 
 public sealed record SwitchHoldRequest(string HoldType);
 
+// DiscordSettings lives in EBot.WebHost.Services.DiscordSettings (used directly as request/response)
+
 // ─── Debug & Simulation DTOs ───────────────────────────────────────────────
 
 public sealed record BotStateDto(
@@ -233,8 +237,11 @@ public static class DtoMapper
         var world = ctx.Blackboard.Get<EBot.ExampleBots.MiningBot.WorldState>("world");
         var topAsteroids = (world?.Asteroids ?? [])
             .OrderByDescending(a => a.Score)
-            .Take(5)
-            .Select(a => new AsteroidDto(a.Name, a.DistanceText, Math.Round(a.Score, 1), a.IsLocked, a.IsBeingMined))
+            .Take(8)
+            .Select(a => new AsteroidDto(
+                a.Name, a.DistanceText, Math.Round(a.Score, 1), a.IsLocked, a.IsBeingMined,
+                a.ValuePerM3.HasValue ? Math.Round(a.ValuePerM3.Value, 1) : null,
+                a.ValuePerM3.HasValue ? "survey" : "fallback"))
             .ToList();
 
         var belts = new List<BeltDto>();

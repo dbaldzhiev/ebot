@@ -62,7 +62,6 @@ public sealed partial class MiningBot
         state.LaserRangeM = ctx.Blackboard.Get<double>("laser_range_m", 0);
 
         var overviewAsteroids = AsteroidsInOverview(ctx).ToList();
-        var surveyorEntries = ui.MiningScanResultsWindow?.Entries ?? [];
         var assumedLocked = ctx.Blackboard.Get<Dictionary<string, DateTimeOffset>>("assumed_locked") ?? new Dictionary<string, DateTimeOffset>();
         var now = DateTimeOffset.UtcNow;
 
@@ -81,26 +80,27 @@ public sealed partial class MiningBot
         state.Asteroids.Clear();
         foreach (var ov in overviewAsteroids)
         {
-            var sMatch = surveyorEntries.FirstOrDefault(s => 
-                s.OreName != null && ov.Name != null && 
-                (ov.Name.Contains(s.OreName, StringComparison.OrdinalIgnoreCase) || 
-                 s.OreName.Contains(ov.Name, StringComparison.OrdinalIgnoreCase)));
-
             bool locked = IsLocked(ov);
             var dist = ov.DistanceInMeters ?? 1e9;
-            double value = sMatch?.ValuePerM3 ?? OreValueOf(ov);
-            double distToTravel = Math.Max(0, dist - (state.LaserRangeM > 0 ? state.LaserRangeM : 15000) + 1000);
-            double score = value - ((distToTravel / 150.0) * 2.0);
-            if (locked) score += 10000;
+            double effectiveRange = state.LaserRangeM > 0 ? state.LaserRangeM : 15000;
+            // Always use the cache — exact match first, then most-specific partial match.
+            // Never use the live window entries directly: partial matching there assigns
+            // "Scordite III-Grade" price to plain "Scordite" asteroids.
+            double? surveyIsk = GetSurveyIsk(ctx, ov.Name);
+            double iskPerM3   = surveyIsk ?? 100.0;
+            double travelKm   = Math.Max(0, dist - effectiveRange) / 1000.0;
+            double score      = iskPerM3 - (iskPerM3 * travelKm * 0.05);
+            if (dist <= effectiveRange) score += iskPerM3 * 0.10; // prefer in-range over marginally better out-of-range
+            if (locked) score += iskPerM3 * 2.5;
 
             state.Asteroids.Add(new AsteroidEntity
             {
                 Name = ov.Name ?? "Unknown",
                 DistanceText = ov.DistanceText ?? "???",
                 DistanceM = dist,
-                Value = value,
+                Value = iskPerM3,
                 Score = score,
-                ValuePerM3 = sMatch?.ValuePerM3,
+                ValuePerM3 = surveyIsk,
                 IsLocked = locked,
                 IsLockPending = assumedLocked.ContainsKey(ov.UINode.Node.PythonObjectAddress),
                 IsBeingMined = locked && state.ActiveLaserCount > 0,

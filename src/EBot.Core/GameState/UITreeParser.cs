@@ -1197,16 +1197,25 @@ public sealed class UITreeParser
                 
                 if (match.Success)
                 {
+                    // Parse volume (group 3: "6,220 m3") and ISK (group 4: "675,000.00 ISK")
+                    // to compute actual ISK/m³ for this asteroid.
+                    var volStr = Regex.Match(match.Groups[3].Value, @"[\d,.]+").Value.Replace(",", "");
+                    var iskStr = Regex.Match(match.Groups[4].Value, @"[\d,.]+").Value.Replace(",", "");
+                    double.TryParse(volStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var vol);
+                    double.TryParse(iskStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var isk);
+                    double? iskPerM3 = (vol > 0 && isk > 0) ? isk / vol : currentGroupValue;
+
                     entries.Add(new MiningScanEntry
                     {
                         UINode = n,
                         OreName = match.Groups[1].Value.Trim(),
                         Quantity = int.TryParse(match.Groups[2].Value.Replace(",", ""), out var q) ? q : null,
+                        Volume = vol > 0 ? vol : null,
                         IsGroup = false,
                         IsLocked = n.FindFirst(c => (c.Node.GetDictString("_texturePath") ?? "").Contains("activeTarget.png")) != null,
                         DistanceInMeters = ParseDistanceText(match.Groups[5].Value),
                         ValueText = match.Groups[4].Value.Trim(),
-                        ValuePerM3 = currentGroupValue,
+                        ValuePerM3 = iskPerM3,
                     });
                 }
                 else if (text.Length > 5 && !text.Contains("ISK / m"))

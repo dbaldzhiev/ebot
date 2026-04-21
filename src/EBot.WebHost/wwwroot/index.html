@@ -26,7 +26,7 @@
       --purple:      #bc8cff;
     }
 
-    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; overflow-x: hidden; max-width: 100%; }
 
     .app-container {
       display: grid;
@@ -255,7 +255,7 @@
     .belt-item.excluded span { color: var(--red); }
 
     /* Asteroid table */
-    .ast-row { display: grid; grid-template-columns: 1fr 60px 52px 60px; gap: 4px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.72rem; align-items: center; }
+    .ast-row { display: grid; grid-template-columns: 1fr 58px 52px 46px 52px; gap: 4px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.72rem; align-items: center; }
     .ast-row:last-child { border-bottom: none; }
     .ast-hdr { color: var(--text-dim); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.8px; }
     .ast-status-mining { color: var(--green); font-weight: 700; font-size: 0.65rem; }
@@ -274,7 +274,7 @@
     .panel-sub-title { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
 
     @media (max-width: 1100px) {
-      html, body { overflow-y: auto; height: auto; }
+      html, body { overflow-y: auto; overflow-x: hidden; height: auto; }
 
       .app-container {
         grid-template-columns: 1fr;
@@ -311,8 +311,28 @@
       .log-feed         { height: 200px; }
     }
 
-    @media (max-width: 600px) {
-      .info-row { grid-template-columns: 1fr; }
+    @media (max-width: 768px) {
+      html, body { overflow-x: hidden; }
+      * { max-width: 100%; box-sizing: border-box; }
+
+      .hud-row      { grid-template-columns: 1fr !important; }
+      .mining-row   { grid-template-columns: 1fr !important; }
+      .info-row     { grid-template-columns: 1fr !important; }
+      .content-row  { grid-template-columns: 1fr !important; }
+
+      /* Sidebar target cards: allow wrapping, don't enforce min-width */
+      .targets-list { flex-wrap: wrap; overflow-x: hidden; }
+      .target-card  { min-width: 0; flex: 1 1 calc(50% - 4px); }
+
+      /* Stat grid: single column on tiny screens */
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+
+      /* Buttons: full width, no horizontal overflow */
+      .btn { width: 100%; min-width: 0; }
+
+      /* Tables: allow horizontal scroll within their container only */
+      .main-table-container, .log-feed { overflow-x: auto; }
+      table { min-width: 0; }
     }
   </style>
 </head>
@@ -361,6 +381,7 @@
     <div class="nav-section">
       <div class="nav-title">System Tools</div>
       <button class="btn" id="btn-capture-frame" onclick="captureFrame()">Capture Frame</button>
+      <button class="btn" onclick="openSettings()" style="border-color: rgba(88,166,255,0.4); color: var(--accent);">&#9881; Settings</button>
       <button class="btn btn-danger" onclick="if(confirm('Kill EBot Server?'))api('POST','/api/kill')">Terminate Server</button>
     </div>
 
@@ -451,7 +472,7 @@
       <div class="mining-panel" style="border-right: 1px solid var(--border); overflow-y: auto;">
         <div class="panel-sub-title">Target Queue</div>
         <div class="ast-row ast-hdr">
-          <span>Asteroid</span><span>Dist</span><span>Score</span><span>State</span>
+          <span>Asteroid</span><span>ISK/m³</span><span>Dist</span><span>Score</span><span>State</span>
         </div>
         <div id="list-asteroids"></div>
       </div>
@@ -581,6 +602,215 @@
     <pre id="state-json-pre" style="flex:1; overflow:auto; padding:18px; font-family:monospace; font-size:0.72rem; color:var(--green); line-height:1.4;"></pre>
   </div>
 </div>
+
+<!-- ─── Settings Modal ────────────────────────────────────────────────── -->
+<div id="modal-settings" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1000; align-items:flex-start; justify-content:center; backdrop-filter:blur(4px); padding:24px; overflow-y:auto;">
+  <div style="background:var(--panel); border:1px solid var(--border); border-radius:12px; width:580px; max-width:98vw; box-shadow:0 20px 60px rgba(0,0,0,0.6); margin:auto;">
+
+    <!-- Sticky header -->
+    <div style="padding:14px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--panel); z-index:1; border-radius:12px 12px 0 0;">
+      <div style="font-weight:700; color:var(--accent); font-size:0.9rem; letter-spacing:1px;">&#9881; SETTINGS</div>
+      <button onclick="closeSettings()" style="background:none; border:none; color:var(--text-dim); font-size:1.3rem; cursor:pointer; line-height:1; padding:2px 8px;">&times;</button>
+    </div>
+
+    <div style="padding:20px; display:flex; flex-direction:column; gap:0;">
+
+      <!-- ── Section: Connection ── -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#128172; Discord Connection</div>
+
+        <div class="settings-row">
+          <div class="settings-row-label">
+            <span>Enable Notifications</span>
+            <small>Master on/off for all Discord messages</small>
+          </div>
+          <label class="stoggle"><input type="checkbox" id="ds-enabled"><span class="stoggle-track"></span></label>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <div class="settings-field-label">Webhook URL</div>
+          <input type="text" id="ds-url" placeholder="https://discord.com/api/webhooks/..." style="font-size:0.72rem;">
+          <div class="settings-hint">Channel Settings → Integrations → Webhooks → Copy URL</div>
+        </div>
+
+        <div style="margin-bottom:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+            <div class="settings-field-label" style="margin:0;">Periodic Summary Interval</div>
+            <span id="ds-interval-val" class="settings-mono">10 min</span>
+          </div>
+          <input type="range" id="ds-interval" min="1" max="60" value="10"
+            oninput="$('ds-interval-val').textContent=this.value+' min'">
+        </div>
+      </div>
+
+      <!-- ── Section: Events to report ── -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#128276; Events to Report</div>
+        <div class="settings-toggles-grid">
+          <div class="settings-row compact">
+            <span>Bot start / stop</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-bot-start-stop"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Every unload cycle</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-unload-cycle"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Belt change (warp)</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-belt-change"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Belt depleted</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-belt-depleted"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Dock / undock</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-dock-undock"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Periodic summary</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-periodic-summary"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Emergency stop</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-emergency-stop"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Shield escape warning</span>
+            <label class="stoggle"><input type="checkbox" id="ds-notify-shield-escape"><span class="stoggle-track"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Section: Cycle report fields ── -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#128230; Unload Cycle Report — Include</div>
+        <div class="settings-toggles-grid">
+          <div class="settings-row compact">
+            <span>m³ gained this cycle</span>
+            <label class="stoggle"><input type="checkbox" id="ds-cycle-m3-gained"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Total m³ mined</span>
+            <label class="stoggle"><input type="checkbox" id="ds-cycle-total-m3"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Cycle count</span>
+            <label class="stoggle"><input type="checkbox" id="ds-cycle-count"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Mining rate (m³/hr)</span>
+            <label class="stoggle"><input type="checkbox" id="ds-cycle-rate"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Home station name</span>
+            <label class="stoggle"><input type="checkbox" id="ds-cycle-home-station"><span class="stoggle-track"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Section: Summary report fields ── -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#128202; Periodic Summary — Include</div>
+        <div class="settings-toggles-grid">
+          <div class="settings-row compact">
+            <span>Time elapsed</span>
+            <label class="stoggle"><input type="checkbox" id="ds-sum-elapsed"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Cycles completed</span>
+            <label class="stoggle"><input type="checkbox" id="ds-sum-cycles"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Total m³ mined</span>
+            <label class="stoggle"><input type="checkbox" id="ds-sum-total-m3"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Mining rate (m³/hr)</span>
+            <label class="stoggle"><input type="checkbox" id="ds-sum-rate"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Bot status (docked/warping/space)</span>
+            <label class="stoggle"><input type="checkbox" id="ds-sum-status"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>Belt name &amp; asteroid count</span>
+            <label class="stoggle"><input type="checkbox" id="ds-sum-belt-info"><span class="stoggle-track"></span></label>
+          </div>
+          <div class="settings-row compact">
+            <span>System name</span>
+            <label class="stoggle"><input type="checkbox" id="ds-sum-system-name"><span class="stoggle-track"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Section: Formatting ── -->
+      <div class="settings-section" style="border-bottom:none; margin-bottom:0;">
+        <div class="settings-section-title">&#9998; Formatting</div>
+
+        <div style="margin-bottom:12px;">
+          <div class="settings-field-label">Message Prefix</div>
+          <input type="text" id="ds-prefix" placeholder="e.g.  [EVE]  or leave blank" style="font-size:0.72rem;">
+          <div class="settings-hint">Prepended to every message. Leave blank for none.</div>
+        </div>
+
+        <div>
+          <div class="settings-field-label">Emergency Mention</div>
+          <input type="text" id="ds-emergency-mention" placeholder="e.g. @here or &lt;@123456789&gt;" style="font-size:0.72rem;">
+          <div class="settings-hint">Appended to emergency-stop messages only. Leave blank to disable.</div>
+        </div>
+      </div>
+
+      <!-- ── Action buttons ── -->
+      <div style="padding-top:16px; display:flex; gap:8px;">
+        <button class="btn btn-primary" id="ds-save-btn" onclick="saveDiscordSettings()" style="flex:1; margin:0;">Save Settings</button>
+        <button class="btn" onclick="testDiscord()" id="discord-test-btn" style="width:120px; margin:0;">&#128561; Test</button>
+      </div>
+      <div id="discord-save-msg" style="font-size:0.65rem; margin-top:8px; min-height:16px; text-align:center;"></div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+/* ── Toggle switch ── */
+.stoggle { position:relative; display:inline-flex; align-items:center; cursor:pointer; flex-shrink:0; }
+.stoggle input { opacity:0; width:0; height:0; position:absolute; }
+.stoggle-track {
+  width:40px; height:22px; background:var(--border); border-radius:11px;
+  transition:background .15s; position:relative; border:1px solid var(--border-brt);
+}
+.stoggle-track::after {
+  content:''; position:absolute; top:2px; left:2px;
+  width:16px; height:16px; border-radius:50%;
+  background:var(--text-dim); transition:all .15s;
+}
+.stoggle input:checked + .stoggle-track { background:var(--accent-dim); border-color:var(--accent); }
+.stoggle input:checked + .stoggle-track::after { left:20px; background:#fff; }
+
+/* ── Settings panel layout ── */
+.settings-section {
+  padding:14px 0; border-bottom:1px solid var(--border); margin-bottom:2px;
+}
+.settings-section-title {
+  font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:1.5px;
+  color:var(--text-dim); margin-bottom:12px;
+}
+.settings-row {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-bottom:10px;
+}
+.settings-row.compact { margin-bottom:7px; font-size:0.75rem; color:var(--text); }
+.settings-row-label { display:flex; flex-direction:column; gap:2px; }
+.settings-row-label span { font-size:0.78rem; font-weight:600; color:var(--text); }
+.settings-row-label small { font-size:0.63rem; color:var(--text-dim); }
+.settings-toggles-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:0 16px;
+}
+.settings-field-label { font-size:0.7rem; font-weight:600; color:var(--text); margin-bottom:5px; }
+.settings-hint { font-size:0.6rem; color:var(--text-dim); margin-top:4px; }
+.settings-mono { font-size:0.72rem; color:var(--cyan); font-family:monospace; font-weight:700; }
+</style>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -929,6 +1159,9 @@ function renderDashboard(gs) {
     $('list-asteroids').innerHTML = gs.topAsteroids.map(a => `
       <div class="ast-row">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name)}</span>
+        <span style="font-family:monospace;${a.scoreSource==='survey'?'color:var(--green)':'color:var(--text-dim)'}">
+          ${a.iskPerM3 != null ? a.iskPerM3 : '—'}
+        </span>
         <span style="color:var(--text-dim)">${esc(a.distanceText)}</span>
         <span style="color:var(--accent);font-family:monospace">${a.score}</span>
         <span class="${a.isBeingMined?'ast-status-mining':a.isLocked?'ast-status-locked':'ast-status-queue'}">
@@ -1048,6 +1281,130 @@ async function captureFrame() {
 $('btn-stop').addEventListener('click',   () => api('POST','/api/stop'));
 $('btn-pause').addEventListener('click',  () => api('POST','/api/pause'));
 $('btn-resume').addEventListener('click', () => api('POST','/api/resume'));
+
+// ─── Settings Modal ───────────────────────────────────────────────────────
+
+// Maps between camelCase API keys and HTML element IDs
+const DS_FIELDS = [
+  // [apiKey,                      elementId,                   type]
+  ['enabled',                  'ds-enabled',               'bool'],
+  ['webhookUrl',               'ds-url',                   'text'],
+  ['summaryIntervalMinutes',   'ds-interval',              'int'],
+  // Event toggles
+  ['notifyBotStartStop',       'ds-notify-bot-start-stop', 'bool'],
+  ['notifyUnloadCycle',        'ds-notify-unload-cycle',   'bool'],
+  ['notifyBeltChange',         'ds-notify-belt-change',    'bool'],
+  ['notifyBeltDepleted',       'ds-notify-belt-depleted',  'bool'],
+  ['notifyDockUndock',         'ds-notify-dock-undock',    'bool'],
+  ['notifyPeriodicSummary',    'ds-notify-periodic-summary','bool'],
+  ['notifyEmergencyStop',      'ds-notify-emergency-stop', 'bool'],
+  ['notifyShieldEscape',       'ds-notify-shield-escape',  'bool'],
+  // Cycle fields
+  ['cycleShowM3Gained',        'ds-cycle-m3-gained',       'bool'],
+  ['cycleShowTotalM3',         'ds-cycle-total-m3',        'bool'],
+  ['cycleShowCycleCount',      'ds-cycle-count',           'bool'],
+  ['cycleShowRate',            'ds-cycle-rate',            'bool'],
+  ['cycleShowHomeStation',     'ds-cycle-home-station',    'bool'],
+  // Summary fields
+  ['summaryShowElapsed',       'ds-sum-elapsed',           'bool'],
+  ['summaryShowCycles',        'ds-sum-cycles',            'bool'],
+  ['summaryShowTotalM3',       'ds-sum-total-m3',          'bool'],
+  ['summaryShowRate',          'ds-sum-rate',              'bool'],
+  ['summaryShowStatus',        'ds-sum-status',            'bool'],
+  ['summaryShowBeltInfo',      'ds-sum-belt-info',         'bool'],
+  ['summaryShowSystemName',    'ds-sum-system-name',       'bool'],
+  // Formatting
+  ['messagePrefix',            'ds-prefix',                'text'],
+  ['emergencyMention',         'ds-emergency-mention',     'text'],
+];
+
+function dsApply(s) {
+  for (const [key, id, type] of DS_FIELDS) {
+    const el = $(id);
+    if (!el) continue;
+    const val = s[key];
+    if (type === 'bool') el.checked = !!val;
+    else if (type === 'int') {
+      el.value = val ?? 10;
+      const disp = $(id + '-val') || $('ds-interval-val');
+      if (disp && id === 'ds-interval') disp.textContent = (val ?? 10) + ' min';
+    }
+    else el.value = val ?? '';
+  }
+}
+
+function dsCollect() {
+  const obj = {};
+  for (const [key, id, type] of DS_FIELDS) {
+    const el = $(id);
+    if (!el) continue;
+    if (type === 'bool') obj[key] = el.checked;
+    else if (type === 'int') obj[key] = parseInt(el.value) || 10;
+    else obj[key] = el.value.trim();
+  }
+  return obj;
+}
+
+async function openSettings() {
+  $('modal-settings').style.display = 'flex';
+  $('discord-save-msg').textContent = '';
+  try {
+    const s = await fetch('/api/discord/status').then(r => r.json());
+    dsApply(s);
+  } catch(e) { console.error('Settings load failed', e); }
+}
+
+function closeSettings() { $('modal-settings').style.display = 'none'; }
+
+async function saveDiscordSettings() {
+  const btn = $('ds-save-btn');
+  const msg = $('discord-save-msg');
+  btn.disabled = true;
+  msg.textContent = 'Saving…';
+  msg.style.color = 'var(--text-dim)';
+  try {
+    const resp = await fetch('/api/discord/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dsCollect()),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      msg.textContent = '✓ Settings saved';
+      msg.style.color = 'var(--green)';
+      setTimeout(() => { if (msg.textContent.startsWith('✓')) msg.textContent = ''; }, 3000);
+    } else {
+      msg.textContent = data.error || 'Save failed';
+      msg.style.color = 'var(--red)';
+    }
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+}
+
+async function testDiscord() {
+  const btn = $('discord-test-btn');
+  const msg = $('discord-save-msg');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  msg.textContent = '';
+  try {
+    const resp = await fetch('/api/discord/test', { method: 'POST' });
+    const data = await resp.json();
+    msg.textContent = resp.ok ? ('✓ ' + data.message) : ('✗ ' + (data.message || 'Test failed'));
+    msg.style.color  = resp.ok ? 'var(--green)' : 'var(--red)';
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+  btn.textContent = '🔔 Test';
+}
+
+$('modal-settings').addEventListener('click', e => {
+  if (e.target === $('modal-settings')) closeSettings();
+});
 
 startConnection();
 pollSdeStatus();
