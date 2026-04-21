@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using EBot.Core.DecisionEngine;
 using EBot.Core.Execution;
 using EBot.Core.GameState;
+using static EBot.Core.GameState.EveConstants;
 
 namespace EBot.ExampleBots.MiningBot;
 
@@ -121,7 +122,7 @@ public sealed partial class MiningBot
         }
 
         // Broad fallback
-        var keywords = _stationKeywords.Concat(new[] { "Station", "Structure", "Citadel", "Fortizar", "Keepstar", "Athanor", "Tatara", "Raitaru", "Azbel" }).ToList();
+        var keywords = StationKeywords;
 
         var firstStation = ov.Entries.FirstOrDefault(e =>
         {
@@ -209,7 +210,7 @@ public sealed partial class MiningBot
             }
 
             var name = texts
-                .Where(t => !DistanceRegex().IsMatch(t) && t.Length > 1)
+                .Where(t => !EveConstants.DistanceRegex().IsMatch(t) && t.Length > 1)
                 .OrderByDescending(t => t.Length)
                 .FirstOrDefault();
 
@@ -235,8 +236,8 @@ public sealed partial class MiningBot
 
     private static double ParseSpeed(string text)
     {
-        // "324 m/s" or "1,234.5 m/s"
-        var m = Regex.Match(text, @"([\d,.]+)\s*m/s", RegexOptions.IgnoreCase);
+        // "324 m/s", "1,234.5 m/s", or bare "324 m" (some UI localizations omit /s)
+        var m = Regex.Match(text, @"([\d,.]+)\s*m(?:/s)?", RegexOptions.IgnoreCase);
         if (!m.Success) return 0;
         if (double.TryParse(m.Groups[1].Value.Replace(",", ""),
                 System.Globalization.NumberStyles.Float,
@@ -245,27 +246,5 @@ public sealed partial class MiningBot
         return 0;
     }
 
-    private static double? ParseDistanceM(string text)
-    {
-        var m = DistanceRegex().Match(text);
-        if (!m.Success) return null;
-
-        // Robust numeric parsing: remove thousands-separators (commas or spaces)
-        var valStr = m.Groups[1].Value.Replace(",", "").Replace(" ", "");
-        
-        if (!double.TryParse(valStr,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out var val)) return null;
-
-        return m.Groups[2].Value.ToLowerInvariant() switch
-        {
-            "km" => val * 1_000,
-            "au" => val * 149_597_870_700.0,
-            _    => val,
-        };
-    }
-
-    [GeneratedRegex(@"([\d.,]+)\s*(m|km|au)", RegexOptions.IgnoreCase)]
-    private static partial Regex DistanceRegex();
+    private static double? ParseDistanceM(string text) => ParseDistanceMeters(text);
 }

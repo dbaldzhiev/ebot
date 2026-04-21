@@ -54,6 +54,11 @@ public sealed partial class MiningBot
             state.ShipSpeed = CurrentSpeed(ctx);
         }
 
+        // Cache laser optimal range from tooltip whenever it is visible
+        var tooltipRange = ui.ModuleButtonTooltip?.OptimalRangeMeters;
+        if (tooltipRange is > 0)
+            ctx.Blackboard.Set("laser_range_m", (double)tooltipRange.Value);
+
         state.LaserRangeM = ctx.Blackboard.Get<double>("laser_range_m", 0);
 
         var overviewAsteroids = AsteroidsInOverview(ctx).ToList();

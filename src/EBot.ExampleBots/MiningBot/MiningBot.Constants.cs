@@ -1,3 +1,5 @@
+using EBot.Core.GameState;
+
 namespace EBot.ExampleBots.MiningBot;
 
 public sealed partial class MiningBot
@@ -9,21 +11,6 @@ public sealed partial class MiningBot
 
     /// <summary>Capacitor % below which the bot waits before acting.</summary>
     private const int MinCapPct = 15;
-
-    // ─── Station & Dockable keywords ──────────────────────────────────────────
-
-    private static readonly string[] _stationKeywords =
-    [
-        "Station", "Outpost", "Astrahus", "Fortizar", "Keepstar",
-        "Raitaru", "Azbel", "Sotiyo", "Tatara", "Athanor", "Metenox",
-        "Structure", "Engineering", "Citadel", "Refinery"
-    ];
-
-    private static readonly string[] _nonDockableKeywords =
-    [
-        "Ship", "Pod", "Capsule", "Drone", "Fighter",
-        "Gate", "Beacon", "Asteroid", "Cloud", "Wreck", "Rat",
-    ];
 
     // ─── Ore value ranking (higher = more valuable) ───────────────────────────
 

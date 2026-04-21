@@ -9,12 +9,14 @@ public sealed partial class MiningBot
     // ─── 7b. Return to station ───────────────────────────────────────────────
 
     private IBehaviorNode ReturnToStation() =>
-        new SequenceNode("Return to station",
-            new ConditionNode("Needs return?", ctx =>
-                ctx.Blackboard.Get<bool>("needs_unload") || IsOreHoldFull(ctx)),
-            new ActionNode("Return state machine", ctx =>
-            {
-                var phase = ctx.Blackboard.Get<string>("return_phase") ?? "";
+        new ActionNode("Return to station", ctx =>
+        {
+            // Condition checked inline every tick — avoids SequenceNode cursor bypass
+            // when the node is unticked while docked and re-entered after undocking.
+            if (!ctx.Blackboard.Get<bool>("needs_unload") && !IsOreHoldFull(ctx))
+                return NodeStatus.Failure;
+
+            var phase = ctx.Blackboard.Get<string>("return_phase") ?? "";
                 switch (phase)
                 {
                     case "":
@@ -335,7 +337,7 @@ public sealed partial class MiningBot
                         ctx.Blackboard.Set("return_phase", "");
                         return NodeStatus.Running;
                 }
-            }));
+        });
 
     // ─── 7d. Discover Belts (One-time) ──────────────────────────────────────
 

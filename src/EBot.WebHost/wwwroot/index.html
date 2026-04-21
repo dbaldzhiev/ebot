@@ -24,14 +24,13 @@
       --red:         #f85149;
       --orange:      #db6d28;
       --purple:      #bc8cff;
-      --glow:        0 0 10px rgba(88,166,255,.3);
     }
 
     html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
 
     .app-container {
       display: grid;
-      grid-template-columns: 280px 1fr 340px;
+      grid-template-columns: 270px 1fr 330px;
       grid-template-rows: 100vh;
       height: 100vh;
     }
@@ -42,14 +41,14 @@
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      padding: 20px;
+      padding: 16px;
       overflow-y: auto;
     }
 
     aside.launcher-sidebar {
       border-right: none;
       border-left: 1px solid var(--border);
-      padding: 15px;
+      padding: 14px;
     }
 
     .ap-result-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; transition: all .12s; font-size: 0.75rem; }
@@ -59,33 +58,31 @@
     .ap-result-sys  { font-size: 0.65rem; color: var(--text-dim); }
 
     input[type=text], input[type=number] {
-      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); 
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
       border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; outline: none;
     }
     input[type=text]:focus { border-color: var(--accent); }
-
     input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
-    .search-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-left: 4px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: 2px; color: var(--accent); margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+    .logo { font-size: 1.3rem; font-weight: 800; letter-spacing: 2px; color: var(--accent); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
     .logo-ebot { font-style: italic; }
-    .logo-version { font-size: 0.7rem; color: var(--text-dim); font-weight: 400; letter-spacing: normal; }
+    .logo-version { font-size: 0.65rem; color: var(--text-dim); font-weight: 400; letter-spacing: normal; }
 
-    .engine-status { margin-bottom: 24px; padding: 12px; background: var(--panel-hdr); border-radius: 8px; border: 1px solid var(--border); }
-    .engine-rpm { font-family: monospace; font-size: 1.2rem; color: var(--cyan); text-shadow: 0 0 5px rgba(57,197,187,0.4); }
-    .engine-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .engine-status { margin-bottom: 16px; padding: 10px 12px; background: var(--panel-hdr); border-radius: 8px; border: 1px solid var(--border); }
+    .engine-rpm { font-family: monospace; font-size: 1.15rem; color: var(--cyan); text-shadow: 0 0 5px rgba(57,197,187,0.4); }
+    .engine-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
 
-    .bot-pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--border); margin-bottom: 8px; }
+    .bot-pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; border: 1px solid var(--border); margin-bottom: 6px; }
     .bot-pill.running { border-color: var(--green); color: var(--green); background: rgba(63,185,80,0.1); }
     .bot-pill.idle { border-color: var(--text-dim); color: var(--text-dim); }
     .bot-pill.paused { border-color: var(--yellow); color: var(--yellow); background: rgba(210,153,34,0.1); }
 
-    .nav-section { margin-bottom: 24px; }
-    .nav-title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1.5px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    .nav-section { margin-bottom: 18px; }
+    .nav-title { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1.5px; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 
-    .btn { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-hdr); color: var(--text); font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; justify-content: center; }
+    .btn { width: 100%; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-hdr); color: var(--text); font-size: 0.78rem; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; justify-content: center; }
     .btn:hover:not(:disabled) { border-color: var(--accent); background: #1c2128; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
@@ -93,152 +90,230 @@
     .btn-danger { color: var(--red); border-color: rgba(248,81,73,0.3); }
     .btn-danger:hover:not(:disabled) { background: rgba(248,81,73,0.15); border-color: var(--red); }
 
-    .client-info { font-size: 0.7rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border); }
+    /* Ship Status Block */
+    .ship-status-block {
+      margin-top: auto;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .ship-status-card {
+      background: rgba(0,0,0,0.3);
+      padding: 8px 10px;
+      border-radius: 5px;
+      border-left: 3px solid var(--accent);
+    }
+    .ship-status-label { font-size: 0.58rem; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; }
+    .ship-status-value { font-size: 0.95rem; font-weight: bold; color: var(--accent); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ship-status-sub { font-size: 0.72rem; color: var(--text); margin-top: 1px; }
+    .info-row-small { font-size: 0.65rem; color: var(--text-dim); }
 
     /* ─── Main Content ───────────────────────────────────────────────────── */
     main {
       display: grid;
-      grid-template-rows: auto auto 1fr auto;
+      /* 5 explicit rows: HUD | mining(capped) | info(capped) | overview(flex) | footer */
+      grid-template-rows: auto minmax(0, 145px) minmax(0, 160px) 1fr auto;
       overflow: hidden;
       background: var(--bg);
+      height: 100%;
     }
+    /* Pin each child to its row so display:none on mining collapses row 2 to 0 */
+    .hud-row          { grid-row: 1; }
+    #mining-dashboard { grid-row: 2; }
+    .info-row         { grid-row: 3; }
+    .content-row      { grid-row: 4; }
+    main > footer     { grid-row: 5; }
 
     /* Row 1: HUD */
     .hud-row {
       display: grid;
-      grid-template-columns: 320px 1fr 320px;
+      grid-template-columns: 300px 1fr;
       gap: 1px;
       background: var(--border);
       border-bottom: 1px solid var(--border);
     }
-    .hud-panel { background: var(--panel); padding: 15px; }
+    .hud-panel { background: var(--panel); padding: 12px 15px; min-height: 0; }
+    /* Panels inside the capped info-row need to scroll their content */
+    .info-row .hud-panel { overflow-y: auto; }
 
     /* HP Bars */
-    .ship-bars { display: flex; flex-direction: column; gap: 10px; }
+    .ship-bars { display: flex; flex-direction: column; gap: 8px; }
     .bar-container { position: relative; }
-    .bar-label { font-size: 0.65rem; color: var(--text-dim); display: flex; justify-content: space-between; margin-bottom: 4px; }
-    .bar-track { height: 8px; background: #161b22; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+    .bar-label { font-size: 0.62rem; color: var(--text-dim); display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .bar-track { height: 7px; background: #161b22; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
     .bar-fill { height: 100%; transition: width 0.4s ease-out; border-radius: 4px; }
-    .bar-shield { background: var(--accent); box-shadow: 0 0 10px rgba(88,166,255,0.3); }
+    .bar-shield { background: var(--accent); box-shadow: 0 0 8px rgba(88,166,255,0.25); }
     .bar-armor  { background: var(--yellow); }
     .bar-hull   { background: var(--red); }
     .bar-cap    { background: var(--cyan); }
 
+    .speed-display { font-family: monospace; font-size: 0.75rem; color: var(--text-dim); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+    .speed-value { color: var(--cyan); font-weight: 600; }
+
     /* Targets */
-    .targets-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; height: 100%; }
-    .target-card { 
-      min-width: 140px; background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 6px; padding: 8px;
-      display: flex; flex-direction: column; gap: 6px; transition: transform 0.2s, border-color 0.2s;
+    .targets-list { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; height: 100%; }
+    .target-card {
+      min-width: 130px; background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 6px; padding: 8px;
+      display: flex; flex-direction: column; gap: 5px; transition: transform 0.2s, border-color 0.2s; flex-shrink: 0;
     }
     .target-card.active { border-color: var(--orange); box-shadow: 0 0 8px rgba(219,109,40,0.2); transform: translateY(-2px); }
-    .target-name { font-size: 0.75rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
-    .target-dist { font-size: 0.65rem; color: var(--text-dim); }
+    .target-name { font-size: 0.72rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
+    .target-dist { font-size: 0.62rem; color: var(--text-dim); }
     .target-mini-bars { display: flex; gap: 2px; height: 3px; }
     .target-mini-bar { flex: 1; height: 100%; background: #21262d; border-radius: 1px; }
 
+    /* Mining Dashboard Row */
+    .mining-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 200px;
+      gap: 1px;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .mining-panel { background: var(--panel); padding: 10px 12px; overflow-y: auto; min-height: 0; }
+
+    /* Mining session stats cards */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat-card { background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 5px; padding: 7px 9px; }
+    .stat-label { font-size: 0.57rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; }
+    .stat-value { font-size: 0.95rem; font-weight: 700; color: var(--cyan); font-family: monospace; margin-top: 1px; white-space: nowrap; }
+    .stat-card.full-width { grid-column: 1 / -1; }
+    .stat-card.highlight { border-color: var(--accent-dim); }
+
     /* Row 2: Info panels */
     .info-row {
-      display: grid; grid-template-columns: 320px 320px 1fr; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border);
+      display: grid; grid-template-columns: 300px 280px 1fr; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border);
     }
 
     /* Row 3: Tables and Logs */
     .content-row {
-      display: grid; grid-template-columns: 1fr 340px; gap: 1px; background: var(--border); overflow: hidden;
+      display: grid; grid-template-columns: 1fr 320px; gap: 1px; background: var(--border); overflow: hidden;
     }
     .main-table-container { background: var(--panel); overflow-y: auto; position: relative; }
     .side-panel { background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; }
 
-    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; color: var(--text); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; color: var(--text); }
     thead { position: sticky; top: 0; background: var(--panel-hdr); z-index: 10; }
-    th { text-align: left; padding: 10px 15px; color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
-    td { padding: 8px 15px; border-bottom: 1px solid #161b22; vertical-align: middle; }
+    th { text-align: left; padding: 8px 12px; color: var(--text-dim); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
+    td { padding: 7px 12px; border-bottom: 1px solid #161b22; vertical-align: middle; }
     tr:hover { background: rgba(88,166,255,0.03); }
     tr.danger td { color: var(--red); font-weight: 600; }
-    tr.active td { background: rgba(219,109,40,0.05); }
 
-    /* Row 4: Footer / Engine Thought */
+    /* Row 4: Footer */
     footer {
-      background: var(--panel-hdr); border-top: 1px solid var(--border); padding: 8px 20px;
-      display: flex; align-items: center; gap: 15px; font-family: monospace; font-size: 0.75rem;
+      background: var(--panel-hdr); border-top: 1px solid var(--border); padding: 7px 18px;
+      display: flex; align-items: center; gap: 12px; font-family: monospace; font-size: 0.72rem;
     }
-    .thought-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.65rem; font-weight: 700; }
+    .thought-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.6rem; font-weight: 700; flex-shrink: 0; }
     .thought-path { color: var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 
     /* Components */
-    .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; }
-    .badge-space { background: rgba(57,197,187,0.15); color: var(--cyan); }
-    .badge-docked { background: rgba(88,166,255,0.15); color: var(--accent); }
-    .badge-warp { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.58rem; font-weight: 700; text-transform: uppercase; }
 
-    .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 6px; }
-    .module-slot { 
-      aspect-ratio: 1; background: #161b22; border: 1px solid var(--border); border-radius: 4px; 
-      display: flex; align-items: center; justify-content: center; font-size: 0.65rem; position: relative;
+    .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 5px; }
+    .module-slot {
+      aspect-ratio: 1; background: #161b22; border: 1px solid var(--border); border-radius: 4px;
+      display: flex; align-items: center; justify-content: center; font-size: 0.62rem; position: relative;
       transition: all 0.2s;
     }
     .module-slot.active { border-color: var(--green); box-shadow: 0 0 5px rgba(63,185,80,0.3); color: var(--green); }
     .module-slot.busy { border-color: var(--yellow); color: var(--yellow); }
     .module-slot.hot { border-color: var(--red); color: var(--red); }
-    .module-ramp { 
-      position: absolute; inset: 2px; border: 2px solid transparent; border-top-color: var(--green); 
+    .module-ramp {
+      position: absolute; inset: 2px; border: 2px solid transparent; border-top-color: var(--green);
       border-radius: 50%; opacity: 0; pointer-events: none;
     }
     .module-slot.active .module-ramp { opacity: 0.4; animation: rotate 2s linear infinite; }
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-    .log-feed { flex: 1; padding: 10px; font-family: monospace; font-size: 0.75rem; overflow-y: auto; display: flex; flex-direction: column-reverse; }
-    .log-entry { margin-bottom: 4px; line-height: 1.4; border-bottom: 1px solid #161b22; padding-bottom: 2px; }
-    .log-time { color: var(--text-dim); margin-right: 8px; }
-    .log-cat  { color: var(--purple); font-weight: 700; margin-right: 8px; }
+    .log-feed { flex: 1; padding: 8px; font-family: monospace; font-size: 0.7rem; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+    .log-entry { margin-bottom: 3px; line-height: 1.4; border-bottom: 1px solid #161b22; padding-bottom: 2px; }
+    .log-time { color: var(--text-dim); margin-right: 6px; }
+    .log-cat  { color: var(--purple); font-weight: 700; margin-right: 6px; }
     .log-msg  { color: var(--text); }
     .log-Error .log-msg { color: var(--red); }
     .log-Warn  .log-msg { color: var(--yellow); }
 
-    /* Holds Enhanced */
-    .holds-container { display: flex; flex-direction: column; gap: 8px; }
-    .hold-card { background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 6px; padding: 10px; transition: all 0.2s; }
+    /* Holds */
+    .holds-container { display: flex; flex-direction: column; gap: 7px; }
+    .hold-card { background: var(--panel-hdr); border: 1px solid var(--border); border-radius: 5px; padding: 9px; transition: all 0.2s; }
     .hold-card:hover { border-color: var(--border-brt); }
-    .hold-header { cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
-    .hold-title { font-size: 0.75rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
-    .hold-type { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
-    
-    .hold-content { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
+    .hold-header { cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
+    .hold-title { font-size: 0.73rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+    .hold-vol { font-size: 0.65rem; color: var(--text-dim); font-family: monospace; }
+    .hold-content { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); max-height: 260px; overflow-y: auto; }
     .hold-card.expanded .hold-content { display: block; }
     .hold-card.expanded { border-color: var(--accent-dim); background: rgba(88,166,255,0.02); }
-
-    .cargo-item { display: flex; justify-content: space-between; font-size: 0.7rem; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .cargo-item { display: flex; justify-content: space-between; font-size: 0.68rem; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
     .cargo-qty { color: var(--cyan); font-family: monospace; }
-    
-    #conn-status { position: fixed; top: 10px; right: 20px; z-index: 100; display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--text-dim); }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+
+    /* Belt list */
+    .belt-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 7px; background: rgba(255,255,255,0.03); margin-bottom: 2px; border-radius: 3px; font-size: 0.72rem; }
+    .belt-item.depleted span { text-decoration: line-through; color: var(--text-dim); }
+    .belt-item.excluded span { color: var(--red); }
+
+    /* Asteroid table */
+    .ast-row { display: grid; grid-template-columns: 1fr 60px 52px 60px; gap: 4px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.72rem; align-items: center; }
+    .ast-row:last-child { border-bottom: none; }
+    .ast-hdr { color: var(--text-dim); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.8px; }
+    .ast-status-mining { color: var(--green); font-weight: 700; font-size: 0.65rem; }
+    .ast-status-locked { color: var(--accent); font-size: 0.65rem; }
+    .ast-status-queue  { color: var(--text-dim); font-size: 0.65rem; }
+
+    #conn-status { position: fixed; top: 8px; right: 16px; z-index: 100; display: flex; align-items: center; gap: 6px; font-size: 0.65rem; color: var(--text-dim); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
     .dot.ok { background: var(--green); box-shadow: 0 0 5px var(--green); }
 
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--border-brt); }
 
-    /* ─── Mobile Responsiveness ────────────────────────────────────────── */
-    @media (max-width: 1024px) {
+    .panel-sub-title { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
+
+    @media (max-width: 1100px) {
+      html, body { overflow-y: auto; height: auto; }
+
       .app-container {
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto 1fr auto;
+        grid-template-rows: auto;
         height: auto;
         overflow-y: auto;
       }
-      html, body { overflow-y: auto; height: auto; }
+
+      main {
+        grid-template-rows: auto auto auto auto auto;
+        overflow: visible;
+        height: auto;
+      }
+
+      /* Remove row pinning so auto-flow works on mobile */
+      .hud-row, #mining-dashboard, .info-row, .content-row, main > footer {
+        grid-row: auto !important;
+      }
+
+      .hud-row          { grid-template-columns: 1fr; }
+      .mining-row       { grid-template-columns: 1fr; }
+      .info-row         { grid-template-columns: 1fr 1fr; }
+      .content-row      { grid-template-columns: 1fr; }
+
+      .hud-panel        { overflow-y: visible; min-height: unset; }
+      .mining-panel     { overflow-y: visible; min-height: unset; }
+
       aside, aside.launcher-sidebar { border: none; border-bottom: 1px solid var(--border); }
-      .hud-row { grid-template-columns: 1fr; }
-      .info-row { grid-template-columns: 1fr 1fr; }
-      .content-row { grid-template-columns: 1fr; }
-      .main-table-container { height: 400px; }
-      .log-feed { height: 300px; }
+
+      /* Let panels grow naturally on mobile */
+      .targets-list     { flex-wrap: wrap; height: auto; }
+      .content-row      { height: 400px; }
+      .main-table-container { height: 300px; }
+      .log-feed         { height: 200px; }
     }
 
     @media (max-width: 600px) {
       .info-row { grid-template-columns: 1fr; }
     }
-
   </style>
 </head>
 <body>
@@ -249,11 +324,11 @@
 </div>
 
 <div class="app-container">
-  <!-- ─── Sidebar ──────────────────────────────────────────────────────── -->
+  <!-- ─── Left Sidebar ──────────────────────────────────────────────────── -->
   <aside>
     <div class="logo">
       <span class="logo-ebot">EBOT</span>
-      <span class="logo-cc">// C&amp;C</span>
+      <span>// C&amp;C</span>
       <span class="logo-version">v2.1</span>
     </div>
 
@@ -261,13 +336,13 @@
       <div class="engine-label">Engine RPM</div>
       <div class="engine-rpm" id="engine-rpm">0.0</div>
       <div id="state-pill" class="bot-pill idle">IDLE</div>
-      <div id="bot-desc" style="font-size: 0.65rem; color: var(--text-dim); margin-top: 4px;">No active bot</div>
+      <div id="bot-desc" style="font-size: 0.62rem; color: var(--text-dim); margin-top: 3px; line-height: 1.4;">No active bot</div>
     </div>
 
     <div class="nav-section">
       <div class="nav-title">Mission Control</div>
-      <button class="btn btn-muted" id="btn-pause" disabled>⏸ Pause Engine</button>
-      <button class="btn btn-muted" id="btn-resume" disabled>▶ Resume Engine</button>
+      <button class="btn" id="btn-pause" disabled>⏸ Pause Engine</button>
+      <button class="btn" id="btn-resume" disabled>▶ Resume Engine</button>
       <button class="btn btn-danger" id="btn-stop" disabled>⏹ Stop Active Bot</button>
     </div>
 
@@ -278,159 +353,172 @@
 
     <div class="nav-section">
       <div class="nav-title">Decision Tree</div>
-      <div id="decision-tree-path" style="font-size: 0.65rem; font-family: monospace; color: var(--green); line-height: 1.4; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid var(--border);">
+      <div id="decision-tree-path" style="font-size: 0.62rem; font-family: monospace; color: var(--green); line-height: 1.5; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid var(--border);">
         Initializing...
       </div>
     </div>
 
     <div class="nav-section">
       <div class="nav-title">System Tools</div>
-      <button class="btn" id="btn-capture-frame" onclick="captureFrame()">💾 Capture Frame</button>
-      <button class="btn btn-danger" onclick="if(confirm('Kill EBot Server?'))api('POST','/api/kill')">☢ Terminate Server</button>
+      <button class="btn" id="btn-capture-frame" onclick="captureFrame()">Capture Frame</button>
+      <button class="btn btn-danger" onclick="if(confirm('Kill EBot Server?'))api('POST','/api/kill')">Terminate Server</button>
     </div>
 
-    <!-- ─── Debug & Diagnostics ────────────────────────────────────────── -->
-    <div class="nav-section debug-section" style="border: 1px dashed var(--yellow); padding: 10px; border-radius: 8px; background: rgba(210,153,34,0.05);">
-      <div class="nav-title" style="color: var(--yellow); border-bottom-color: var(--yellow);">Debug & Diagnostics</div>
-      
-      <button class="btn" id="btn-step" disabled onclick="api('POST','/api/debug/step')" title="Execute exactly one tick (only works when paused)">
-        <span>👣 Step One Tick</span>
-      </button>
-
-      <button class="btn" onclick="dumpFullState()" title="Dump full bot memory and blackboard to JSON">
-        <span>🔍 Dump Full State</span>
-      </button>
-
-      <div class="nav-title" style="margin-top: 15px; font-size: 0.6rem;">Session Recording</div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 5px;">
-        <button class="btn" id="btn-rec-start" onclick="api('POST','/api/debug/record/start')" style="font-size: 0.65rem; color: var(--green);">● Record</button>
-        <button class="btn" id="btn-rec-stop" onclick="api('POST','/api/debug/record/stop')" style="font-size: 0.65rem; color: var(--red);">■ Stop</button>
+    <div class="nav-section" style="border: 1px dashed rgba(210,153,34,0.4); padding: 10px; border-radius: 8px; background: rgba(210,153,34,0.03);">
+      <div class="nav-title" style="color: var(--yellow); border-bottom-color: rgba(210,153,34,0.3);">Debug</div>
+      <button class="btn" id="btn-step" disabled onclick="api('POST','/api/debug/step')">Step One Tick</button>
+      <button class="btn" onclick="dumpFullState()">Dump Full State</button>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 6px;">
+        <button class="btn" onclick="api('POST','/api/debug/record/start')" style="font-size: 0.62rem; color: var(--green); margin-bottom:0;">● Record</button>
+        <button class="btn" onclick="api('POST','/api/debug/record/stop')" style="font-size: 0.62rem; color: var(--red); margin-bottom:0;">■ Stop</button>
       </div>
-      <button class="btn btn-primary" onclick="window.open('/api/debug/record/download')" style="font-size: 0.7rem;">💾 Download Session</button>
+      <button class="btn btn-primary" onclick="window.open('/api/debug/record/download')" style="font-size: 0.65rem; margin-top:5px;">Download Session</button>
     </div>
 
-    <div class="client-info">
-      <div id="status-header" style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid var(--accent);">
-        <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px;">Ship Status</div>
-        <div id="info-location" style="font-size: 1.0rem; font-weight: bold; color: var(--accent);">Initializing...</div>
-        <div id="info-activity" style="font-size: 0.8rem; color: #fff; margin-top: 2px;">Monitor Mode</div>
+    <!-- Ship Status — anchored to bottom -->
+    <div class="ship-status-block">
+      <div class="ship-status-card">
+        <div class="ship-status-label">Ship Status</div>
+        <div id="info-location" class="ship-status-value">Initializing...</div>
+        <div id="info-activity" class="ship-status-sub">Monitor Mode</div>
       </div>
-      <span id="info-system">System: Unknown</span>
-      <span id="info-dpi">DPI: 100%</span>
-      <span id="info-ticks">Ticks: 0</span>
-      <span id="runtime-display">00:00:00</span>
+      <div class="info-row-small" id="info-system">System: Unknown</div>
+      <div class="info-row-small" id="info-ticks">Ticks: 0</div>
+      <div class="info-row-small" id="runtime-display">00:00:00</div>
     </div>
   </aside>
 
   <!-- ─── Main ─────────────────────────────────────────────────────────── -->
   <main>
-    <!-- Row 1: Ship HUD -->
-    <div class="hud-row" style="grid-template-columns: 320px 1fr;">
-      <!-- ... ship bars ... -->
+    <!-- Row 1: Ship HUD — bars + targets -->
+    <div class="hud-row">
       <div class="hud-panel ship-bars">
         <div class="bar-container">
-          <div class="bar-label"><span>SHIELD</span><span id="val-shield">100%</span></div>
-          <div class="bar-track"><div id="bar-shield" class="bar-fill bar-shield" style="width: 100%"></div></div>
+          <div class="bar-label"><span>SHIELD</span><span id="val-shield">—</span></div>
+          <div class="bar-track"><div id="bar-shield" class="bar-fill bar-shield" style="width:100%"></div></div>
         </div>
         <div class="bar-container">
-          <div class="bar-label"><span>ARMOR</span><span id="val-armor">100%</span></div>
-          <div class="bar-track"><div id="bar-armor" class="bar-fill bar-armor" style="width: 100%"></div></div>
+          <div class="bar-label"><span>ARMOR</span><span id="val-armor">—</span></div>
+          <div class="bar-track"><div id="bar-armor" class="bar-fill bar-armor" style="width:100%"></div></div>
         </div>
         <div class="bar-container">
-          <div class="bar-label"><span>HULL</span><span id="val-hull">100%</span></div>
-          <div class="bar-track"><div id="bar-hull" class="bar-fill bar-hull" style="width: 100%"></div></div>
+          <div class="bar-label"><span>HULL</span><span id="val-hull">—</span></div>
+          <div class="bar-track"><div id="bar-hull" class="bar-fill bar-hull" style="width:100%"></div></div>
         </div>
         <div class="bar-container">
-          <div class="bar-label"><span>CAPACITOR</span><span id="val-cap">100%</span></div>
-          <div class="bar-track"><div id="bar-cap" class="bar-fill bar-cap" style="width: 100%"></div></div>
+          <div class="bar-label"><span>CAPACITOR</span><span id="val-cap">—</span></div>
+          <div class="bar-track"><div id="bar-cap" class="bar-fill bar-cap" style="width:100%"></div></div>
         </div>
+        <div class="speed-display">Speed: <span class="speed-value" id="val-speed">—</span></div>
       </div>
 
       <div class="hud-panel" style="border-left: 1px solid var(--border);">
-        <div class="nav-title" style="margin-bottom: 10px;">Targets In Range</div>
+        <div class="panel-sub-title">Locked Targets</div>
         <div class="targets-list" id="targets-list">
-          <div class="empty" style="margin: auto;">No targets locked</div>
+          <div style="margin: auto; font-size: 0.7rem; color: var(--text-dim);">No targets locked</div>
         </div>
       </div>
     </div>
 
-    <!-- Mining Queue & Belts (Visible only when Mining Bot is active) -->
-    <div id="mining-dashboard" style="display: none; padding: 15px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--border);">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-        <div class="card">
-          <div class="card-header" style="font-size: 0.8rem; color: var(--accent);">TARGET QUEUE (TOP 5 SCORES)</div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 10px;">
-            <thead style="color: var(--text-dim); text-align: left; border-bottom: 1px solid var(--border);">
-              <tr>
-                <th style="padding: 5px;">Asteroid</th>
-                <th style="padding: 5px;">Dist</th>
-                <th style="padding: 5px;">Score</th>
-                <th style="padding: 5px;">Status</th>
-              </tr>
-            </thead>
-            <tbody id="table-asteroids"></tbody>
-          </table>
+    <!-- Row 2: Mining Ops (only when mining bot is active) -->
+    <div id="mining-dashboard" style="display: none;" class="mining-row">
+      <!-- Column A: Session Stats -->
+      <div class="mining-panel" style="border-right: 1px solid var(--border);">
+        <div class="panel-sub-title">Session Stats</div>
+        <div class="stat-grid">
+          <div class="stat-card highlight">
+            <div class="stat-label">Total Mined</div>
+            <div class="stat-value" id="ms-total">0</div>
+            <div style="font-size:0.55rem; color:var(--text-dim); margin-top:1px;">m³</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Unload Cycles</div>
+            <div class="stat-value" id="ms-cycles">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Rate</div>
+            <div class="stat-value" id="ms-rate">—</div>
+            <div style="font-size:0.55rem; color:var(--text-dim); margin-top:1px;">m³/hr</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Hold Fill</div>
+            <div class="stat-value" id="ms-hold-pct">—</div>
+          </div>
         </div>
-        <div class="card">
-          <div class="card-header" style="font-size: 0.8rem; color: var(--accent);">BELT INDEXER</div>
-          <div id="list-belts" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
+      </div>
+
+      <!-- Column B: Target Queue -->
+      <div class="mining-panel" style="border-right: 1px solid var(--border); overflow-y: auto;">
+        <div class="panel-sub-title">Target Queue</div>
+        <div class="ast-row ast-hdr">
+          <span>Asteroid</span><span>Dist</span><span>Score</span><span>State</span>
         </div>
+        <div id="list-asteroids"></div>
+      </div>
+
+      <!-- Column C: Belt Indexer -->
+      <div class="mining-panel" style="overflow-y: auto;">
+        <div class="panel-sub-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Belt Indexer</span>
+          <span id="belt-count" style="color:var(--text-dim); font-size:0.55rem;"></span>
+        </div>
+        <div id="list-belts"></div>
       </div>
     </div>
 
-    <!-- Row 2: Modules, Drones, Holds -->
-    <div class="info-row" style="grid-template-columns: 320px 320px 1fr;">
-      <div class="hud-panel" style="border-right: 1px solid var(--border);">
-        <div class="nav-title">Modules</div>
+    <!-- Row 3: Modules · Drones · Holds -->
+    <div class="info-row">
+      <div class="hud-panel" style="border-right: 1px solid var(--border); overflow-y: auto;">
+        <div class="panel-sub-title">Ship Modules</div>
         <div class="module-grid" id="module-grid"></div>
       </div>
-      <div class="hud-panel" style="border-right: 1px solid var(--border);">
-        <div class="nav-title">Drones</div>
+      <div class="hud-panel" style="border-right: 1px solid var(--border); overflow-y: auto;">
+        <div class="panel-sub-title">Drones</div>
         <div id="drones-merged-list" class="holds-container">
-          <div class="empty">No drones detected</div>
+          <div style="font-size:0.7rem; color:var(--text-dim);">No drones detected</div>
         </div>
       </div>
-      <div class="hud-panel">
-        <div class="nav-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <div class="hud-panel" style="overflow-y: auto;">
+        <div class="panel-sub-title" style="display:flex; justify-content:space-between; align-items:center;">
           <span>Inventory Holds</span>
-          <button class="badge" onclick="apiClick('/api/scan-holds')" style="background:var(--accent-dim); color:white; border:none; cursor:pointer; padding:2px 8px;">Sync All</button>
+          <button class="badge" onclick="apiClick('/api/scan-holds')" style="background:var(--accent-dim); color:white; border:none; cursor:pointer; padding:2px 8px; border-radius:3px;">Sync</button>
         </div>
         <div id="holds-list" class="holds-container"></div>
       </div>
     </div>
 
-    <!-- Row 3: Overview & Holds -->
+    <!-- Row 4: Overview + Event Log -->
     <div class="content-row">
       <div class="main-table-container">
         <table>
           <thead>
             <tr>
-              <th style="width: 40px"></th>
+              <th style="width:30px"></th>
               <th>Name</th>
               <th>Type</th>
-              <th style="text-align: right">Distance</th>
+              <th style="text-align:right">Distance</th>
             </tr>
           </thead>
           <tbody id="overview-body">
-            <tr><td colspan="4" class="empty" style="padding:40px; text-align:center;">Scanning Overview...</td></tr>
+            <tr><td colspan="4" style="padding:30px; text-align:center; color:var(--text-dim); font-size:0.75rem;">Scanning overview...</td></tr>
           </tbody>
         </table>
       </div>
       <div class="side-panel">
-        <div class="panel-hdr" style="padding: 10px 15px; background: var(--panel-hdr); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid var(--border);">
+        <div style="padding: 8px 12px; background: var(--panel-hdr); font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); color: var(--text-dim);">
           Event Log
         </div>
         <div class="log-feed" id="log-body">
-          <div class="empty">Waiting for logs...</div>
+          <div style="font-size:0.7rem; color:var(--text-dim);">Waiting for logs...</div>
         </div>
       </div>
     </div>
 
-    <!-- Row 4: Thought Process -->
+    <!-- Footer: Decision tree path -->
     <footer>
-      <span class="thought-label">Thinking:</span>
-      <span class="thought-path" id="thought-path">Awaiting Decision...</span>
-      <span id="runtime-display" style="color: var(--text-dim); margin-left: auto;">00:00:00</span>
+      <span class="thought-label">AI:</span>
+      <span class="thought-path" id="thought-path">Awaiting decision...</span>
+      <span id="footer-runtime" style="color: var(--text-dim); margin-left: auto; flex-shrink:0;">00:00:00</span>
     </footer>
   </main>
 
@@ -442,40 +530,38 @@
         <span>Travel Autopilot</span>
         <span id="ap-sde-badge" class="badge" style="font-size:0.5rem; background:rgba(0,0,0,0.2);">SDE...</span>
       </div>
-      <div style="display:flex; gap:6px; margin-bottom:10px;">
-        <input type="text" id="ap-search-input" placeholder="Search system/station..." oninput="onSdeInput(this.value)">
-      </div>
-      <div id="ap-search-results" style="max-height: 200px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid var(--border);"></div>
+      <input type="text" id="ap-search-input" placeholder="Search system / station..." oninput="onSdeInput(this.value)" style="margin-bottom:8px;">
+      <div id="ap-search-results" style="max-height: 180px; overflow-y: auto; margin-bottom: 8px; border-bottom: 1px solid var(--border);"></div>
       <button class="btn btn-primary" id="ap-start-btn" onclick="startAutopilot()">Start Autopilot</button>
-      <div id="ap-status-line" style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">No destination selected</div>
-      <button class="btn btn-secondary" id="ap-save-btn" onclick="saveDestination()"
-              style="display:none; margin-top:4px; width:100%; font-size:0.65rem;">
-        &#9733; Save Destination
-      </button>
-      <div class="nav-title" style="margin-top:10px; font-size:0.6rem;">Saved Destinations</div>
-      <div id="ap-saved-list" style="max-height:120px; overflow-y:auto; margin-bottom:6px;"></div>
-      <div class="nav-title" style="font-size:0.6rem;">Recent (last 5)</div>
-      <div id="ap-recent-list" style="max-height:120px; overflow-y:auto;"></div>
+      <div id="ap-status-line" style="font-size:0.58rem; color:var(--text-dim); margin-top:3px;">No destination selected</div>
+      <button class="btn" id="ap-save-btn" onclick="saveDestination()" style="display:none; margin-top:4px; font-size:0.62rem;">&#9733; Save Destination</button>
+      <div class="nav-title" style="margin-top:10px; font-size:0.56rem;">Saved</div>
+      <div id="ap-saved-list" style="max-height:100px; overflow-y:auto; margin-bottom:6px;"></div>
+      <div class="nav-title" style="font-size:0.56rem;">Recent</div>
+      <div id="ap-recent-list" style="max-height:100px; overflow-y:auto;"></div>
     </div>
 
     <!-- Mining Bot -->
-    <div class="nav-section" style="margin-top: 30px;">
+    <div class="nav-section" style="margin-top: 20px;">
       <div class="nav-title">Mining Operations</div>
-      <div class="bar-label"><span>Docking Bookmark</span></div>
-      <input type="text" id="mb-bookmark" placeholder="Home station name..." style="margin-bottom:12px;">
-      
-      <div class="bar-label"><span>Ore Hold Return %</span><span id="mb-ore-val">95%</span></div>
-      <input type="range" id="mb-ore-pct" min="15" max="100" value="95" oninput="$('mb-ore-val').textContent=this.value+'%'" onchange="updateMiningSettings()" style="margin-bottom:12px;">
 
-      <div class="bar-label"><span>Shield Escape %</span><span id="mb-shield-val">25%</span></div>
-      <input type="range" id="mb-shield-pct" min="0" max="50" value="25" oninput="$('mb-shield-val').textContent=this.value+'%'" onchange="updateMiningSettings()" style="margin-bottom:12px;">
+      <div class="bar-label" style="margin-bottom:3px;"><span>Home Station</span></div>
+      <input type="text" id="mb-bookmark" placeholder="Station name (partial match ok)" style="margin-bottom:10px;">
 
-      <button class="btn btn-primary" id="mb-start-btn" onclick="startMining()">Start Mining</button>
-      <div id="mb-status-line" style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;"></div>
+      <div class="bar-label"><span>Ore Hold Return</span><span id="mb-ore-val">95%</span></div>
+      <input type="range" id="mb-ore-pct" min="15" max="100" value="95"
+        oninput="$('mb-ore-val').textContent=this.value+'%'" onchange="updateMiningSettings()" style="margin-bottom:10px;">
+
+      <div class="bar-label"><span>Shield Escape</span><span id="mb-shield-val">25%</span></div>
+      <input type="range" id="mb-shield-pct" min="0" max="50" value="25"
+        oninput="$('mb-shield-val').textContent=this.value+'%'" onchange="updateMiningSettings()" style="margin-bottom:10px;">
+
+      <button class="btn btn-primary" id="mb-start-btn" onclick="startMining()">Start Mining Bot</button>
+      <div id="mb-status-line" style="font-size:0.58rem; color:var(--text-dim); margin-top:3px;"></div>
     </div>
 
     <!-- SDE Progress -->
-    <div id="ap-sde-progress" style="display:none; margin-top: auto; padding:10px; background:var(--panel-hdr); border-radius:6px;">
+    <div id="ap-sde-progress" style="display:none; margin-top: auto; padding:8px; background:var(--panel-hdr); border-radius:6px;">
       <div class="engine-label" id="ap-sde-msg">Updating SDE...</div>
       <div class="bar-track"><div id="ap-sde-bar" class="bar-fill" style="width: 0%; background:var(--accent);"></div></div>
     </div>
@@ -485,14 +571,14 @@
 <!-- ─── Full State Modal ──────────────────────────────────────────────── -->
 <div id="modal-state" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; padding:40px; backdrop-filter:blur(4px);">
   <div style="background:var(--panel); border:1px solid var(--border); border-radius:12px; height:100%; display:flex; flex-direction:column; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
-    <div style="padding:15px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-      <div style="font-weight:bold; color:var(--yellow);">🔍 FULL BOT STATE DUMP</div>
-      <div style="display:flex; gap:10px;">
+    <div style="padding:12px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+      <div style="font-weight:bold; color:var(--yellow); font-size:0.85rem;">FULL BOT STATE</div>
+      <div style="display:flex; gap:8px;">
         <button class="badge" onclick="copyStateJson()" style="background:var(--accent-dim); color:white; border:none; cursor:pointer; padding:4px 10px;">Copy JSON</button>
         <button class="badge" onclick="$('modal-state').style.display='none'" style="background:var(--red); color:white; border:none; cursor:pointer; padding:4px 10px;">Close</button>
       </div>
     </div>
-    <pre id="state-json-pre" style="flex:1; overflow:auto; padding:20px; font-family:monospace; font-size:0.75rem; color:var(--green); line-height:1.4;"></pre>
+    <pre id="state-json-pre" style="flex:1; overflow:auto; padding:18px; font-family:monospace; font-size:0.72rem; color:var(--green); line-height:1.4;"></pre>
   </div>
 </div>
 
@@ -503,13 +589,33 @@ const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 let lastGs = null;
 let expandedHolds = new Set();
 
+// Map raw EVE subcaption strings and hold type enum values to friendly display names
+function friendlyHoldName(name, holdType) {
+  const map = {
+    'ShipGeneralMiningHold': 'Ore Hold',
+    'ShipGeneralCargoHold':  'Cargo Hold',
+    'ShipFleetHangar':       'Fleet Hangar',
+    'ShipFuelBay':           'Fuel Bay',
+    'ShipMaintBay':          'Ship Maintenance Bay',
+    'ShipInfrastructureHold':'Infrastructure Hold',
+    'Mining':          'Ore Hold',
+    'Cargo':           'Cargo Hold',
+    'Fleet':           'Fleet Hangar',
+    'Fuel':            'Fuel Bay',
+    'Infrastructure':  'Infrastructure Hold',
+    'ShipMaintenance': 'Maintenance Bay',
+    'Item':            'Item Hangar',
+  };
+  return map[name] || map[holdType] || name || holdType || 'Hold';
+}
+
 function toggleHold(holdName) {
   if (expandedHolds.has(holdName)) expandedHolds.delete(holdName);
   else expandedHolds.add(holdName);
-  if (lastGs) renderDashboard(lastGs);
+  if (lastGs) renderHolds(lastGs.holds);
 }
 
-// Autopilot state
+// ─── Autopilot ────────────────────────────────────────────────────────────
 let apSearchResults  = [];
 let apSelectedSearch = null;
 let apSearchBusy     = false;
@@ -525,11 +631,9 @@ function onSdeInput(q) {
 
 async function doSdeSearch() {
   const q = ($('ap-search-input').value || '').trim();
-  if (q.length < 3) return;
-  if (apSearchBusy) return;
+  if (q.length < 3 || apSearchBusy) return;
   apSearchBusy = true;
-  
-  $('ap-search-results').innerHTML = '<div class="empty">Searching...</div>';
+  $('ap-search-results').innerHTML = '<div style="font-size:0.7rem;color:var(--text-dim);padding:4px;">Searching...</div>';
   try {
     const resp = await fetch('/api/stations/search?q=' + encodeURIComponent(q)).then(r => r.json());
     apSearchResults = Array.isArray(resp.results) ? resp.results : [];
@@ -540,14 +644,11 @@ async function doSdeSearch() {
 
 function renderSearchResults() {
   const el = $('ap-search-results');
-  if (!apSearchResults.length) { el.innerHTML = '<div class="empty">No results</div>'; return; }
+  if (!apSearchResults.length) { el.innerHTML = '<div style="font-size:0.7rem;color:var(--text-dim);padding:4px;">No results</div>'; return; }
   el.innerHTML = apSearchResults.map((r, i) => {
     const sel = apSelectedSearch && apSelectedSearch.id === r.id ? ' selected' : '';
     return `<div class="ap-result-item${sel}" onclick="selectSearchResult(${i})">
-      <div class="ap-result-info">
-        <div class="ap-result-name">${esc(r.name)}</div>
-        <div class="ap-result-sys">${esc(r.systemName || '')}</div>
-      </div>
+      <div><div class="ap-result-name">${esc(r.name)}</div><div class="ap-result-sys">${esc(r.systemName||'')}</div></div>
     </div>`;
   }).join('');
 }
@@ -555,8 +656,7 @@ function renderSearchResults() {
 function selectSearchResult(i) {
   apSelectedSearch = apSearchResults[i] || null;
   renderSearchResults();
-  const sl = $('ap-status-line');
-  if (apSelectedSearch) sl.textContent = `Selected: ${apSelectedSearch.name}`;
+  if (apSelectedSearch) $('ap-status-line').textContent = `Selected: ${apSelectedSearch.name}`;
   toggleSaveBtn();
 }
 
@@ -564,37 +664,28 @@ async function pollSdeStatus() {
   try {
     const s = await fetch('/api/stations/sde-status').then(r => r.json());
     const badge = $('ap-sde-badge');
-    if (badge) {
-      badge.textContent = s.status || '...';
-      badge.style.color = s.ready ? 'var(--green)' : 'var(--text-dim)';
-    }
+    if (badge) { badge.textContent = s.status || '...'; badge.style.color = s.ready ? 'var(--green)' : 'var(--text-dim)'; }
     const prog = $('ap-sde-progress');
-    if (prog) {
-      prog.style.display = s.downloading ? 'block' : 'none';
-      if (s.downloading) $('ap-sde-bar').style.width = (s.progress || 0) + '%';
-    }
+    if (prog) { prog.style.display = s.downloading ? 'block' : 'none'; if (s.downloading) $('ap-sde-bar').style.width = (s.progress||0)+'%'; }
     if (!s.ready || s.downloading) setTimeout(pollSdeStatus, 3000);
   } catch(e) { setTimeout(pollSdeStatus, 10000); }
 }
 
 async function loadSavedDests() {
-  try {
-    apSavedDests = await fetch('/api/destinations').then(r => r.json());
-    renderSavedDests();
-  } catch(e) {}
+  try { apSavedDests = await fetch('/api/destinations').then(r => r.json()); renderSavedDests(); } catch(e) {}
 }
 
 function renderSavedDests() {
   const el = $('ap-saved-list');
   if (!el) return;
-  if (!apSavedDests.length) { el.innerHTML = '<div class="empty">None saved</div>'; return; }
+  if (!apSavedDests.length) { el.innerHTML = '<div style="font-size:0.65rem;color:var(--text-dim);">None saved</div>'; return; }
   el.innerHTML = apSavedDests.map(d => `
-    <div class="ap-result-item" style="display:flex; justify-content:space-between; align-items:center;">
-      <span onclick="selectSavedDest('${esc(d.id)}','${esc(d.name)}')" style="cursor:pointer; flex:1;">
+    <div class="ap-result-item" style="justify-content:space-between;">
+      <span onclick="selectSavedDest('${esc(d.id)}','${esc(d.name)}')" style="cursor:pointer;flex:1;">
         <div class="ap-result-name">${esc(d.name)}</div>
         ${d.systemName ? `<div class="ap-result-sys">${esc(d.systemName)}</div>` : ''}
       </span>
-      <span onclick="deleteSavedDest('${esc(d.id)}')" style="cursor:pointer; padding:2px 6px; color:var(--text-dim);">&#x2715;</span>
+      <span onclick="deleteSavedDest('${esc(d.id)}')" style="cursor:pointer;padding:2px 5px;color:var(--text-dim);">&#x2715;</span>
     </div>`).join('');
 }
 
@@ -608,16 +699,10 @@ function selectSavedDest(id, name) {
 
 async function saveDestination() {
   if (!apSelectedSearch) return;
-  const dest = {
-    id:         apSelectedSearch.id,
-    name:       apSelectedSearch.name,
-    systemName: apSelectedSearch.systemName ?? null,
-    typeId:     apSelectedSearch.typeId    ?? null,
-    iconUrl:    null
-  };
   try {
     apSavedDests = await fetch('/api/destinations', {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(dest)
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id: apSelectedSearch.id, name: apSelectedSearch.name, systemName: apSelectedSearch.systemName??null, typeId: apSelectedSearch.typeId??null, iconUrl: null })
     }).then(r => r.json());
     renderSavedDests();
     const btn = $('ap-save-btn');
@@ -627,91 +712,73 @@ async function saveDestination() {
 }
 
 async function deleteSavedDest(id) {
-  try {
-    apSavedDests = await fetch('/api/destinations/' + encodeURIComponent(id), { method: 'DELETE' }).then(r => r.json());
-    renderSavedDests();
-  } catch(e) {}
+  try { apSavedDests = await fetch('/api/destinations/'+encodeURIComponent(id),{method:'DELETE'}).then(r=>r.json()); renderSavedDests(); } catch(e) {}
 }
 
 function toggleSaveBtn() {
   const btn = $('ap-save-btn');
   if (!btn) return;
-  const isAlreadySaved = apSelectedSearch && apSavedDests.some(d => d.id === apSelectedSearch.id);
-  btn.style.display = apSelectedSearch && !isAlreadySaved ? '' : 'none';
+  btn.style.display = (apSelectedSearch && !apSavedDests.some(d => d.id === apSelectedSearch.id)) ? '' : 'none';
 }
 
 const RECENT_KEY = 'ap_recent_dests';
 const RECENT_MAX = 5;
 
 function pushRecent(dest) {
-  let recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
-  recent = recent.filter(d => d.id !== dest.id);
-  recent.unshift({ id: dest.id, name: dest.name, systemName: dest.systemName ?? null });
-  if (recent.length > RECENT_MAX) recent.length = RECENT_MAX;
-  localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+  let r = JSON.parse(localStorage.getItem(RECENT_KEY)||'[]').filter(d=>d.id!==dest.id);
+  r.unshift({id:dest.id,name:dest.name,systemName:dest.systemName??null});
+  if (r.length>RECENT_MAX) r.length=RECENT_MAX;
+  localStorage.setItem(RECENT_KEY,JSON.stringify(r));
   renderRecent();
 }
 
 function renderRecent() {
-  const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+  const recent = JSON.parse(localStorage.getItem(RECENT_KEY)||'[]');
   const el = $('ap-recent-list');
   if (!el) return;
-  if (!recent.length) { el.innerHTML = '<div class="empty">No history yet</div>'; return; }
-  el.innerHTML = recent.map(d => `
+  if (!recent.length) { el.innerHTML='<div style="font-size:0.65rem;color:var(--text-dim);">No history</div>'; return; }
+  el.innerHTML = recent.map(d=>`
     <div class="ap-result-item" onclick="selectSavedDest('${esc(d.id)}','${esc(d.name)}')" style="cursor:pointer;">
       <div class="ap-result-name">${esc(d.name)}</div>
-      ${d.systemName ? `<div class="ap-result-sys">${esc(d.systemName)}</div>` : ''}
+      ${d.systemName?`<div class="ap-result-sys">${esc(d.systemName)}</div>`:''}
     </div>`).join('');
 }
 
 async function startAutopilot() {
   const body = { botName: 'Travel Bot' };
-  if (apSelectedSearch) {
-    body.destination = apSelectedSearch.name;
-    pushRecent(apSelectedSearch);
-  }
+  if (apSelectedSearch) { body.destination = apSelectedSearch.name; pushRecent(apSelectedSearch); }
   api('POST', '/api/start', body);
 }
 
 async function startMining() {
-  const body = {
+  api('POST', '/api/start', {
     botName: 'Mining Bot',
-    mining: {
-      dockingBookmark: $('mb-bookmark').value.trim() || null,
-      oreHoldFull:  parseInt($('mb-ore-pct').value),
-      shieldEscape: parseInt($('mb-shield-pct').value),
-    },
-  };
-  api('POST', '/api/start', body);
+    mining: { dockingBookmark: $('mb-bookmark').value.trim()||null, oreHoldFull: parseInt($('mb-ore-pct').value), shieldEscape: parseInt($('mb-shield-pct').value) },
+  });
 }
 
 // ─── SignalR ───────────────────────────────────────────────────────────────
 const conn = new signalR.HubConnectionBuilder()
-  .withUrl('/botHub')
-  .withAutomaticReconnect()
-  .build();
+  .withUrl('/botHub').withAutomaticReconnect().build();
 
-conn.onreconnecting(() => { $('conn-text').textContent = 'Reconnecting...'; $('conn-dot').classList.remove('ok'); });
-conn.onreconnected(() => { $('conn-text').textContent = 'Connected'; $('conn-dot').classList.add('ok'); });
-conn.on('TickUpdate', gs => { renderDashboard(gs); });
-conn.on('LogEntry', e => addLogEntry(e));
-conn.on('ActionLog', e => addActionEntry(e));
-conn.on('StateChanged', state => { updateBotState(state); });
+conn.onreconnecting(() => { $('conn-text').textContent='Reconnecting...'; $('conn-dot').classList.remove('ok'); });
+conn.onreconnected(()  => { $('conn-text').textContent='Connected';       $('conn-dot').classList.add('ok'); });
+conn.on('TickUpdate', gs => renderDashboard(gs));
+conn.on('LogEntry',   e  => addLogEntry(e));
+conn.on('ActionLog',  e  => addLogEntry({ time: e.time, level:'Info', category:'Action', message: e.description }));
+conn.on('StateChanged', s => updateBotState(s));
 
 async function startConnection() {
   try {
     await conn.start();
-    $('conn-text').textContent = 'Connected';
-    $('conn-dot').classList.add('ok');
-    loadInitialState();
-    loadSavedDests();
-    renderRecent();
+    $('conn-text').textContent='Connected'; $('conn-dot').classList.add('ok');
+    loadInitialState(); loadSavedDests(); renderRecent();
   } catch(e) { setTimeout(startConnection, 3000); }
 }
 
 async function loadInitialState() {
   try {
-    const s = await fetch('/api/status').then(r => r.json());
+    const s = await fetch('/api/status').then(r=>r.json());
     updateBotState(s.state, s.botName, s.botDescription);
     if (s.gameState) renderDashboard(s.gameState);
   } catch(e) {}
@@ -719,279 +786,267 @@ async function loadInitialState() {
 
 function updateBotState(state, name, desc) {
   const pill = $('state-pill');
-  const s = (state || 'Idle').charAt(0).toUpperCase() + (state || 'Idle').slice(1).toLowerCase();
-  
+  const s = (state||'Idle').charAt(0).toUpperCase()+(state||'Idle').slice(1).toLowerCase();
   pill.textContent = s.toUpperCase();
-  pill.className = 'bot-pill ' + s.toLowerCase();
-  
+  pill.className = 'bot-pill '+s.toLowerCase();
   if (name) {
-    $('bot-desc').textContent = `${name}: ${desc || ''}`;
+    $('bot-desc').textContent = desc ? `${desc}` : name;
     $('info-activity').textContent = name;
   } else if (s === 'Idle') {
     $('bot-desc').textContent = 'No active bot';
     $('info-activity').textContent = 'Monitor Mode';
   }
-
-  // Fix: Enable stop button if we are NOT idle OR if we have an active bot name (handles startup)
-  $('btn-stop').disabled   = s === 'Idle' && !name;
-  $('btn-pause').disabled  = s !== 'Running';
-  $('btn-resume').disabled = s !== 'Paused';
-  $('btn-step').disabled   = s !== 'Paused';
+  $('btn-stop').disabled   = s==='Idle' && !name;
+  $('btn-pause').disabled  = s!=='Running';
+  $('btn-resume').disabled = s!=='Paused';
+  $('btn-step').disabled   = s!=='Paused';
 }
 
 async function dumpFullState() {
   try {
-    const s = await fetch('/api/debug/state').then(r => r.json());
+    const s = await fetch('/api/debug/state').then(r=>r.json());
     $('state-json-pre').textContent = JSON.stringify(s, null, 2);
-    $('modal-state').style.display = 'block';
-  } catch(e) { alert('Failed to dump state: ' + e); }
+    $('modal-state').style.display='block';
+  } catch(e) { alert('Failed to dump state: '+e); }
 }
 
 function copyStateJson() {
-  const text = $('state-json-pre').textContent;
-  navigator.clipboard.writeText(text);
+  navigator.clipboard.writeText($('state-json-pre').textContent);
   alert('Copied to clipboard!');
 }
 
 async function updateMiningSettings() {
-  const oreHold = parseInt($('mb-ore-pct').value);
-  const shield = parseInt($('mb-shield-pct').value);
   try {
     await fetch('/api/mining/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ oreHoldFull: oreHold, shieldEscape: shield })
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ oreHoldFull: parseInt($('mb-ore-pct').value), shieldEscape: parseInt($('mb-shield-pct').value) })
     });
-  } catch(e) { console.error('Failed to update mining settings', e); }
+  } catch(e) {}
 }
 
+// ─── Main Render ──────────────────────────────────────────────────────────
 function renderDashboard(gs) {
   if (!gs) return;
   lastGs = gs;
 
-  // Update mining sliders if bot is running and provides settings
-  if (gs.miningOreHoldPct !== undefined && gs.miningOreHoldPct !== null) {
-    // Only update if not currently being interacted with (to avoid jumping)
-    if (document.activeElement !== $('mb-ore-pct')) {
-      $('mb-ore-pct').value = gs.miningOreHoldPct;
-      $('mb-ore-val').textContent = gs.miningOreHoldPct + '%';
-    }
+  // Sync mining sliders
+  if (gs.miningOreHoldPct != null && document.activeElement !== $('mb-ore-pct')) {
+    $('mb-ore-pct').value = gs.miningOreHoldPct;
+    $('mb-ore-val').textContent = gs.miningOreHoldPct+'%';
   }
-  if (gs.miningShieldPct !== undefined && gs.miningShieldPct !== null) {
-    if (document.activeElement !== $('mb-shield-pct')) {
-      $('mb-shield-pct').value = gs.miningShieldPct;
-      $('mb-shield-val').textContent = gs.miningShieldPct + '%';
-    }
+  if (gs.miningShieldPct != null && document.activeElement !== $('mb-shield-pct')) {
+    $('mb-shield-pct').value = gs.miningShieldPct;
+    $('mb-shield-val').textContent = gs.miningShieldPct+'%';
   }
 
-  // 1. Sidebar & Status
-  $('engine-rpm').textContent = gs.engineRpm.toFixed(1);
+  // Sidebar
+  $('engine-rpm').textContent = (gs.engineRpm||0).toFixed(1);
   $('info-ticks').textContent = `Ticks: ${gs.tickCount}`;
-  $('info-system').textContent = `System: ${gs.systemName || 'Unknown'} (${gs.securityStatus || '?'})`;
-  $('runtime-display').textContent = gs.runtime;
+  $('info-system').textContent = gs.systemName
+    ? `${gs.systemName} (${gs.securityStatus||'?'})`
+    : 'System: Unknown';
+  $('runtime-display').textContent = gs.runtime||'';
+  $('footer-runtime').textContent  = gs.runtime||'';
 
   if (gs.activeNodes) {
     $('decision-tree-path').innerHTML = gs.activeNodes.slice().reverse().join('<br>↳ ');
   }
 
+  // Ship status — guard against garbage values like "Status Minimized"
   let locText = 'In Space';
-  if (gs.isDocked) locText = `Docked @ ${gs.currentStation || 'Station'}`;
-  if (gs.isWarping) locText = 'Warping...';
+  let locColor = 'var(--cyan)';
+  if (gs.isWarping) { locText = 'Warping...'; locColor = 'var(--yellow)'; }
+  else if (gs.isDocked) {
+    const st = (gs.currentStation||'').toLowerCase();
+    const isGarbage = st.includes('minimized') || st.includes('caption') || st.length < 3;
+    locText = isGarbage ? 'Docked' : `Docked @ ${gs.currentStation}`;
+    locColor = 'var(--accent)';
+  }
   $('info-location').textContent = locText;
+  $('info-location').style.color = locColor;
 
-  // 2. HUD Bars
-  const updateBar = (id, val) => {
+  // HUD bars
+  function setBar(id, val) {
     const v = val ?? 100;
-    $(id).style.width = v + '%';
-    const labelId = 'val-' + id.split('-')[1];
-    if ($(labelId)) $(labelId).textContent = v + '%';
-    if (v < 25) $(id).style.background = 'var(--red)';
-    else if (id === 'bar-shield') $(id).style.background = 'var(--accent)';
-  };
-  updateBar('bar-shield', gs.shieldPercent);
-  updateBar('bar-armor', gs.armorPercent);
-  updateBar('bar-hull', gs.structurePercent);
-  updateBar('bar-cap', gs.capacitorPercent);
-
-  // 3. Mining Dashboard
-  const hasAsteroids = gs.topAsteroids && gs.topAsteroids.length > 0;
-  const hasBelts = gs.discoveredBelts && gs.discoveredBelts.length > 0;
-  $('mining-dashboard').style.display = hasAsteroids || hasBelts ? 'block' : 'none';
-
-  if (gs.topAsteroids) {
-    const tbody = $('table-asteroids');
-    tbody.innerHTML = gs.topAsteroids.map(a => `
-      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-        <td style="padding: 5px;">${a.name}</td>
-        <td style="padding: 5px;">${a.distanceText}</td>
-        <td style="padding: 5px; color: var(--accent);">${a.score}</td>
-        <td style="padding: 5px;">
-          ${a.isBeingMined ? '<span style="color:#0f0">MINING</span>' : (a.isLocked ? '<span style="color:var(--accent)">LOCKED</span>' : 'Queued')}
-        </td>
-      </tr>
-    `).join('');
+    const fill = $(id);
+    const lbl  = $('val-'+id.split('-')[1]);
+    fill.style.width = v+'%';
+    if (lbl) lbl.textContent = v+'%';
+    if (v < 25)                fill.style.background = 'var(--red)';
+    else if (id==='bar-shield') fill.style.background = 'var(--accent)';
+    else if (id==='bar-armor')  fill.style.background = 'var(--yellow)';
+    else if (id==='bar-hull')   fill.style.background = 'var(--red)';
+    else if (id==='bar-cap')    fill.style.background = 'var(--cyan)';
   }
+  setBar('bar-shield', gs.shieldPercent);
+  setBar('bar-armor',  gs.armorPercent);
+  setBar('bar-hull',   gs.structurePercent);
+  setBar('bar-cap',    gs.capacitorPercent);
+  $('val-speed').textContent = gs.speedText || '—';
 
-  if (gs.discoveredBelts) {
-    const list = $('list-belts');
-    list.innerHTML = gs.discoveredBelts.map(b => `
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.03); margin-bottom: 2px; border-radius: 2px; font-size: 0.75rem;">
-        <span style="${b.depleted ? 'text-decoration: line-through; color: var(--text-dim);' : ''}">${b.name}</span>
-        <div style="gap: 8px; display: flex; align-items: center;">
-          ${b.excluded ? '<span style="color:var(--red); font-size: 0.6rem;">EXCLUDED</span>' : ''}
-          <button class="btn btn-xs ${b.excluded ? 'btn-success' : 'btn-danger'}" onclick="toggleBelt(${b.index})" style="padding: 2px 6px; font-size: 0.6rem; border-radius: 2px; border: none; cursor: pointer;">
-            ${b.excluded ? 'Include' : 'Exclude'}
-          </button>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  // 4. Targets
+  // Targets
   const targetList = $('targets-list');
   if (gs.targets && gs.targets.length > 0) {
     targetList.innerHTML = gs.targets.map(t => `
-      <div class="target-card ${t.isActive ? 'active' : ''}">
+      <div class="target-card ${t.isActive?'active':''}">
         <div class="target-name" title="${esc(t.name)}">${esc(t.name)}</div>
         <div class="target-dist">${esc(t.distanceText)}</div>
         <div class="target-mini-bars">
-          <div class="target-mini-bar" style="background:var(--accent); width:${t.shieldPercent}%"></div>
-          <div class="target-mini-bar" style="background:var(--yellow); width:${t.armorPercent}%"></div>
-          <div class="target-mini-bar" style="background:var(--red); width:${t.structurePercent}%"></div>
+          <div class="target-mini-bar" style="background:var(--accent);width:${t.shieldPercent??100}%"></div>
+          <div class="target-mini-bar" style="background:var(--yellow);width:${t.armorPercent??100}%"></div>
+          <div class="target-mini-bar" style="background:var(--red);width:${t.structurePercent??100}%"></div>
         </div>
-      </div>
-    `).join('');
+      </div>`).join('');
   } else {
-    targetList.innerHTML = '<div class="empty" style="margin: auto;">No targets locked</div>';
+    targetList.innerHTML = '<div style="margin:auto;font-size:0.7rem;color:var(--text-dim);">No targets locked</div>';
   }
 
-  // 4. Selected Item - Removed
-  
-  // 5. Modules
-  $('module-grid').innerHTML = gs.moduleButtons.map(m => {
-    let cls = '';
-    if (m.isOverloaded) cls = 'hot';
-    else if (m.isActive) cls = 'active';
-    else if (m.isBusy) cls = 'busy';
-    else if (m.isOffline) cls = 'offline';
-    return `<div class="module-slot ${cls}" title="${esc(m.name)}">
-      ${m.slotIndex + 1}
-      <div class="module-ramp"></div>
-    </div>`;
+  // Mining dashboard visibility
+  const hasMiningData = (gs.topAsteroids && gs.topAsteroids.length > 0) ||
+                        (gs.discoveredBelts && gs.discoveredBelts.length > 0) ||
+                        (gs.totalMinedM3 != null);
+  $('mining-dashboard').style.display = hasMiningData ? '' : 'none';
+
+  // Mining session stats
+  if (gs.totalMinedM3 != null) {
+    $('ms-total').textContent  = Math.round(gs.totalMinedM3).toLocaleString();
+    $('ms-cycles').textContent = gs.unloadCycles ?? 0;
+    $('ms-rate').textContent   = gs.miningRateM3Hr > 0
+      ? Math.round(gs.miningRateM3Hr).toLocaleString() : '—';
+    // Hold fill from ore hold
+    const oreHold = (gs.holds||[]).find(h => h.holdType==='Mining' || h.name==='Ore Hold');
+    if (oreHold && oreHold.maxM3 > 0) {
+      const pct = Math.round(oreHold.usedM3 / oreHold.maxM3 * 100);
+      $('ms-hold-pct').textContent = pct+'%';
+      $('ms-hold-pct').style.color = pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : 'var(--cyan)';
+    } else {
+      $('ms-hold-pct').textContent = '—';
+    }
+  }
+
+  // Asteroid queue
+  if (gs.topAsteroids) {
+    $('list-asteroids').innerHTML = gs.topAsteroids.map(a => `
+      <div class="ast-row">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.name)}</span>
+        <span style="color:var(--text-dim)">${esc(a.distanceText)}</span>
+        <span style="color:var(--accent);font-family:monospace">${a.score}</span>
+        <span class="${a.isBeingMined?'ast-status-mining':a.isLocked?'ast-status-locked':'ast-status-queue'}">
+          ${a.isBeingMined?'MINING':a.isLocked?'LOCKED':'QUEUED'}
+        </span>
+      </div>`).join('');
+  }
+
+  // Belt list
+  if (gs.discoveredBelts) {
+    $('belt-count').textContent = gs.discoveredBelts.length+' belts';
+    $('list-belts').innerHTML = gs.discoveredBelts.map(b => `
+      <div class="belt-item${b.depleted?' depleted':''}${b.excluded?' excluded':''}">
+        <span style="${b.depleted?'text-decoration:line-through;color:var(--text-dim)':''}">${esc(b.name)}</span>
+        <button onclick="toggleBelt(${b.index})" style="padding:1px 6px;font-size:0.58rem;border-radius:2px;border:1px solid ${b.excluded?'var(--green)':'rgba(248,81,73,0.5)'};background:transparent;color:${b.excluded?'var(--green)':'var(--red)'};cursor:pointer;">
+          ${b.excluded?'Allow':'Skip'}
+        </button>
+      </div>`).join('');
+  }
+
+  // Modules
+  $('module-grid').innerHTML = (gs.moduleButtons||[]).map(m => {
+    let cls = m.isOverloaded?'hot':m.isActive?'active':m.isBusy?'busy':m.isOffline?'offline':'';
+    return `<div class="module-slot ${cls}" title="${esc(m.name)}">${m.slotIndex+1}<div class="module-ramp"></div></div>`;
   }).join('');
 
-  // 6. Drones (Merged)
+  // Drones
   const droneList = $('drones-merged-list');
-  let dronesHtml = '';
-  const renderDroneGroup = (group) => {
-    if (!group || !group.drones.length) return '';
-    return `
-      <div style="margin-bottom:8px;">
-        <div class="hold-type" style="margin-bottom:4px;">${esc(group.header)} (${group.current}/${group.max})</div>
-        ${group.drones.map(d => `
-          <div style="font-size:0.7rem; display:flex; justify-content:space-between; padding:2px 0;">
-            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">${esc(d.name)}</span>
-            <div style="display:flex; gap:2px; width:60px; height:4px; margin-top:4px;">
-              <div style="flex:1; background:var(--accent); opacity:${(d.shield??100)/100}"></div>
-              <div style="flex:1; background:var(--yellow); opacity:${(d.armor??100)/100}"></div>
-              <div style="flex:1; background:var(--red); opacity:${(d.structure??100)/100}"></div>
-            </div>
+  const renderGroup = g => {
+    if (!g || !g.drones.length) return '';
+    return `<div style="margin-bottom:8px;">
+      <div style="font-size:0.58rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">${esc(g.header)} (${g.current}/${g.max})</div>
+      ${g.drones.map(d=>`
+        <div style="font-size:0.68rem;display:flex;justify-content:space-between;padding:2px 0;align-items:center;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">${esc(d.name)}</span>
+          <div style="display:flex;gap:2px;width:48px;height:4px;">
+            <div style="flex:1;background:var(--accent);opacity:${(d.shield??100)/100}"></div>
+            <div style="flex:1;background:var(--yellow);opacity:${(d.armor??100)/100}"></div>
+            <div style="flex:1;background:var(--red);opacity:${(d.structure??100)/100}"></div>
           </div>
-        `).join('')}
-      </div>
-    `;
+        </div>`).join('')}
+    </div>`;
   };
-  dronesHtml += renderDroneGroup(gs.dronesInSpace);
-  dronesHtml += renderDroneGroup(gs.dronesInBay);
-  droneList.innerHTML = dronesHtml || '<div class="empty">No drones detected</div>';
+  const dronesHtml = renderGroup(gs.dronesInSpace) + renderGroup(gs.dronesInBay);
+  droneList.innerHTML = dronesHtml || '<div style="font-size:0.7rem;color:var(--text-dim);">No drones detected</div>';
 
-  // 7. Overview
-  $('overview-body').innerHTML = gs.overview.map(e => `
-    <tr class="${e.isAttackingMe ? 'danger' : ''}">
-      <td style="text-align:center;">${e.isAttackingMe ? '⚠' : ''}</td>
+  // Overview
+  $('overview-body').innerHTML = (gs.overview||[]).map(e=>`
+    <tr${e.isAttackingMe?' style="color:var(--red)"':''}>
+      <td style="text-align:center;font-size:0.8rem;">${e.isAttackingMe?'⚠':''}</td>
       <td>${esc(e.name)}</td>
       <td style="color:var(--text-dim)">${esc(e.objectType)}</td>
-      <td style="text-align:right; font-family:monospace; color:var(--cyan);">${esc(e.distance)}</td>
-    </tr>
-  `).join('') || '<tr><td colspan="4" class="empty">Empty space</td></tr>';
+      <td style="text-align:right;font-family:monospace;color:var(--cyan);">${esc(e.distance)}</td>
+    </tr>`).join('') || '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-dim);font-size:0.7rem;">Empty space</td></tr>';
 
-  // 8. Holds (Enhanced)
-  $('holds-list').innerHTML = gs.holds.map(h => {
-    const pct = h.maxM3 > 0 ? (h.usedM3 / h.maxM3 * 100) : 0;
+  // Holds
+  renderHolds(gs.holds);
+
+  // Footer thought path
+  $('thought-path').textContent = gs.thoughtProcess || 'Idle';
+}
+
+function renderHolds(holds) {
+  $('holds-list').innerHTML = (holds||[]).map(h => {
+    const displayName = friendlyHoldName(h.name, h.holdType);
+    const pct  = (h.maxM3 > 0) ? (h.usedM3 / h.maxM3 * 100) : 0;
+    const bar  = pct > 90 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : 'var(--purple)';
     const isExpanded = expandedHolds.has(h.name);
     return `
-      <div class="hold-card ${isExpanded ? 'expanded' : ''}">
+      <div class="hold-card ${isExpanded?'expanded':''}">
         <div class="hold-header" onclick="toggleHold('${esc(h.name)}')">
           <div class="hold-title">
-            <span>${esc(h.name)}</span>
-            <span style="color:var(--text-dim)">${h.usedM3?.toFixed(1)} / ${h.maxM3?.toFixed(1)} m³</span>
+            <span>${esc(displayName)}</span>
+            <span class="hold-vol">${h.usedM3!=null?h.usedM3.toFixed(0):'?'} / ${h.maxM3!=null?h.maxM3.toFixed(0):'?'} m³</span>
           </div>
-          <div class="hold-type">${esc(h.holdType)}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${pct > 90 ? 'var(--red)' : 'var(--purple)'}"></div></div>
+          <div class="bar-track" style="margin-top:4px;">
+            <div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${bar}"></div>
+          </div>
         </div>
         <div class="hold-content">
-          ${(h.items || []).map(i => `
+          ${(h.items||[]).map(i=>`
             <div class="cargo-item">
               <span>${esc(i.name)}</span>
               <span class="cargo-qty">${i.quantity?.toLocaleString()}</span>
-            </div>
-          `).join('') || '<div class="empty" style="font-size:0.65rem;">Empty</div>'}
+            </div>`).join('') || '<div style="font-size:0.65rem;color:var(--text-dim);padding:4px 0;">Empty</div>'}
         </div>
-      </div>
-    `;
-  }).join('') || '<div class="empty">Sync holds to view</div>';
-
-  // 9. Thought Path
-  $('thought-path').textContent = gs.thoughtProcess || 'Idle';
+      </div>`;
+  }).join('') || '<div style="font-size:0.7rem;color:var(--text-dim);">No holds — click Sync</div>';
 }
 
 function addLogEntry(e) {
   const body = $('log-body');
-  if (body.querySelector('.empty')) body.innerHTML = '';
-  
+  if (body.querySelector('div[style]') && body.children.length === 1 && !body.querySelector('.log-entry')) body.innerHTML = '';
   const el = document.createElement('div');
   el.className = `log-entry log-${e.level}`;
   const time = new Date(e.time).toLocaleTimeString();
-  el.innerHTML = `<span class="log-time">[${time}]</span><span class="log-cat">${e.category}</span><span class="log-msg">${esc(e.message)}</span>`;
+  el.innerHTML = `<span class="log-time">[${time}]</span><span class="log-cat">${esc(e.category)}</span><span class="log-msg">${esc(e.message)}</span>`;
   body.prepend(el);
-  
-  while (body.children.length > 100) body.removeChild(body.lastChild);
-}
-
-function addActionEntry(e) {
-  // Actions are now highlighted in the log as 'Action' category
-  addLogEntry({ time: e.time, level: 'Info', category: 'Action', message: e.description });
+  while (body.children.length > 120) body.removeChild(body.lastChild);
 }
 
 async function api(method, url, body) {
-  try {
-    await fetch(url, { method, headers: body?{'Content-Type':'application/json'}:{}, body: body?JSON.stringify(body):undefined });
-  } catch(e) { console.error(e); }
+  try { await fetch(url, { method, headers: body?{'Content-Type':'application/json'}:{}, body: body?JSON.stringify(body):undefined }); }
+  catch(e) { console.error(e); }
 }
 
-async function apiClick(url) {
-  api('POST', url);
-}
-
-async function toggleBelt(index) {
-  await api('POST', `/api/mining/belts/${index}/toggle`);
-}
+async function apiClick(url) { api('POST', url); }
+async function toggleBelt(i) { await api('POST', `/api/mining/belts/${i}/toggle`); }
 
 async function captureFrame() {
   const btn = $('btn-capture-frame');
-  const oldText = btn.textContent;
-  btn.textContent = '💾 Captured!';
-  btn.disabled = true;
+  btn.textContent = 'Captured!'; btn.disabled = true;
   await api('POST', '/api/save-frame');
-  setTimeout(() => {
-    btn.textContent = oldText;
-    btn.disabled = false;
-  }, 1500);
+  setTimeout(() => { btn.textContent = 'Capture Frame'; btn.disabled = false; }, 1500);
 }
 
-// Controls
-$('btn-stop').addEventListener('click', () => api('POST','/api/stop'));
-$('btn-pause').addEventListener('click', () => api('POST','/api/pause'));
+$('btn-stop').addEventListener('click',   () => api('POST','/api/stop'));
+$('btn-pause').addEventListener('click',  () => api('POST','/api/pause'));
 $('btn-resume').addEventListener('click', () => api('POST','/api/resume'));
 
 startConnection();

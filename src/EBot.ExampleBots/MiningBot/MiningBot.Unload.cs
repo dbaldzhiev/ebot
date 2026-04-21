@@ -236,12 +236,19 @@ public sealed partial class MiningBot
         _totalUnloadedM3 += volume;
         _unloadCycles++;
         SyncStats(ctx);
-        ctx.Blackboard.Set("needs_unload",       false);
-        ctx.Blackboard.Set("unload_phase",        "");
-        ctx.Blackboard.Set("unload_vol_before",   0.0);
-        ctx.Blackboard.Set("belt_index",        0);   // restart belt cycle counter after unload
-        ctx.Blackboard.Set("last_belt_target", -1);  // no current belt after station run
-        ctx.Blackboard.Set("belt_prop_started", false);
+        ctx.Blackboard.Set("needs_unload",      false);
+        ctx.Blackboard.Set("return_phase",       "");
+        ctx.Blackboard.Set("return_tick",        0);
+        ctx.Blackboard.Set("unload_phase",       "");
+        ctx.Blackboard.Set("unload_vol_before",  0.0);
+        ctx.Blackboard.Set("belt_index",         0);
+        ctx.Blackboard.Set("last_belt_target",  -1);
+        ctx.Blackboard.Set("belt_prop_started",  false);
+        ctx.Blackboard.Set("belt_phase",         "");
+        ctx.Blackboard.Set("belt_phase_ticks",   0);
+        ctx.Blackboard.Remove("mining_phase");
+        ctx.Blackboard.Set("mining_tick",        0);
+        ctx.Blackboard.Remove("assumed_locked");
     }
 
     private void SyncStats(BotContext ctx)
@@ -282,14 +289,20 @@ public sealed partial class MiningBot
             var btn = ctx.GameState.ParsedUI.StationWindow?.UndockButton;
             if (btn == null) return NodeStatus.Failure;
             if (!ctx.Blackboard.IsCooldownReady("undock_cd")) return NodeStatus.Success;
-            // Safety: never undock with a full ore hold — PerformUnload should have caught this,
-            // but guard here in case the inventory window was closed before verify completed.
+            // Safety: never undock with a full ore hold.
             if (IsOreHoldFull(ctx))
             {
                 ctx.Log("[Mining] Undock blocked — ore hold still full. Re-triggering unload.");
                 ctx.Blackboard.Set("needs_unload", true);
                 ctx.Blackboard.Set("unload_phase", "");
                 return NodeStatus.Failure;
+            }
+            // Close inventory before undocking so the first in-space tick cannot read stale
+            // hold data and incorrectly trigger a return cycle on an empty hold.
+            if (ctx.GameState.ParsedUI.InventoryWindows.Count > 0)
+            {
+                ctx.KeyPress(VirtualKey.C, [VirtualKey.Alt]);
+                ctx.Wait(TimeSpan.FromMilliseconds(400));
             }
             ctx.Click(btn);
             ctx.Wait(TimeSpan.FromSeconds(10));
@@ -354,7 +367,9 @@ public sealed partial class MiningBot
             }
         }
 
-        if (pct >= OreHoldFullPercent)
+        // Require actual items in the hold — gauge alone can lag after a drag-unload,
+        // causing a false trigger on the first in-space tick after undocking.
+        if (pct >= OreHoldFullPercent && w.Items.Count > 0)
         {
             ctx.Log($"[Mining] Mining hold is FULL ({pct:F1}%). Ready to unload.");
             return true;
