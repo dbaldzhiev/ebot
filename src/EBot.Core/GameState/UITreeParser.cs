@@ -322,17 +322,41 @@ public sealed class UITreeParser
                 var id = nodeName.Split('_').Last();
                 moduleName = id switch
                 {
-                    "482"   => "Mining Laser",
-                    "17912" => "Mining Laser", // Modulated Strip Miner II
-                    "17911" => "Mining Laser", // Modulated Strip Miner I
-                    "16277" => "Mining Laser", // Strip Miner I
-                    "17914" => "Mining Laser", // Modulated Deep Core Strip Miner II
+                    "482"   => "Mining Laser",  // Miner I (old typeID, kept for safety)
+                    "483"   => "Mining Laser",  // Miner I
+                    "578"   => "Mining Laser",  // Miner II
+                    "487"   => "Mining Laser",  // Deep Core Miner I
+                    "12108" => "Mining Laser",  // Deep Core Miner II
+                    "22229" => "Mining Laser",  // Ice Harvester I
+                    "22231" => "Mining Laser",  // Ice Harvester II
+                    "17911" => "Mining Laser",  // Modulated Strip Miner I
+                    "17912" => "Mining Laser",  // Modulated Strip Miner II
+                    "16277" => "Mining Laser",  // Strip Miner I
+                    "17913" => "Mining Laser",  // Modulated Deep Core Strip Miner I
+                    "17914" => "Mining Laser",  // Modulated Deep Core Strip Miner II
                     "6001"  => "Afterburner",
+                    "6003"  => "Afterburner",   // 1MN Monopropellant I
+                    "6004"  => "Afterburner",   // 1MN Afterburner II
+                    "6005"  => "Afterburner",   // 5MN Microwarpdrive I
+                    "6006"  => "Microwarpdrive",
                     "6002"  => "Microwarpdrive",
                     "2054"  => "Afterburner",
                     _       => $"Module {id}"
                 };
             }
+        }
+
+        // Last resort: identify by the icon texture path inside the button.
+        // EVE icon group 12 = mining-related resources; group 6 = engineering/propulsion.
+        if (moduleName == null || moduleName.StartsWith("Module "))
+        {
+            var iconTex = moduleButton.FindFirst(n =>
+                !string.IsNullOrEmpty(n.Node.GetDictString("_texturePath")))
+                ?.Node.GetDictString("_texturePath") ?? "";
+            if (iconTex.Contains("/icons/12_64_", StringComparison.OrdinalIgnoreCase) ||
+                iconTex.Contains("miningLaser",   StringComparison.OrdinalIgnoreCase) ||
+                iconTex.Contains("iceHarvester",  StringComparison.OrdinalIgnoreCase))
+                moduleName = "Mining Laser";
         }
 
         return new ShipUIModuleButton
@@ -569,6 +593,7 @@ public sealed class UITreeParser
         return new OverviewWindow
         {
             UINode = overviewNode,
+            WindowName = overviewNode.Node.GetDictString("_name"),
             ColumnHeaders = headers.Select(h => h.Name).ToList(),
             Entries = entries,
             Tabs = tabs,
@@ -634,17 +659,30 @@ public sealed class UITreeParser
         cellsTexts.TryGetValue("Distance", out var cellDistText);
         var resolvedDistText = !string.IsNullOrEmpty(cellDistText) ? cellDistText : distText;
 
-        // Is hostile if hint says so OR if there's a red-ish icon background
-        bool isHostile = n.FindFirst(e => {
+        // IsAttackingMe: node named "attackingMe" (BlinkingSpriteOnSharedCurve) OR
+        // hostileBracket texture, OR hint containing "attacking"
+        bool isAttackingMe = n.FindFirst(e => {
+            var nodeName = e.Node.GetDictString("_name") ?? "";
+            if (nodeName.Equals("attackingMe", StringComparison.OrdinalIgnoreCase)) return true;
+            var tex = e.Node.GetDictString("_texturePath") ?? "";
+            if (tex.Contains("hostileBracket", StringComparison.OrdinalIgnoreCase)) return true;
+            var hint = e.Node.GetDictString("_hint") ?? "";
+            if (hint.Contains("attacking", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }) != null;
+
+        // IsHostile: hint keywords, NPC/hostile textures, or red icon color
+        bool isHostile = isAttackingMe || n.FindFirst(e => {
             var hint = (e.Node.GetDictString("_hint") ?? "").ToLowerInvariant();
-            if (hint.Contains("hostile") || hint.Contains("threat") || 
+            if (hint.Contains("hostile") || hint.Contains("threat") ||
                 hint.Contains("attacking") || hint.Contains("criminal") ||
                 hint.Contains("suspect") || hint.Contains("outlaw")) return true;
-            
-            // Check for red background in icon elements
+            var tex = (e.Node.GetDictString("_texturePath") ?? "").ToLowerInvariant();
+            if (tex.Contains("hostile") || tex.Contains("npcfrigate") ||
+                tex.Contains("npccruiser") || tex.Contains("npcbattleship") ||
+                tex.Contains("npcdestroyer")) return true;
             var color = e.Node.GetDictColor("_bgColor") ?? e.Node.GetDictColor("_color");
             if (color != null && color.RPercent > 70 && color.GPercent < 30 && color.BPercent < 30) return true;
-            
             return false;
         }) != null;
 
@@ -656,8 +694,7 @@ public sealed class UITreeParser
             ObjectType = objectType,
             DistanceText = resolvedDistText,
             DistanceInMeters = resolvedDistText != null ? ParseDistanceText(resolvedDistText) : null,
-            IsAttackingMe = n.FindFirst(e =>
-                (e.Node.GetDictString("_hint") ?? "").Contains("attacking", StringComparison.OrdinalIgnoreCase)) != null,
+            IsAttackingMe = isAttackingMe,
             IsHostile = isHostile,
             Texts = texts,
         };

@@ -213,9 +213,12 @@ public sealed partial class MiningBot : IBot
                 var hostiles = ctx.GameState.ParsedUI.OverviewWindows.SelectMany(w => w.Entries).Any(e => e.IsHostile || e.IsAttackingMe);
                 if (hostiles) return false;
 
-                var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
+                var ov = ctx.GameState.ParsedUI.OverviewWindows
+                    .FirstOrDefault(w => FindMiningTab(w.Tabs) != null)
+                    ?? ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault(w => w.Entries.Any(IsAsteroid))
+                    ?? ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
                 if (ov == null) return false;
-                
+
                 var miningTab = FindMiningTab(ov.Tabs);
                 if (miningTab == null || miningTab.IsActive) return false;
 
@@ -226,7 +229,9 @@ public sealed partial class MiningBot : IBot
             }),
             new ActionNode("Click Mining tab", ctx =>
             {
-                var tabs      = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault()?.Tabs ?? [];
+                var tabs = (ctx.GameState.ParsedUI.OverviewWindows
+                    .FirstOrDefault(w => FindMiningTab(w.Tabs) != null)
+                    ?? ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault())?.Tabs ?? [];
                 var miningTab = FindMiningTab(tabs);
                 if (miningTab == null) return NodeStatus.Failure;
                 

@@ -513,6 +513,9 @@
       <div class="main-table-container">
         <table>
           <thead>
+            <tr id="overview-windows-row" style="display:none">
+              <td colspan="4" id="overview-windows-info" style="padding:3px 8px; font-size:0.65rem; color:var(--text-dim); background:var(--panel-hdr); border-bottom:1px solid var(--border);"></td>
+            </tr>
             <tr>
               <th style="width:30px"></th>
               <th>Name</th>
@@ -1207,6 +1210,20 @@ function renderDashboard(gs) {
   };
   const dronesHtml = renderGroup(gs.dronesInSpace) + renderGroup(gs.dronesInBay);
   droneList.innerHTML = dronesHtml || '<div style="font-size:0.7rem;color:var(--text-dim);">No drones detected</div>';
+
+  // Overview windows info badge
+  const ovWindows = gs.overviewWindows || [];
+  const ovRow = $('overview-windows-row');
+  const ovInfo = $('overview-windows-info');
+  if (ovWindows.length > 1) {
+    ovRow.style.display = '';
+    ovInfo.innerHTML = ovWindows.map(w => {
+      const activeTab = w.activeTab ? ` &bull; <span style="color:var(--cyan)">${esc(w.activeTab)}</span>` : '';
+      return `<span style="margin-right:10px;">&#x1F5D4; <b>${esc(w.name||'overview')}</b> &mdash; ${w.entryCount} entries${activeTab}</span>`;
+    }).join('<span style="color:var(--border)">|</span> ');
+  } else {
+    ovRow.style.display = 'none';
+  }
 
   // Overview
   $('overview-body').innerHTML = (gs.overview||[]).map(e=>`

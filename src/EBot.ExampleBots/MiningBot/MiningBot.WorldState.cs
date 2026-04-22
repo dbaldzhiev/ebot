@@ -61,6 +61,16 @@ public sealed partial class MiningBot
 
         state.LaserRangeM = ctx.Blackboard.Get<double>("laser_range_m", 0);
 
+        // Log when multiple overview windows are open
+        var ovWindows = ui.OverviewWindows;
+        if (ovWindows.Count > 1 && ctx.Blackboard.IsCooldownReady("ov_multiwindow_log"))
+        {
+            var names = string.Join(", ", ovWindows.Select(w =>
+                $"'{w.WindowName ?? "?"}' ({w.Entries.Count} entries)"));
+            ctx.Log($"[Overview] {ovWindows.Count} overview windows detected: {names}");
+            ctx.Blackboard.SetCooldown("ov_multiwindow_log", TimeSpan.FromSeconds(30));
+        }
+
         var overviewAsteroids = AsteroidsInOverview(ctx).ToList();
         var assumedLocked = ctx.Blackboard.Get<Dictionary<string, DateTimeOffset>>("assumed_locked") ?? new Dictionary<string, DateTimeOffset>();
         var now = DateTimeOffset.UtcNow;

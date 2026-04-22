@@ -140,6 +140,8 @@ public sealed class Target
 public sealed class OverviewWindow
 {
     public UITreeNodeWithDisplayRegion UINode { get; init; } = null!;
+    /// <summary>The _name attribute of the window node (e.g. "overview", "overview_1").</summary>
+    public string? WindowName { get; init; }
     /// <summary>Column header labels extracted from the header row, in left-to-right order.</summary>
     public IReadOnlyList<string> ColumnHeaders { get; init; } = [];
     public IReadOnlyList<OverviewEntry> Entries { get; init; } = [];

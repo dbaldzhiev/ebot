@@ -54,7 +54,15 @@ public sealed record GameStateSummary(
     // Mining session statistics
     double? TotalMinedM3,
     int? UnloadCycles,
-    double? MiningRateM3Hr);
+    double? MiningRateM3Hr,
+    // Overview windows metadata
+    IReadOnlyList<OverviewWindowInfoDto> OverviewWindows);
+
+public sealed record OverviewWindowInfoDto(
+    string? Name,
+    int EntryCount,
+    IReadOnlyList<string> TabNames,
+    string? ActiveTab);
 
 public sealed record AsteroidDto(
     string Name,
@@ -83,6 +91,7 @@ public sealed record OverviewEntryDto(
     string? Name,
     string? ObjectType,
     string? Distance,
+    bool IsHostile,
     bool IsAttackingMe,
     IReadOnlyDictionary<string, string> CellsTexts);
 
@@ -219,7 +228,7 @@ public static class DtoMapper
 
         var overview = ui.OverviewWindows.FirstOrDefault()?.Entries
             .Select(e => new OverviewEntryDto(
-                e.Name, e.ObjectType, e.DistanceText, e.IsAttackingMe,
+                e.Name, e.ObjectType, e.DistanceText, e.IsHostile, e.IsAttackingMe,
                 (IReadOnlyDictionary<string, string>)e.CellsTexts))
             .ToList() ?? [];
 
@@ -351,7 +360,12 @@ public static class DtoMapper
             miningBot?.ShieldEscapePercent,
             miningBot?.TotalUnloadedM3,
             (int?)miningBot?.UnloadCycles,
-            miningBot?.SessionRateM3Hr);
+            miningBot?.SessionRateM3Hr,
+            ui.OverviewWindows.Select(w => new OverviewWindowInfoDto(
+                w.WindowName,
+                w.Entries.Count,
+                w.Tabs.Select(t => t.Name ?? "").Where(n => n.Length > 0).ToList(),
+                w.Tabs.FirstOrDefault(t => t.IsActive)?.Name)).ToList());
     }
 
     public static BotStateDto ToBotStateDto(EBot.Core.DecisionEngine.BotContext ctx)

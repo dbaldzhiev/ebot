@@ -96,7 +96,27 @@ public sealed class DirectMemoryReader : IEveMemoryReader
             }
             catch (Exception ex)
             {
-                _logger.LogDebug("Cached root 0x{Addr:X} stale ({Ex}), rescanning", _cachedRootAddress, ex.Message);
+                _logger.LogDebug("Cached root 0x{Addr:X} transient read error ({Ex}), retrying once", _cachedRootAddress, ex.Message);
+                // EVE's Python GC can briefly invalidate a read mid-parse — wait a moment and
+                // retry the same address before triggering the expensive full rescan (~18 s).
+                Thread.Sleep(600);
+                try
+                {
+                    var retryTree = EveOnline64.ReadUITreeFromAddress(_cachedRootAddress, reader, MaxDepth);
+                    if (retryTree != null)
+                    {
+                        var retryJson = EveOnline64.SerializeMemoryReadingNodeToJson(retryTree);
+                        if (retryJson.Contains("\"children\":[{", StringComparison.Ordinal))
+                        {
+                            _logger.LogDebug("Cached root 0x{Addr:X} recovered after retry", _cachedRootAddress);
+                            return retryJson;
+                        }
+                    }
+                }
+                catch (Exception retryEx)
+                {
+                    _logger.LogDebug("Cached root retry also failed ({Ex}), doing full scan", retryEx.Message);
+                }
             }
             _cachedRootAddress = 0;
         }

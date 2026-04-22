@@ -103,19 +103,9 @@ public sealed partial class MiningBot
                 }
                 if (best.DistanceM > 5000 && ctx.Blackboard.IsCooldownReady("approach_cmd"))
                 {
-                    // Pre-lock: approach via overview. Post-lock: approach via HUD target bar to avoid
-                    // overlap with the overview-only locking logic and the unlock-loop.
-                    UITreeNodeWithDisplayRegion approachNode = best.UINode;
-                    if (best.IsLocked)
-                    {
-                        var hudMatch = ui.Targets.FirstOrDefault(t =>
-                            t.TextLabel != null && best.Name != null &&
-                            (t.TextLabel.Contains(best.Name, StringComparison.OrdinalIgnoreCase) ||
-                             best.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
-                        if (hudMatch != null) approachNode = hudMatch.UINode;
-                    }
-                    // Hover first, then Q+click slightly above center — the HUD target sprite
-                    // sits in the upper half of the node region; clicking dead-center lands behind it.
+                    // Always approach via the overview entry — Q+click only registers approach
+                    // on in-space brackets and overview rows, not on the HUD target icons.
+                    var approachNode = best.UINode;
                     ctx.Hover(approachNode);
                     ctx.Wait(TimeSpan.FromMilliseconds(220));
                     var r = approachNode.Region;
@@ -137,8 +127,10 @@ public sealed partial class MiningBot
                     pending[best.UINode.Node.PythonObjectAddress] = DateTimeOffset.UtcNow;
                     ctx.Blackboard.Set("assumed_locked", pending);
                 }
-                // Target 2+: fill idle laser slots with in-range secondaries
-                else if (ui.Targets.Count < world.TotalLaserCount)
+                // Target 2+: fill idle laser slots with in-range secondaries,
+                // but only once the primary is locked — otherwise secondary locks
+                // accumulate before the primary comes in range, pushing total targets over the laser count.
+                else if (best?.IsLocked == true && ui.Targets.Count < world.TotalLaserCount)
                 {
                     var secondary = world.Asteroids
                         .Where(a => !a.IsLocked && !a.IsLockPending && a.DistanceM < range + 2000)
@@ -254,6 +246,8 @@ public sealed partial class MiningBot
 
             if (hostiles.Count > 0)
             {
+                ctx.Blackboard.Set("had_hostiles_in_belt", true);
+
                 var nearest = hostiles.OrderBy(h => h.DistanceInMeters ?? 1e9).First();
 
                 // Find the nearest hostile's HUD target node (if already locked)
@@ -271,9 +265,11 @@ public sealed partial class MiningBot
                     ctx.Blackboard.SetCooldown("drone_lock", TimeSpan.FromSeconds(5));
                 }
 
-                // 2. Launch drones if none in space
-                if (dronesInSpace == 0 && dronesInBay > 0 && ctx.Blackboard.IsCooldownReady("drone_launch"))
+                // 2. Launch drones if none in space — click target first so F/Shift+F targets the hostile
+                if (locked && dronesInSpace == 0 && dronesInBay > 0 && hudTarget != null && ctx.Blackboard.IsCooldownReady("drone_launch"))
                 {
+                    ctx.Click(hudTarget.UINode);
+                    ctx.Wait(TimeSpan.FromMilliseconds(300));
                     ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
                     ctx.Blackboard.SetCooldown("drone_launch", TimeSpan.FromSeconds(10));
                 }
@@ -286,6 +282,16 @@ public sealed partial class MiningBot
                     ctx.KeyPress(VirtualKey.F);
                     ctx.Blackboard.SetCooldown("drone_engage", TimeSpan.FromSeconds(10));
                 }
+            }
+            else if (ctx.Blackboard.Get<bool>("had_hostiles_in_belt"))
+            {
+                // Combat just ended — force a fresh survey so the bot scores asteroids
+                // with real ISK/m³ data rather than potentially stale pre-combat values.
+                ctx.Blackboard.Remove("had_hostiles_in_belt");
+                ctx.Blackboard.Remove(SurveyLastBeltKey);
+                ctx.Blackboard.Remove(SurveyIskCacheKey);
+                ctx.Blackboard.Set(SurveyPhaseKey, "");
+                ctx.Log("[Defense] Belt cleared — forcing mining survey re-scan.");
             }
             return NodeStatus.Failure;
         });

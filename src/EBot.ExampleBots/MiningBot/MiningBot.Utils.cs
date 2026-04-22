@@ -60,15 +60,14 @@ public sealed partial class MiningBot
     // Sensing Helpers
     // ═══════════════════════════════════════════════════════════════════════
 
-    private static bool AnyAsteroidsInOverview(BotContext ctx)
-    {
-        var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
-        if (ov == null) return false;
-        return ov.Entries.Any(IsAsteroid);
-    }
+    private static bool AnyAsteroidsInOverview(BotContext ctx) =>
+        ctx.GameState.ParsedUI.OverviewWindows.Any(w => w.Entries.Any(IsAsteroid));
+
     private static IEnumerable<OverviewEntry> AsteroidsInOverview(BotContext ctx)
     {
-        var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
+        // Pick the window that actually has asteroid entries (not the Enemies window)
+        var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault(w => w.Entries.Any(IsAsteroid))
+               ?? ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
         var parsed = (ov?.Entries.Where(IsAsteroid) ?? []).ToList();
 
         // If overview has rocks, use them
@@ -88,27 +87,27 @@ public sealed partial class MiningBot
     private static OverviewEntry? FindStationInOverview(BotContext ctx)
     {
         var homeStation = ctx.Blackboard.Get<string>("home_station");
-        var ov = ctx.GameState.ParsedUI.OverviewWindows.FirstOrDefault();
-        if (ov == null) return null;
+        var allEntries = ctx.GameState.ParsedUI.OverviewWindows.SelectMany(w => w.Entries).ToList();
+        if (allEntries.Count == 0) return null;
 
         ctx.Log($"[Mining] Searching for station in overview. Home set to: '{homeStation ?? "None"}'");
 
         if (!string.IsNullOrEmpty(homeStation))
         {
-            var match = ov.Entries.FirstOrDefault(e =>
+            var match = allEntries.FirstOrDefault(e =>
             {
                 var texts = new[] { e.Name ?? "", e.ObjectType ?? "" }
                     .Concat(e.Texts).Concat(e.CellsTexts.Values);
                 return texts.Any(t => t.Contains(homeStation, StringComparison.OrdinalIgnoreCase));
             });
-            if (match != null) 
+            if (match != null)
             {
                 ctx.Log($"[Mining] Found exact home station match: '{match.Name}'");
                 return match;
             }
-            
+
             // Try partial match if no exact match
-            var partial = ov.Entries.FirstOrDefault(e =>
+            var partial = allEntries.FirstOrDefault(e =>
             {
                 var texts = new[] { e.Name ?? "", e.ObjectType ?? "" }
                     .Concat(e.Texts).Concat(e.CellsTexts.Values);
@@ -124,7 +123,7 @@ public sealed partial class MiningBot
         // Broad fallback
         var keywords = StationKeywords;
 
-        var firstStation = ov.Entries.FirstOrDefault(e =>
+        var firstStation = allEntries.FirstOrDefault(e =>
         {
             var texts = new[] { e.Name ?? "", e.ObjectType ?? "" }
                 .Concat(e.Texts).Concat(e.CellsTexts.Values);
