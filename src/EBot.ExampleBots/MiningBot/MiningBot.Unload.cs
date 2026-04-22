@@ -249,6 +249,9 @@ public sealed partial class MiningBot
         ctx.Blackboard.Remove("mining_phase");
         ctx.Blackboard.Set("mining_tick",        0);
         ctx.Blackboard.Remove("assumed_locked");
+        ctx.Blackboard.Remove("mining_anchor");
+        ctx.Blackboard.Remove("laser_targets");
+        ctx.Blackboard.Remove("laser_fire_times");
     }
 
     private void SyncStats(BotContext ctx)

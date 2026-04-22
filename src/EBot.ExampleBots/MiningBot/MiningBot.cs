@@ -187,7 +187,6 @@ public sealed partial class MiningBot : IBot
             WaitCapRegen(),
             ReturnToStation(),
             BT_DroneSecurity(),
-            UnlockOutOfRangeTargets(),
             EnsureMiningTab(),
             DiscoverBeltsOnce(),
             WarpToBelt(),
