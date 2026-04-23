@@ -300,6 +300,44 @@ public sealed partial class MiningBot
             var hostiles      = ui.OverviewWindows.SelectMany(w => w.Entries).Where(e => e.IsHostile || e.IsAttackingMe).ToList();
             var dronesInSpace = ui.DronesWindow?.DronesInSpace?.QuantityCurrent ?? 0;
             var dronesInBay   = ui.DronesWindow?.DronesInBay?.QuantityCurrent   ?? 0;
+            var shield        = ui.ShipUI?.HitpointsPercent?.Shield ?? 100;
+
+            if (ui.DronesWindow == null && (dronesInSpace > 0 || dronesInBay > 0))
+            {
+                if (ctx.Blackboard.IsCooldownReady("warn_drones_window"))
+                {
+                    ctx.Log("[Defense] Drones window is missing. Defense might be unreliable.");
+                    ctx.Blackboard.SetCooldown("warn_drones_window", TimeSpan.FromMinutes(5));
+                }
+            }
+
+            // ── Step 1: Detect "Blind" attacks (taking damage but no hostiles visible anywhere) ──
+            if (hostiles.Count == 0 && shield < 95 && ctx.Blackboard.IsCooldownReady("check_hostile_tab"))
+            {
+                // Find the primary mining overview (usually named 'overview')
+                var miningOv = ui.OverviewWindows.FirstOrDefault(w => w.WindowName == "overview");
+                
+                // Only switch tabs if the mining overview is on a tab that doesn't show asteroids
+                // OR if it's the only overview and we are blind.
+                if (miningOv != null)
+                {
+                    var hostileTab = miningOv.Tabs.FirstOrDefault(t => 
+                        t.Name != null && (
+                        t.Name.Contains("General", StringComparison.OrdinalIgnoreCase) || 
+                        t.Name.Contains("Combat", StringComparison.OrdinalIgnoreCase) ||
+                        t.Name.Contains("Default", StringComparison.OrdinalIgnoreCase) ||
+                        t.Name.Contains("All", StringComparison.OrdinalIgnoreCase) ||
+                        t.Name.Contains("NPC", StringComparison.OrdinalIgnoreCase)));
+
+                    if (hostileTab != null && !hostileTab.IsActive)
+                    {
+                        ctx.Log($"[Defense] Taking damage ({shield}%) but no hostiles visible in any overview. Switching '{miningOv.WindowName}' to '{hostileTab.Name}'.");
+                        ctx.Click(hostileTab.UINode);
+                        ctx.Blackboard.SetCooldown("check_hostile_tab", TimeSpan.FromSeconds(12));
+                        return NodeStatus.Running;
+                    }
+                }
+            }
 
             if (hostiles.Count > 0)
             {
@@ -314,22 +352,23 @@ public sealed partial class MiningBot
 
                 if (!locked && ctx.Blackboard.IsCooldownReady("drone_lock"))
                 {
+                    ctx.Log($"[Defense] Locking hostile: {nearest.Name} @ {nearest.DistanceText}");
                     ctx.Click(nearest.UINode, VirtualKey.Control);
                     ctx.Blackboard.SetCooldown("drone_lock", TimeSpan.FromSeconds(5));
                 }
 
-                if (locked && dronesInSpace == 0 && dronesInBay > 0 && hudTarget != null && ctx.Blackboard.IsCooldownReady("drone_launch"))
+                if (locked && dronesInSpace == 0 && dronesInBay > 0 && ctx.Blackboard.IsCooldownReady("drone_launch"))
                 {
-                    ctx.Click(hudTarget.UINode);
-                    ctx.Wait(TimeSpan.FromMilliseconds(300));
+                    ctx.Log("[Defense] Launching drones.");
                     ctx.KeyPress(VirtualKey.F, VirtualKey.Shift);
                     ctx.Blackboard.SetCooldown("drone_launch", TimeSpan.FromSeconds(10));
                 }
 
                 if (locked && dronesInSpace > 0 && hudTarget != null && ctx.Blackboard.IsCooldownReady("drone_engage"))
                 {
+                    ctx.Log($"[Defense] Engaging hostiles on '{hudTarget.TextLabel}'.");
                     ctx.Click(hudTarget.UINode);
-                    ctx.Wait(TimeSpan.FromMilliseconds(300));
+                    ctx.Wait(TimeSpan.FromMilliseconds(200));
                     ctx.KeyPress(VirtualKey.F);
                     ctx.Blackboard.SetCooldown("drone_engage", TimeSpan.FromSeconds(10));
                 }

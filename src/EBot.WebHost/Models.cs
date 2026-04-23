@@ -157,7 +157,9 @@ public sealed record StartRequest(
 public sealed record MiningBotConfig(
     string? DockingBookmark = null,
     int     OreHoldFull     = 95,
-    int     ShieldEscape    = 25);
+    int     ShieldEscape    = 25,
+    bool    RandomizeBeltOrder = true,
+    bool    RandomBeltEveryCycle = false);
 
 public sealed record BotInfo(string Name, string Description);
 
@@ -169,7 +171,11 @@ public sealed record OllamaModelRequest(string Model);
 
 public sealed record DpiScaleRequest(float Scale);
 
-public sealed record UpdateMiningSettingsRequest(int OreHoldFull, int ShieldEscape);
+public sealed record UpdateMiningSettingsRequest(
+    int OreHoldFull,
+    int ShieldEscape,
+    bool RandomizeBeltOrder,
+    bool RandomBeltEveryCycle);
 
 public sealed record SwitchHoldRequest(string HoldType);
 

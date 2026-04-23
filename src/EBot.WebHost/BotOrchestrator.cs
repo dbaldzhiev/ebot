@@ -100,14 +100,16 @@ public sealed class BotOrchestrator : IDisposable
     public void ToggleBeltExcluded(int idx) => ActiveMiningBot?.ToggleBeltExcluded(idx);
 
     /// <summary>Updates mining parameters on the active bot instance without stopping it.</summary>
-    public void UpdateMiningSettings(int oreHoldPct, int shieldPct)
+    public void UpdateMiningSettings(int oreHoldPct, int shieldPct, bool randomizeBelts, bool randomCycle)
     {
         var bot = ActiveMiningBot;
         if (bot != null)
         {
             bot.OreHoldFullPercent = oreHoldPct;
             bot.ShieldEscapePercent = shieldPct;
-            _logSink.Add("Info", "Orchestrator", $"Updated mining settings: OreHold={oreHoldPct}%, ShieldEscape={shieldPct}%");
+            bot.RandomizeBeltOrder = randomizeBelts;
+            bot.RandomBeltEveryCycle = randomCycle;
+            _logSink.Add("Info", "Orchestrator", $"Updated mining settings: OreHold={oreHoldPct}%, ShieldEscape={shieldPct}%, RandomizeOrder={randomizeBelts}, RandomEveryCycle={randomCycle}");
         }
     }
 
@@ -230,6 +232,8 @@ public sealed class BotOrchestrator : IDisposable
                 HomeStationOverride = string.IsNullOrWhiteSpace(cfg.DockingBookmark) ? null : cfg.DockingBookmark,
                 OreHoldFullPercent  = cfg.OreHoldFull,
                 ShieldEscapePercent = cfg.ShieldEscape,
+                RandomizeBeltOrder  = cfg.RandomizeBeltOrder,
+                RandomBeltEveryCycle = cfg.RandomBeltEveryCycle,
             };
         }
         else

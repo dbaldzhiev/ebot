@@ -15,7 +15,7 @@ public sealed partial class MiningBot
     private IBehaviorNode EnsureSurveyScanned() =>
         new ActionNode("Survey scanner", ctx =>
         {
-            if (!ctx.GameState.IsInSpace) return NodeStatus.Failure;
+            if (!ctx.GameState.IsInSpace || ctx.GameState.IsWarping) return NodeStatus.Failure;
 
             var currentBelt = ctx.Blackboard.Get<int>("last_belt_target", -1);
             var lastBelt    = ctx.Blackboard.Get<int>(SurveyLastBeltKey, -2);
@@ -103,7 +103,7 @@ public sealed partial class MiningBot
                         if (ctx.Blackboard.IsCooldownReady("survey_retry"))
                         {
                             ctx.Log("[Survey] No group entries after scan — retrying.");
-                            ctx.Blackboard.Set(SurveyPhaseKey, "scroll");
+                            ctx.Blackboard.Set(SurveyPhaseKey, "scan");
                             ctx.Blackboard.SetCooldown("survey_retry", TimeSpan.FromSeconds(10));
                         }
                         return waiting;

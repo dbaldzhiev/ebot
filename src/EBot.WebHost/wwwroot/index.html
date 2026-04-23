@@ -580,6 +580,15 @@
       <input type="range" id="mb-shield-pct" min="0" max="50" value="25"
         oninput="$('mb-shield-val').textContent=this.value+'%'" onchange="updateMiningSettings()" style="margin-bottom:10px;">
 
+      <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; font-size:0.75rem;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="mb-random-order" checked onchange="updateMiningSettings()"> Randomize Belt Order
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="mb-random-cycle" onchange="updateMiningSettings()"> Random Belt Every Cycle
+        </label>
+      </div>
+
       <button class="btn btn-primary" id="mb-start-btn" onclick="startMining()">Start Mining Bot</button>
       <div id="mb-status-line" style="font-size:0.58rem; color:var(--text-dim); margin-top:3px;"></div>
     </div>
@@ -986,7 +995,13 @@ async function startAutopilot() {
 async function startMining() {
   api('POST', '/api/start', {
     botName: 'Mining Bot',
-    mining: { dockingBookmark: $('mb-bookmark').value.trim()||null, oreHoldFull: parseInt($('mb-ore-pct').value), shieldEscape: parseInt($('mb-shield-pct').value) },
+    mining: {
+      dockingBookmark: $('mb-bookmark').value.trim()||null,
+      oreHoldFull: parseInt($('mb-ore-pct').value),
+      shieldEscape: parseInt($('mb-shield-pct').value),
+      randomizeBeltOrder: $('mb-random-order').checked,
+      randomBeltEveryCycle: $('mb-random-cycle').checked
+    },
   });
 }
 
@@ -1052,7 +1067,12 @@ async function updateMiningSettings() {
   try {
     await fetch('/api/mining/settings', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ oreHoldFull: parseInt($('mb-ore-pct').value), shieldEscape: parseInt($('mb-shield-pct').value) })
+      body: JSON.stringify({
+        oreHoldFull: parseInt($('mb-ore-pct').value),
+        shieldEscape: parseInt($('mb-shield-pct').value),
+        randomizeBeltOrder: $('mb-random-order').checked,
+        randomBeltEveryCycle: $('mb-random-cycle').checked
+      })
     });
   } catch(e) {}
 }

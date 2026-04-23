@@ -404,6 +404,13 @@ public sealed partial class MiningBot
 
                     var entries = menu.Entries.OrderBy(e => e.UINode.Region.Y).ToList();
                     _beltCount = entries.Count;
+                    _beltOrder = Enumerable.Range(0, _beltCount).ToArray();
+                    if (RandomizeBeltOrder)
+                    {
+                        Random.Shared.Shuffle(_beltOrder);
+                        ctx.Log("[Mining] Randomized belt warp order.");
+                    }
+
                     for (int i = 0; i < entries.Count; i++)
                     {
                         var txt = entries[i].UINode.GetAllContainedDisplayTexts()
@@ -490,34 +497,65 @@ public sealed partial class MiningBot
                         int lastBelt = ctx.Blackboard.Get<int>("last_belt_target");
                         if (lastBelt >= 0 && _beltCount > 0)
                         {
-                            int depletedNorm = lastBelt % _beltCount;
-                            _beltDepleted[depletedNorm] = true;
-                            ctx.Log($"[Mining] Belt {depletedNorm} marked depleted");
+                            _beltDepleted[lastBelt] = true;
+                            ctx.Log($"[Mining] Belt {lastBelt} marked depleted");
                         }
 
+                        int beltTarget = -1;
                         int curIdx = ctx.Blackboard.Get<int>("belt_index");
+
                         if (_beltCount > 0)
                         {
-                            int attempts = 0;
-                            int norm = curIdx % _beltCount;
-                            while (attempts < _beltCount &&
-                                   (_beltDepleted.GetValueOrDefault(norm) || _beltExcluded.GetValueOrDefault(norm)))
+                            if (RandomBeltEveryCycle)
                             {
-                                curIdx++;
-                                norm = curIdx % _beltCount;
-                                attempts++;
+                                var candidates = Enumerable.Range(0, _beltCount)
+                                    .Where(i => !_beltDepleted.GetValueOrDefault(i) && !_beltExcluded.GetValueOrDefault(i))
+                                    .ToList();
+
+                                if (candidates.Count == 0)
+                                {
+                                    ctx.Log("[Mining] All non-excluded belts depleted — resetting belt depletion");
+                                    _beltDepleted.Clear();
+                                    candidates = Enumerable.Range(0, _beltCount)
+                                        .Where(i => !_beltExcluded.GetValueOrDefault(i))
+                                        .ToList();
+                                }
+
+                                if (candidates.Count > 0)
+                                    beltTarget = candidates[Random.Shared.Next(candidates.Count)];
                             }
-                            if (attempts >= _beltCount)
+                            else
                             {
-                                ctx.Log("[Mining] All belts depleted or excluded — resetting belt depletion and retrying");
-                                _beltDepleted.Clear();
-                                curIdx = 0;
+                                int attempts = 0;
+                                int norm = _beltOrder[curIdx % _beltCount];
+                                while (attempts < _beltCount &&
+                                       (_beltDepleted.GetValueOrDefault(norm) || _beltExcluded.GetValueOrDefault(norm)))
+                                {
+                                    curIdx++;
+                                    norm = _beltOrder[curIdx % _beltCount];
+                                    attempts++;
+                                }
+                                if (attempts >= _beltCount)
+                                {
+                                    ctx.Log("[Mining] All belts depleted or excluded — resetting belt depletion and retrying");
+                                    _beltDepleted.Clear();
+                                    curIdx = 0;
+                                    norm = _beltOrder[0];
+                                }
+                                beltTarget = norm;
+                                ctx.Blackboard.Set("belt_index", curIdx + 1);
                             }
                         }
 
-                        ctx.Blackboard.Set("belt_target", curIdx);
-                        ctx.Blackboard.Set("belt_index",  curIdx + 1);
-                        ctx.Blackboard.Set("last_belt_target", curIdx);
+                        if (beltTarget < 0)
+                        {
+                            ctx.Log("[Mining] No valid belts available to warp to.");
+                            Reset(30);
+                            return NodeStatus.Failure;
+                        }
+
+                        ctx.Blackboard.Set("belt_target", beltTarget);
+                        ctx.Blackboard.Set("last_belt_target", beltTarget);
                         
                         ctx.Blackboard.SetCooldown("belt_drone_recall", TimeSpan.FromSeconds(15));
                         Progress("await_drones");

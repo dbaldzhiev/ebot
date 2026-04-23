@@ -15,6 +15,8 @@ public sealed partial class MiningBot : IBot
     public string? HomeStationOverride { get; init; }
     public int OreHoldFullPercent { get; set; } = 95;
     public int ShieldEscapePercent { get; set; } = 25;
+    public bool RandomizeBeltOrder { get; set; } = true;
+    public bool RandomBeltEveryCycle { get; set; } = false;
 
     // ─── Session statistics ──────────────────────────────────────────────────
     private double         _totalUnloadedM3;
@@ -25,6 +27,7 @@ public sealed partial class MiningBot : IBot
     private readonly ConcurrentDictionary<int, string> _beltNames    = new();
     private readonly ConcurrentDictionary<int, bool>   _beltDepleted = new();
     private readonly ConcurrentDictionary<int, bool>   _beltExcluded = new();
+    private int[] _beltOrder = [];
     private int _beltCount = 0;
 
     public IReadOnlyDictionary<int, string> BeltNames    => _beltNames;
@@ -185,8 +188,8 @@ public sealed partial class MiningBot : IBot
                 return NodeStatus.Failure;
             }),
             WaitCapRegen(),
-            ReturnToStation(),
             BT_DroneSecurity(),
+            ReturnToStation(),
             EnsureMiningTab(),
             DiscoverBeltsOnce(),
             WarpToBelt(),
