@@ -275,13 +275,42 @@ public sealed partial class MiningBot
 
             if (targetToFire == null) break;
 
-            ctx.Log($"[Mining] Firing {laser.Name} at '{targetToFire.TextLabel}' ({targetToFire.DistanceText}).");
-            ctx.Click(targetToFire.UINode);
-            ctx.Wait(TimeSpan.FromMilliseconds(650));
-            ctx.Click(laser.UINode);
-
-            var laserAddr  = laser.UINode.Node.PythonObjectAddress;
             var laserIdx   = allLasers.IndexOf(laser);
+            var laserAddr  = laser.UINode.Node.PythonObjectAddress;
+
+            ctx.Log($"[Mining] Firing {laser.Name} (Slot {laserIdx + 1}) at '{targetToFire.TextLabel}' ({targetToFire.DistanceText}).");
+            
+            // Only click the target if it's not already the active one
+            if (!targetToFire.IsActiveTarget)
+            {
+                ctx.Click(targetToFire.UINode);
+                ctx.Wait(TimeSpan.FromMilliseconds(200));
+            }
+
+            // Use hotkeys F1-F8 for the top row modules
+            VirtualKey? hotkey = laserIdx switch
+            {
+                0 => VirtualKey.F1,
+                1 => VirtualKey.F2,
+                2 => VirtualKey.F3,
+                3 => VirtualKey.F4,
+                4 => VirtualKey.F5,
+                5 => VirtualKey.F6,
+                6 => VirtualKey.F7,
+                7 => VirtualKey.F8,
+                _ => null
+            };
+
+            if (hotkey.HasValue)
+            {
+                ctx.KeyPress(hotkey.Value);
+            }
+            else
+            {
+                // Fallback to clicking if we have more than 8 lasers or index is weird
+                ctx.Click(laser.UINode);
+            }
+
             assignments[laserIdx]        = targetToFire.UINode.Node.PythonObjectAddress;
             assignedHudAddrs.Add(targetToFire.UINode.Node.PythonObjectAddress);
             fireTimes[laserAddr]         = DateTimeOffset.UtcNow;
