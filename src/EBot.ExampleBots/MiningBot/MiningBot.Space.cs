@@ -265,9 +265,11 @@ public sealed partial class MiningBot
 
         foreach (var laser in idleLasers)
         {
-            // Prefer targets within safe range; any locked HUD target otherwise
+            // Prefer targets within safe range; any locked HUD target otherwise.
+            // MUST be an asteroid (prevents firing mining lasers at enemies).
             var targetToFire = ui.Targets
                 .Where(t => !assignedHudAddrs.Contains(t.UINode.Node.PythonObjectAddress))
+                .Where(IsAsteroid)
                 .OrderBy(t => t.DistanceInMeters.HasValue && t.DistanceInMeters.Value > safeRange ? 1 : 0)
                 .FirstOrDefault();
 
