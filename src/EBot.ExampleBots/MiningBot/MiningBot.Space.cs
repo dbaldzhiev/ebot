@@ -47,35 +47,51 @@ public sealed partial class MiningBot
             }
 
             // ── Step 1: Anchor management ─────────────────────────────────────────────
-            // The anchor is the single asteroid we're flying towards.
-            // Commit to it until it enters safe range or disappears — prevents oscillation
-            // between targets when scores update mid-flight.
+            // The anchor is the asteroid we're flying towards.
+            // Stay stationary if we have any asteroids in safeRange.
             var anchorAddr = ctx.Blackboard.Get<string>("mining_anchor");
-            var anchor     = world.Asteroids.FirstOrDefault(a =>
-                a.UINode.Node.PythonObjectAddress == anchorAddr);
+            var anchor     = world.Asteroids.FirstOrDefault(a => a.UINode.Node.PythonObjectAddress == anchorAddr);
 
-            // Anchor becomes stale when: it's gone, or it's in safe range AND already locked
-            // (we're mining it — nothing more to fly towards for this asteroid).
-            bool anchorStale = anchor == null ||
-                               (anchor.DistanceM <= safeRange && anchor.IsLocked);
+            var anyInRange = world.Asteroids.Any(a => a.DistanceM <= safeRange);
+
+            // Anchor is stale if it's gone, or if we have things in range but the anchor is far away (stop moving!)
+            bool anchorStale = anchor == null || 
+                               (anchor.DistanceM <= safeRange && anchor.IsLocked) ||
+                               (anyInRange && anchor.DistanceM > safeRange);
 
             if (anchorStale)
             {
-                // Pick the best unlocked asteroid as next anchor.
-                // Prefer ones outside safe range (still need to fly there);
-                // fall back to any unlocked if all are already close.
-                var newAnchor = world.Asteroids
-                    .Where(a => !a.IsLocked && !a.IsLockPending)
-                    .OrderByDescending(a => a.DistanceM > safeRange)   // out-of-range first
-                    .ThenByDescending(a => a.Score)
+                // Prioritize staying put: pick the best in-range asteroid first.
+                var bestInRange = world.Asteroids
+                    .Where(a => a.DistanceM <= safeRange && !a.IsLocked && !a.IsLockPending)
+                    .OrderByDescending(a => a.Score)
                     .FirstOrDefault();
+
+                var newAnchor = bestInRange;
+
+                if (newAnchor == null)
+                {
+                    // No new work in range. If something is already locked in range, stay anchored to it.
+                    newAnchor = world.Asteroids
+                        .Where(a => a.DistanceM <= safeRange && a.IsLocked)
+                        .OrderByDescending(a => a.Score)
+                        .FirstOrDefault();
+                }
+
+                if (newAnchor == null)
+                {
+                    // Absolutely nothing in range. Pick the best overall to fly to.
+                    newAnchor = world.Asteroids
+                        .Where(a => !a.IsLocked && !a.IsLockPending)
+                        .OrderByDescending(a => a.Score)
+                        .FirstOrDefault();
+                }
 
                 if (newAnchor != null && newAnchor.UINode.Node.PythonObjectAddress != anchorAddr)
                 {
                     anchor = newAnchor;
                     ctx.Blackboard.Set("mining_anchor", anchor.UINode.Node.PythonObjectAddress);
-                    if (anchorAddr != null)
-                        ctx.Log($"[Mining] New anchor: {anchor.Name} @ {anchor.DistanceText}");
+                    ctx.Log($"[Mining] New anchor: {anchor.Name} @ {anchor.DistanceText} ({(anchor.DistanceM <= safeRange ? "In range - staying put" : "Approaching")})");
                 }
             }
 
@@ -106,6 +122,35 @@ public sealed partial class MiningBot
                     var r = anchor.UINode.Region;
                     ctx.ClickAt(r.X + r.Width / 2, r.Y + r.Height / 4, VirtualKey.Q);
                     ctx.Blackboard.SetCooldown("approach_cmd", TimeSpan.FromSeconds(10));
+                }
+            }
+
+            // ── Step 2.5: Unlock out-of-range targets ────────────────────────────────
+            if (ctx.Blackboard.IsCooldownReady("unlock_oor") && ui.Targets.Count > 0)
+            {
+                var threshold = range + 1000; 
+                var toUnlock = ui.Targets
+                    .Where(t => t.DistanceInMeters > threshold)
+                    .Where(t => 
+                    {
+                        // Don't unlock the anchor we might be flying towards
+                        if (anchor != null && t.TextLabel != null && anchor.Name != null &&
+                            (t.TextLabel.Contains(anchor.Name, StringComparison.OrdinalIgnoreCase) ||
+                             anchor.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)))
+                            return false;
+                        
+                        // Only unlock if it's actually an asteroid (don't unlock enemies/stations)
+                        return world.Asteroids.Any(a => t.TextLabel != null && 
+                            (t.TextLabel.Contains(a.Name, StringComparison.OrdinalIgnoreCase) || 
+                             a.Name.Contains(t.TextLabel, StringComparison.OrdinalIgnoreCase)));
+                    })
+                    .FirstOrDefault();
+
+                if (toUnlock != null)
+                {
+                    ctx.Log($"[Mining] Unlocking out-of-range asteroid '{toUnlock.TextLabel}' ({toUnlock.DistanceText})");
+                    ctx.Click(toUnlock.UINode, [VirtualKey.Shift, VirtualKey.Control]);
+                    ctx.Blackboard.SetCooldown("unlock_oor", TimeSpan.FromSeconds(3));
                 }
             }
 
