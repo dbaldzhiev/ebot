@@ -671,9 +671,17 @@ public sealed partial class MiningBot
                                 .MaxBy(m => m.UINode.Region.X);
                             if (subMenu != null)
                             {
-                                var subEntries = subMenu.Entries.OrderBy(e => e.UINode.Region.Y).ToList();
-                                beltEntry = subEntries.Count > 0
-                                    ? subEntries[beltTarget % subEntries.Count]
+                                // Filter by text to avoid selecting headers or non-interactable entries
+                                var filteredSubEntries = subMenu.Entries
+                                    .Where(e => e.UINode.GetAllContainedDisplayTexts().Any(t =>
+                                        (t.Length > 14 && t.Contains("Asteroid Belt", StringComparison.OrdinalIgnoreCase)) ||
+                                        (t.Length > 8  && (t.Contains("Ore Deposit",  StringComparison.OrdinalIgnoreCase) ||
+                                                           t.Contains("Cluster",      StringComparison.OrdinalIgnoreCase)))))
+                                    .OrderBy(e => e.UINode.Region.Y)
+                                    .ToList();
+
+                                beltEntry = filteredSubEntries.Count > 0
+                                    ? filteredSubEntries[beltTarget % filteredSubEntries.Count]
                                     : null;
                             }
                         }
