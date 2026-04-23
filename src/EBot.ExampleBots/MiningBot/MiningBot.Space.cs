@@ -165,7 +165,7 @@ public sealed partial class MiningBot
                     .OrderByDescending(a => a.Score)
                     .FirstOrDefault();
 
-                if (toLock != null && ui.Targets.Count < world.TotalLaserCount)
+                if (toLock != null && ui.Targets.Count(IsAsteroid) < world.TotalLaserCount)
                 {
                     ctx.Log($"[Mining] Locking: {toLock.Name} @ {toLock.DistanceText} (score {toLock.Score:F0})");
                     ctx.Click(toLock.UINode, [VirtualKey.Control]);
@@ -243,7 +243,7 @@ public sealed partial class MiningBot
 
         // ── Cleanup stale assignments ─────────────────────────────────────────────
         var idleAddrs = allLasers
-            .Where(m => m.IsActive != true && !m.IsBusy)
+            .Where(m => m.IsActive != true && !m.IsBusy && ctx.Blackboard.IsCooldownReady($"fire_module_{m.UINode.Node.PythonObjectAddress}"))
             .Select(m => m.UINode.Node.PythonObjectAddress)
             .ToHashSet();
 
