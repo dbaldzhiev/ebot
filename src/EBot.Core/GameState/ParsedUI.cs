@@ -101,6 +101,8 @@ public sealed class ShipUIModuleButton
     public UITreeNodeWithDisplayRegion SlotNode { get; init; } = null!;
     /// <summary>Module name extracted from the slot/button hint text, if available.</summary>
     public string? Name { get; init; }
+    /// <summary>EVE typeID extracted from the slot _name attribute (e.g. "inFlightMediumSlot0_12345" → 12345). Used for SDE/ESI resolution when hint is absent.</summary>
+    public int? TypeId { get; init; }
     /// <summary>True when the module is actively cycling (ramp_active == true or ramp sprite visible).</summary>
     public bool? IsActive { get; init; }
     /// <summary>True when the selection highlight sprite is visible on the slot.</summary>

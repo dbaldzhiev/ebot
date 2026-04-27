@@ -36,6 +36,7 @@ public sealed class BotOrchestrator : IDisposable
     private readonly ILoggerFactory _loggerFactory;
     private readonly LogSink _logSink;
     private readonly ManualActionService _manualActions;
+    private readonly ModuleTypeService? _moduleTypeSvc;
 
     // Single perpetual runner — created once, never destroyed during the app lifetime
     private BotRunner? _runner;
@@ -96,6 +97,29 @@ public sealed class BotOrchestrator : IDisposable
         }
     }
 
+    /// <summary>Returns the active TravelBot instance if one is running, otherwise null.</summary>
+    public TravelBot? ActiveTravelBot
+    {
+        get
+        {
+            if (_activeBot is TravelBot tb) return tb;
+            if (_activeBot is SurvivalWrappedBot swb && swb.Inner is TravelBot stb) return stb;
+            return null;
+        }
+    }
+
+    /// <summary>Updates travel bot options at runtime without restarting the bot.</summary>
+    public void UpdateTravelSettings(bool abMwdTrick, bool hardenMode)
+    {
+        var bot = ActiveTravelBot;
+        if (bot != null)
+        {
+            bot.AbMwdTrick  = abMwdTrick;
+            bot.HardenMode  = hardenMode;
+            _logSink.Add("Info", "Orchestrator", $"Updated travel settings: AbMwdTrick={abMwdTrick}, HardenMode={hardenMode}");
+        }
+    }
+
     /// <summary>Toggle a belt's user-excluded status on the active mining bot.</summary>
     public void ToggleBeltExcluded(int idx) => ActiveMiningBot?.ToggleBeltExcluded(idx);
 
@@ -130,11 +154,13 @@ public sealed class BotOrchestrator : IDisposable
     public BotOrchestrator(
         IHubContext<BotHub> hub,
         ILoggerFactory loggerFactory,
-        LogSink logSink)
+        LogSink logSink,
+        ModuleTypeService? moduleTypeSvc = null)
     {
         _hub = hub;
         _loggerFactory = loggerFactory;
         _logSink = logSink;
+        _moduleTypeSvc = moduleTypeSvc;
         _manualActions = new ManualActionService(logSink);
 
         _logSink.EntryAdded += entry =>
@@ -222,7 +248,11 @@ public sealed class BotOrchestrator : IDisposable
         IBot bot;
         if (botName.Equals("Travel Bot", StringComparison.OrdinalIgnoreCase))
         {
-            bot = new TravelBot { Destination = string.IsNullOrWhiteSpace(destination) ? null : destination };
+            bot = new TravelBot
+            {
+                Destination  = string.IsNullOrWhiteSpace(destination) ? null : destination,
+                TypeResolver = _moduleTypeSvc,
+            };
         }
         else if (botName.Equals("Mining Bot", StringComparison.OrdinalIgnoreCase))
         {

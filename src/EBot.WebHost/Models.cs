@@ -177,6 +177,8 @@ public sealed record UpdateMiningSettingsRequest(
     bool RandomizeBeltOrder,
     bool RandomBeltEveryCycle);
 
+public sealed record UpdateTravelSettingsRequest(bool AbMwdTrick, bool HardenMode);
+
 public sealed record SwitchHoldRequest(string HoldType);
 
 // DiscordSettings lives in EBot.WebHost.Services.DiscordSettings (used directly as request/response)

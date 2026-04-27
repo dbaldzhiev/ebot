@@ -44,6 +44,16 @@ builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Debug);
 // Core services
 builder.Services.AddSingleton(logSink);
 builder.Services.AddSingleton<BotOrchestrator>();
+builder.Services.AddSingleton<ModuleTypeService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ModuleTypeService>());
+
+// ESI HTTP client — base URL + sensible timeouts
+builder.Services.AddHttpClient("esi", c =>
+{
+    c.BaseAddress = new Uri("https://esi.evetech.net/latest/");
+    c.DefaultRequestHeaders.Add("User-Agent", "EBot/1.0 (github.com/ebot)");
+    c.Timeout = TimeSpan.FromSeconds(10);
+});
 
 // AI chat backend — select via EBOT_AI_BACKEND env var ("anthropic" | "ollama")
 var aiBackend = Environment.GetEnvironmentVariable("EBOT_AI_BACKEND") ?? "ollama";
@@ -250,6 +260,13 @@ api.MapPost("/survival", ([FromBody] SurvivalRequest req, BotOrchestrator o) =>
 api.MapPost("/mining/settings", ([FromBody] UpdateMiningSettingsRequest req, BotOrchestrator o) =>
 {
     o.UpdateMiningSettings(req.OreHoldFull, req.ShieldEscape, req.RandomizeBeltOrder, req.RandomBeltEveryCycle);
+    return Results.Ok(new { success = true });
+});
+
+// POST /api/travel/settings  — update travel bot options at runtime (no restart needed)
+api.MapPost("/travel/settings", ([FromBody] UpdateTravelSettingsRequest req, BotOrchestrator o) =>
+{
+    o.UpdateTravelSettings(req.AbMwdTrick, req.HardenMode);
     return Results.Ok(new { success = true });
 });
 
@@ -594,25 +611,122 @@ api.MapPost("/mining/belts/{idx:int}/toggle", (int idx, BotOrchestrator o) =>
     return Results.Ok(new { toggled = idx });
 });
 
-// GET /api/debug/modules  — dump raw dict keys for each module slot (diagnostic)
+// GET /api/debug/modules  — dump module slots with parsed names and raw hint text
 api.MapGet("/debug/modules", (BotOrchestrator orch) =>
 {
     var ui = orch.LastContext?.GameState.ParsedUI;
     if (ui?.ShipUI == null) return Results.Ok("Ship UI not visible.");
 
+    var rows = ui.ShipUI.ModuleButtonsRows;
     var sb = new System.Text.StringBuilder();
-    sb.AppendLine($"Total module slots: {ui.ShipUI.ModuleButtons.Count}");
+    sb.AppendLine($"Total module slots: {ui.ShipUI.ModuleButtons.Count}  (high={rows.Top.Count} mid={rows.Middle.Count} low={rows.Bottom.Count})");
     foreach (var (m, i) in ui.ShipUI.ModuleButtons.Select((m, i) => (m, i)))
     {
-        var slotType = m.SlotNode.Node.PythonObjectTypeName;
-        var btnType  = m.UINode.Node.PythonObjectTypeName;
-        var dictKeys = string.Join(", ", (IEnumerable<string>?)m.UINode.Node.DictEntriesOfInterest?.Keys ?? []);
-        var slotKeys = string.Join(", ", (IEnumerable<string>?)m.SlotNode.Node.DictEntriesOfInterest?.Keys ?? []);
-        sb.AppendLine($"[{i}] slot={slotType} btn={btnType}");
-        sb.AppendLine($"     isActive={m.IsActive} isBusy={m.IsBusy} isOverloaded={m.IsOverloaded} isOffline={m.IsOffline}");
-        sb.AppendLine($"     btn-keys: {dictKeys}");
-        sb.AppendLine($"     slot-keys: {slotKeys}");
+        var rawHint = EBot.Core.GameState.EveTextUtil.StripTags(m.UINode.Node.GetDictString("_hint"))
+                   ?? EBot.Core.GameState.EveTextUtil.StripTags(m.SlotNode.Node.GetDictString("_hint"))
+                   ?? "(no hint)";
+        var slotName = m.UINode.Node.GetDictString("_name") ?? m.SlotNode.Node.GetDictString("_name") ?? "?";
+        var row = rows.Top.Contains(m) ? "HIGH" : rows.Middle.Contains(m) ? "MID" : "LOW";
+        sb.AppendLine($"[{i}] {row,-4} name=\"{m.Name ?? "(null)"}\"  active={m.IsActive} busy={m.IsBusy} overload={m.IsOverloaded}");
+        sb.AppendLine($"       hint=\"{rawHint}\"  slotName={slotName}");
     }
+    return Results.Ok(sb.ToString());
+});
+
+// GET /api/debug/travel  — live diagnostics for AB/MWD trick and Harden Mode
+api.MapGet("/debug/travel", (BotOrchestrator orch, ModuleTypeService mtSvc) =>
+{
+    var ctx  = orch.LastContext;
+    var bot  = orch.ActiveTravelBot;
+    var ui   = ctx?.GameState.ParsedUI;
+
+    EBot.Core.GameState.ITypeNameResolver.TypeEntry? Resolved(EBot.Core.GameState.ShipUIModuleButton m) =>
+        m.TypeId.HasValue ? mtSvc.Resolve(m.TypeId.Value) : null;
+
+    bool IsShieldHardener(EBot.Core.GameState.ShipUIModuleButton m)
+    {
+        if (m.Name != null && (
+                m.Name.Contains("Shield Hardener", StringComparison.OrdinalIgnoreCase) ||
+                m.Name.Contains("Multispectrum",   StringComparison.OrdinalIgnoreCase)))
+            return true;
+        var e = Resolved(m);
+        return e != null && (
+            e.GroupName.Contains("Shield Hardener", StringComparison.OrdinalIgnoreCase) ||
+            e.GroupName.Contains("Multispectrum",   StringComparison.OrdinalIgnoreCase));
+    }
+
+    bool IsPropModule(EBot.Core.GameState.ShipUIModuleButton m)
+    {
+        if (m.Name != null && (
+                m.Name.Contains("Afterburner", StringComparison.OrdinalIgnoreCase) ||
+                m.Name.Contains("Microwarp",   StringComparison.OrdinalIgnoreCase)))
+            return true;
+        var e = Resolved(m);
+        return e != null && (
+            e.GroupName.Contains("Afterburner",    StringComparison.OrdinalIgnoreCase) ||
+            e.GroupName.Contains("Microwarpdrive", StringComparison.OrdinalIgnoreCase));
+    }
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine($"=== Travel Bot Settings ===");
+    sb.AppendLine($"  bot active    : {bot != null}");
+    sb.AppendLine($"  AbMwdTrick    : {bot?.AbMwdTrick}");
+    sb.AppendLine($"  HardenMode    : {bot?.HardenMode}");
+    sb.AppendLine($"  TypeCache     : {mtSvc.CachedTypeCount} types / {mtSvc.CachedGroupCount} groups resolved");
+    sb.AppendLine($"  overheat_queue: {ctx?.Blackboard.Get<System.Collections.Generic.List<int>>("overheat_queue")?.Count ?? 0} items");
+    sb.AppendLine($"  overheat_cd   : ready={ctx?.Blackboard.IsCooldownReady("overheat_cooldown")}");
+    sb.AppendLine();
+
+    if (ui?.ShipUI == null)
+    {
+        sb.AppendLine("ShipUI not visible — undocked or UI not parsed.");
+        return Results.Ok(sb.ToString());
+    }
+
+    bool attacked = ui.OverviewWindows.Any(w => w.Entries.Any(e => e.IsAttackingMe));
+    sb.AppendLine($"=== Combat State ===");
+    sb.AppendLine($"  IsBeingAttacked : {attacked}");
+    sb.AppendLine();
+
+    var rows = ui.ShipUI.ModuleButtonsRows;
+    sb.AppendLine($"=== All Module Buttons ({ui.ShipUI.ModuleButtons.Count} total: high={rows.Top.Count} mid={rows.Middle.Count} low={rows.Bottom.Count}) ===");
+    foreach (var (m, i) in ui.ShipUI.ModuleButtons.Select((m, i) => (m, i)))
+    {
+        var rawHint = EBot.Core.GameState.EveTextUtil.StripTags(m.UINode.Node.GetDictString("_hint"))
+                   ?? EBot.Core.GameState.EveTextUtil.StripTags(m.SlotNode.Node.GetDictString("_hint"))
+                   ?? "(no hint)";
+        var resolved  = Resolved(m);
+        var esiName   = resolved != null ? $"{resolved.TypeName} (grp: {resolved.GroupName}, cat: {resolved.CategoryId})" : "(not yet resolved)";
+        var rowLabel  = rows.Top.Contains(m) ? "HIGH" : rows.Middle.Contains(m) ? "MID" : "LOW";
+        var propTag   = IsPropModule(m)      ? " [PROP]"    : "";
+        var hardenTag = IsShieldHardener(m)  ? " [HARDENER]": "";
+        sb.AppendLine($"  [{i}] {rowLabel,-4} typeId={m.TypeId?.ToString() ?? "?"}{propTag}{hardenTag}");
+        sb.AppendLine($"        hint-name : \"{m.Name ?? "(null)"}\"");
+        sb.AppendLine($"        esi-name  : {esiName}");
+        sb.AppendLine($"        hint-raw  : \"{rawHint}\"");
+        sb.AppendLine($"        active={m.IsActive} busy={m.IsBusy} overload={m.IsOverloaded}");
+    }
+
+    sb.AppendLine();
+    sb.AppendLine($"=== AB/MWD Trick: would click ===");
+    var allMods = ui.ShipUI.ModuleButtons.ToList();
+    var propMod = allMods.FirstOrDefault(IsPropModule);
+    sb.AppendLine(propMod != null
+        ? $"  Module [{allMods.IndexOf(propMod)}] typeId={propMod.TypeId} \"{propMod.Name ?? Resolved(propMod)?.TypeName ?? "(unknown)"}\""
+        : "  (none found — keywords 'Afterburner'/'Microwarp' and ESI group not matched)");
+
+    sb.AppendLine();
+    sb.AppendLine($"=== Harden Mode: inactive hardeners to click ===");
+    var hardeners = allMods.Where(m => IsShieldHardener(m) && m.IsActive != true && !m.IsBusy).ToList();
+    if (hardeners.Count == 0) sb.AppendLine("  (none — either all active/unknown, no hardeners found, or not yet resolved)");
+    else foreach (var m in hardeners) sb.AppendLine($"  Module [{allMods.IndexOf(m)}] typeId={m.TypeId} \"{m.Name ?? Resolved(m)?.TypeName ?? "(unknown)"}\"");
+
+    sb.AppendLine();
+    sb.AppendLine($"=== Mid-rack for overheat ===");
+    foreach (var (m, i) in rows.Middle.Select((m, i) => (m, i)))
+        sb.AppendLine($"  [mid-{i}] typeId={m.TypeId} \"{m.Name ?? Resolved(m)?.TypeName ?? "(null)"}\"  active={m.IsActive} overloaded={m.IsOverloaded}");
+    if (rows.Middle.Count == 0) sb.AppendLine("  (empty — mid-rack classification may have failed; check /api/debug/modules)");
+
     return Results.Ok(sb.ToString());
 });
 

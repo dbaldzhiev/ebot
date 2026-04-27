@@ -313,41 +313,46 @@ public sealed class UITreeParser
             if (moduleName.Length == 0) moduleName = null;
         }
 
-        // Fallback if hint is missing: use node name suffix (type ID)
-        if (moduleName == null)
+        // Extract typeID from node _name (format: "inFlightMediumSlot0_moduleButton_12345" or "slot_12345").
+        // This is used for SDE/ESI resolution when _hint is absent.
+        int? typeId = null;
         {
-            var nodeName = moduleButton.Node.GetDictString("_name") ?? "";
-            if (nodeName.Contains('_'))
+            var nameAttr = moduleButton.Node.GetDictString("_name")
+                        ?? slotNode.Node.GetDictString("_name") ?? "";
+            var lastToken = nameAttr.Contains('_') ? nameAttr.Split('_').Last() : "";
+            if (int.TryParse(lastToken, out var parsedId) && parsedId > 0)
+                typeId = parsedId;
+        }
+
+        // Fallback if hint is missing: use hardcoded typeID → name table for common modules.
+        if (moduleName == null && typeId.HasValue)
+        {
+            moduleName = typeId.Value switch
             {
-                var id = nodeName.Split('_').Last();
-                moduleName = id switch
-                {
-                    "482"   => "Mining Laser",  // Miner I (old typeID, kept for safety)
-                    "483"   => "Mining Laser",  // Miner I
-                    "578"   => "Mining Laser",  // Miner II
-                    "487"   => "Mining Laser",  // Deep Core Miner I
-                    "12108" => "Mining Laser",  // Deep Core Miner II
-                    "22229" => "Mining Laser",  // Ice Harvester I
-                    "22231" => "Mining Laser",  // Ice Harvester II
-                    "17911" => "Mining Laser",  // Modulated Strip Miner I
-                    "17912" => "Mining Laser",  // Modulated Strip Miner II
-                    "16277" => "Mining Laser",  // Strip Miner I
-                    "17913" => "Mining Laser",  // Modulated Deep Core Strip Miner I
-                    "17914" => "Mining Laser",  // Modulated Deep Core Strip Miner II
-                    "6001"  => "Afterburner",
-                    "6003"  => "Afterburner",   // 1MN Monopropellant I
-                    "6004"  => "Afterburner",   // 1MN Afterburner II
-                    "6005"  => "Afterburner",   // 5MN Microwarpdrive I
-                    "6006"  => "Microwarpdrive",
-                    "6002"  => "Microwarpdrive",
-                    "2054"  => "Afterburner",
-                    _       => $"Module {id}"
-                };
-            }
+                482   => "Mining Laser",   // Miner I (old)
+                483   => "Mining Laser",   // Miner I
+                578   => "Mining Laser",   // Miner II
+                487   => "Mining Laser",   // Deep Core Miner I
+                12108 => "Mining Laser",   // Deep Core Miner II
+                22229 => "Mining Laser",   // Ice Harvester I
+                22231 => "Mining Laser",   // Ice Harvester II
+                17911 => "Mining Laser",   // Modulated Strip Miner I
+                17912 => "Mining Laser",   // Modulated Strip Miner II
+                16277 => "Mining Laser",   // Strip Miner I
+                17913 => "Mining Laser",   // Modulated Deep Core Strip Miner I
+                17914 => "Mining Laser",   // Modulated Deep Core Strip Miner II
+                6001  => "Afterburner",
+                6003  => "Afterburner",    // 1MN Monopropellant I
+                6004  => "Afterburner",    // 1MN Afterburner II
+                2054  => "Afterburner",
+                6005  => "Microwarpdrive", // 5MN Microwarpdrive I
+                6006  => "Microwarpdrive",
+                6002  => "Microwarpdrive",
+                _ => null                  // unresolved — ESI will fill this in
+            };
         }
 
         // Last resort: identify by the icon texture path inside the button.
-        // EVE icon group 12 = mining-related resources; group 6 = engineering/propulsion.
         if (moduleName == null || moduleName.StartsWith("Module "))
         {
             var iconTex = moduleButton.FindFirst(n =>
@@ -364,6 +369,7 @@ public sealed class UITreeParser
             UINode = slotNode,
             SlotNode = slotNode,
             Name = moduleName,
+            TypeId = typeId,
             IsActive = isActive,
             IsHiliteVisible = HasSprite(slotNode, "hilite", "hiliteSprite"),
             IsBusy = isBusy,
@@ -378,34 +384,20 @@ public sealed class UITreeParser
     {
         if (buttons.Count == 0) return new ShipUIModuleButtonRows();
 
-        // Primary: classify by slot _name (inFlightHighSlot*, inFlightMediumSlot*, inFlightLowSlot*, RigSlot*)
-        static bool IsHighSlot(ShipUIModuleButton b)
-        {
-            var n = b.UINode.Node.GetDictString("_name") ?? "";
-            return n.Contains("HighSlot",      StringComparison.OrdinalIgnoreCase) ||
-                   n.Contains("inFlightHigh",  StringComparison.OrdinalIgnoreCase);
-        }
-        static bool IsMidSlot(ShipUIModuleButton b)
-        {
-            var n = b.UINode.Node.GetDictString("_name") ?? "";
-            return n.Contains("MediumSlot",    StringComparison.OrdinalIgnoreCase) ||
-                   n.Contains("MidSlot",       StringComparison.OrdinalIgnoreCase) ||
-                   n.Contains("inFlightMedium",StringComparison.OrdinalIgnoreCase);
-        }
+        // Group by Y-coordinate to find rows. Modules in the same row will have 
+        // very similar Y values (within 10-20 pixels).
+        var byRow = buttons
+            .GroupBy(b => (b.UINode.Region.Y + 20) / 40) // Buckets of ~40px
+            .OrderBy(g => g.Key)
+            .ToList();
 
-        var top    = buttons.Where(IsHighSlot).ToList();
-        var middle = buttons.Where(IsMidSlot).ToList();
-        var bottom = buttons.Where(b => !IsHighSlot(b) && !IsMidSlot(b)).ToList();
+        var top    = new List<ShipUIModuleButton>();
+        var middle = new List<ShipUIModuleButton>();
+        var bottom = new List<ShipUIModuleButton>();
 
-        // Fallback if names not available: sort by Y, split into thirds
-        if (top.Count == 0 && middle.Count == 0 && buttons.Count > 0)
-        {
-            var sorted = buttons.OrderBy(b => b.UINode.Region.Y).ToList();
-            int third  = Math.Max(1, sorted.Count / 3);
-            top    = sorted.Take(third).ToList();
-            middle = sorted.Skip(third).Take(third).ToList();
-            bottom = sorted.Skip(third * 2).ToList();
-        }
+        if (byRow.Count > 0) top    = byRow[0].OrderBy(b => b.UINode.Region.X).ToList();
+        if (byRow.Count > 1) middle = byRow[1].OrderBy(b => b.UINode.Region.X).ToList();
+        if (byRow.Count > 2) bottom = byRow[2].OrderBy(b => b.UINode.Region.X).ToList();
 
         return new ShipUIModuleButtonRows { Top = top, Middle = middle, Bottom = bottom };
     }
