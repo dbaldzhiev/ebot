@@ -92,16 +92,57 @@ public sealed class EveBotMcpTools(BotOrchestrator orchestrator)
         [Description("Bot name to start. Example: 'Mining'")] string bot_name = "Mining",
         [Description("EVE Online process ID. Use 0 or omit for auto-detect.")] int pid = 0,
         [Description("Path to read-memory-64-bit.exe. Leave empty for default.")] string? exe_path = null,
-        [Description("Tick interval in milliseconds (how often the bot thinks). Default: 1500")] int tick_ms = 0)
+        [Description("Tick interval in milliseconds (how often the bot thinks). Default: 1500")] int tick_ms = 0,
+        [Description("Optional comma-separated list of ore types to mine (e.g. 'Veldspar,Scordite'). Leave empty to mine everything.")] string? ores_to_mine = null,
+        [Description("Optional comma-separated list of ore types to prefer (higher priority).")] string? ores_to_prefer = null)
     {
         try
         {
-            await orchestrator.StartAsync(bot_name, pid, exe_path, tick_ms);
+            MiningBotConfig? mining = null;
+            if (bot_name.Contains("Mining", StringComparison.OrdinalIgnoreCase))
+            {
+                mining = new MiningBotConfig
+                {
+                    OresToMine = ores_to_mine?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList(),
+                    OresToPrefer = ores_to_prefer?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList(),
+                };
+            }
+
+            await orchestrator.StartAsync(bot_name, pid, exe_path, tick_ms, mining: mining);
             return $"Bot '{bot_name}' started successfully. It will now read EVE Online memory every {(tick_ms > 0 ? tick_ms : 1500)}ms and execute actions.";
         }
         catch (Exception ex)
         {
             return $"Failed to start bot: {ex.Message}";
+        }
+    }
+
+    [McpServerTool(Name = "update_mining_settings")]
+    [Description("Update settings for the active Mining Bot at runtime without restarting it.")]
+    public string UpdateMiningSettings(
+        [Description("Percentage at which the ore hold is considered full (e.g. 95)")] int ore_hold_full = 95,
+        [Description("Shield percentage at which to escape (e.g. 25)")] int shield_escape = 25,
+        [Description("Whether to randomize the order of belts to visit")] bool randomize_belts = true,
+        [Description("Whether to pick a new random belt every cycle")] bool random_cycle = false,
+        [Description("Comma-separated list of ore types to mine (e.g. 'Veldspar,Scordite'). Leave empty to mine everything.")] string? ores_to_mine = null,
+        [Description("Comma-separated list of ore types to prefer (higher priority).")] string? ores_to_prefer = null)
+    {
+        try
+        {
+            var req = new UpdateMiningSettingsRequest(
+                ore_hold_full,
+                shield_escape,
+                randomize_belts,
+                random_cycle,
+                ores_to_mine?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList(),
+                ores_to_prefer?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList());
+            
+            orchestrator.UpdateMiningSettings(req);
+            return "Mining settings updated successfully.";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to update mining settings: {ex.Message}";
         }
     }
 

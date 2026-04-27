@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using EBot.Core.Bot;
 using EBot.Core.DecisionEngine;
 using EBot.Core.Execution;
 using EBot.Core.GameState;
@@ -17,6 +16,8 @@ public sealed partial class MiningBot : IBot
     public int ShieldEscapePercent { get; set; } = 25;
     public bool RandomizeBeltOrder { get; set; } = true;
     public bool RandomBeltEveryCycle { get; set; } = false;
+    public List<string> OresToMine { get; set; } = new();
+    public List<string> OresToPrefer { get; set; } = new();
 
     // ─── Session statistics ──────────────────────────────────────────────────
     private double         _totalUnloadedM3;

@@ -262,6 +262,26 @@
     .ast-status-locked { color: var(--accent); font-size: 0.65rem; }
     .ast-status-queue  { color: var(--text-dim); font-size: 0.65rem; }
 
+    .ore-selector-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .ore-opt {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.02);
+    }
+    .ore-opt:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .ore-opt input { cursor: pointer; }
+
     #conn-status { position: fixed; top: 8px; right: 16px; z-index: 100; display: flex; align-items: center; gap: 6px; font-size: 0.65rem; color: var(--text-dim); }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
     .dot.ok { background: var(--green); box-shadow: 0 0 5px var(--green); }
@@ -598,6 +618,12 @@
         </label>
       </div>
 
+      <div class="panel-sub-title" style="margin-top:10px;">Ores to Mine</div>
+      <div id="mb-ores-mine" class="ore-selector-grid"></div>
+
+      <div class="panel-sub-title" style="margin-top:10px;">Ores to Prefer</div>
+      <div id="mb-ores-prefer" class="ore-selector-grid" style="margin-bottom:12px;"></div>
+
       <button class="btn btn-primary" id="mb-start-btn" onclick="startMining()">Start Mining Bot</button>
       <div id="mb-status-line" style="font-size:0.58rem; color:var(--text-dim); margin-top:3px;"></div>
     </div>
@@ -837,6 +863,37 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+const MAIN_ORES = [
+  "Veldspar", "Scordite", "Pyroxeres", "Plagioclase", "Omber", "Kernite", 
+  "Jaspet", "Hemorphite", "Hedbergite", "Spodumain", "Crokite", "Bistot", 
+  "Arkonor", "Mercoxit", "Gneiss", "Dark Ochre"
+];
+
+function initOreSelectors() {
+  const renderOres = (id, prefix) => {
+    $(id).innerHTML = MAIN_ORES.map(o => `
+      <label class="ore-opt">
+        <input type="checkbox" id="${prefix}-${o.toLowerCase()}" onchange="updateMiningSettings()">
+        <span>${o}</span>
+      </label>`).join('');
+  };
+  renderOres('mb-ores-mine', 'mine');
+  renderOres('mb-ores-prefer', 'pref');
+}
+initOreSelectors();
+
+function getSelectedOres(prefix) {
+  return MAIN_ORES.filter(o => $(`${prefix}-${o.toLowerCase()}`).checked);
+}
+
+function setSelectedOres(prefix, list) {
+  if (!list) list = [];
+  MAIN_ORES.forEach(o => {
+    const el = $(`${prefix}-${o.toLowerCase()}`);
+    if (el) el.checked = list.includes(o);
+  });
+}
+
 let lastGs = null;
 let expandedHolds = new Set();
 
@@ -1011,7 +1068,9 @@ async function startMining() {
       oreHoldFull: parseInt($('mb-ore-pct').value),
       shieldEscape: parseInt($('mb-shield-pct').value),
       randomizeBeltOrder: $('mb-random-order').checked,
-      randomBeltEveryCycle: $('mb-random-cycle').checked
+      randomBeltEveryCycle: $('mb-random-cycle').checked,
+      oresToMine: getSelectedOres('mine'),
+      oresToPrefer: getSelectedOres('pref')
     },
   });
 }
@@ -1039,7 +1098,13 @@ async function loadInitialState() {
   try {
     const s = await fetch('/api/status').then(r=>r.json());
     updateBotState(s.state, s.botName, s.botDescription);
-    if (s.gameState) renderDashboard(s.gameState);
+    if (s.gameState) {
+      renderDashboard(s.gameState);
+      if (s.botName === 'Mining Bot') {
+        setSelectedOres('mine', s.gameState.miningOresToMine);
+        setSelectedOres('pref', s.gameState.miningOresToPrefer);
+      }
+    }
   } catch(e) {}
 }
 
@@ -1082,7 +1147,9 @@ async function updateMiningSettings() {
         oreHoldFull: parseInt($('mb-ore-pct').value),
         shieldEscape: parseInt($('mb-shield-pct').value),
         randomizeBeltOrder: $('mb-random-order').checked,
-        randomBeltEveryCycle: $('mb-random-cycle').checked
+        randomBeltEveryCycle: $('mb-random-cycle').checked,
+        oresToMine: getSelectedOres('mine'),
+        oresToPrefer: getSelectedOres('pref')
       })
     });
   } catch(e) {}

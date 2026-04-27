@@ -87,6 +87,12 @@ public sealed partial class MiningBot
         }
         ctx.Blackboard.Set("assumed_locked", assumedLocked);
 
+        var miningBot = ctx.Bot as MiningBot;
+        if (miningBot == null && ctx.Bot is SurvivalWrappedBot swb && swb.Inner is MiningBot mb)
+        {
+            miningBot = mb;
+        }
+
         state.Asteroids.Clear();
         foreach (var ov in overviewAsteroids)
         {
@@ -102,6 +108,25 @@ public sealed partial class MiningBot
             double score      = iskPerM3 - (iskPerM3 * travelKm * 0.05);
             if (dist <= effectiveRange) score += iskPerM3 * 0.10; // prefer in-range over marginally better out-of-range
             if (locked) score += iskPerM3 * 2.5;
+
+            // ── Ore Preferences ─────────────────────────────────────────────
+            if (miningBot != null)
+            {
+                var name = ov.Name ?? "";
+                
+                // If we have a filter and this ore isn't in it, give it a massive penalty
+                if (miningBot.OresToMine.Count > 0 && 
+                    !miningBot.OresToMine.Any(o => name.Contains(o, StringComparison.OrdinalIgnoreCase)))
+                {
+                    score -= 1_000_000_000;
+                }
+
+                // If this is a preferred ore, give it a massive boost
+                if (miningBot.OresToPrefer.Any(o => name.Contains(o, StringComparison.OrdinalIgnoreCase)))
+                {
+                    score += 1_000_000;
+                }
+            }
 
             state.Asteroids.Add(new AsteroidEntity
             {

@@ -1,4 +1,3 @@
-using EBot.Core.Bot;
 using EBot.Core.DecisionEngine;
 using EBot.Core.GameState;
 

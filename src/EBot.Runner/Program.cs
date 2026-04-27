@@ -1,4 +1,5 @@
 using EBot.Core.Bot;
+using EBot.Core.DecisionEngine;
 using EBot.Core.Execution;
 using EBot.Core.GameState;
 using EBot.Core.MemoryReading;
@@ -88,7 +89,7 @@ public static class Program
         using var runner = new BotRunner(bot, settings, reader, parser, input, executor,
             loggerFactory.CreateLogger<BotRunner>());
 
-        runner.OnTick += ctx =>
+        runner.OnTick += (ctx, _) =>
         {
             var gs = ctx.GameState;
             logger.LogInformation(

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
-using EBot.Core.Bot;
 using EBot.Core.GameState;
 
 namespace EBot.Core.DecisionEngine;

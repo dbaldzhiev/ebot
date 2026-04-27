@@ -51,6 +51,8 @@ public sealed record GameStateSummary(
     // Current Bot Settings
     int? MiningOreHoldPct,
     int? MiningShieldPct,
+    IReadOnlyList<string>? MiningOresToMine,
+    IReadOnlyList<string>? MiningOresToPrefer,
     // Mining session statistics
     double? TotalMinedM3,
     int? UnloadCycles,
@@ -159,7 +161,9 @@ public sealed record MiningBotConfig(
     int     OreHoldFull     = 95,
     int     ShieldEscape    = 25,
     bool    RandomizeBeltOrder = true,
-    bool    RandomBeltEveryCycle = false);
+    bool    RandomBeltEveryCycle = false,
+    List<string>? OresToMine = null,
+    List<string>? OresToPrefer = null);
 
 public sealed record BotInfo(string Name, string Description);
 
@@ -175,7 +179,9 @@ public sealed record UpdateMiningSettingsRequest(
     int OreHoldFull,
     int ShieldEscape,
     bool RandomizeBeltOrder,
-    bool RandomBeltEveryCycle);
+    bool RandomBeltEveryCycle,
+    List<string>? OresToMine = null,
+    List<string>? OresToPrefer = null);
 
 public sealed record UpdateTravelSettingsRequest(bool AbMwdTrick, bool HardenMode);
 
@@ -366,6 +372,8 @@ public static class DtoMapper
             selectedItem,
             miningBot?.OreHoldFullPercent,
             miningBot?.ShieldEscapePercent,
+            miningBot?.OresToMine,
+            miningBot?.OresToPrefer,
             miningBot?.TotalUnloadedM3,
             (int?)miningBot?.UnloadCycles,
             miningBot?.SessionRateM3Hr,

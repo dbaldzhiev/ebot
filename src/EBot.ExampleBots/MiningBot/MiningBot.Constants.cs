@@ -36,6 +36,13 @@ public sealed partial class MiningBot
             { "spodumain",  16 },
         };
 
+    public static readonly string[] MainOreTypes =
+    [
+        "Veldspar", "Scordite", "Pyroxeres", "Plagioclase", "Omber", "Kernite", 
+        "Jaspet", "Hemorphite", "Hedbergite", "Spodumain", "Crokite", "Bistot", 
+        "Arkonor", "Mercoxit", "Gneiss", "Dark Ochre"
+    ];
+
     private static readonly string[] _asteroidKeywords =
     [
         "asteroid",

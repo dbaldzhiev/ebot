@@ -1,6 +1,4 @@
-using EBot.Core.DecisionEngine;
-
-namespace EBot.Core.Bot;
+namespace EBot.Core.DecisionEngine;
 
 /// <summary>
 /// Interface for bot implementations. Each bot provides a behavior tree

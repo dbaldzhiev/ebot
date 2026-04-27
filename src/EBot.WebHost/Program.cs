@@ -259,7 +259,7 @@ api.MapPost("/survival", ([FromBody] SurvivalRequest req, BotOrchestrator o) =>
 // POST /api/mining/settings  — update ore hold % and shield % at runtime
 api.MapPost("/mining/settings", ([FromBody] UpdateMiningSettingsRequest req, BotOrchestrator o) =>
 {
-    o.UpdateMiningSettings(req.OreHoldFull, req.ShieldEscape, req.RandomizeBeltOrder, req.RandomBeltEveryCycle);
+    o.UpdateMiningSettings(req);
     return Results.Ok(new { success = true });
 });
 

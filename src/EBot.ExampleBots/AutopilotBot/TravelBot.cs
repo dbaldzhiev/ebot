@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using EBot.Core.Bot;
 using EBot.Core.DecisionEngine;
 using EBot.Core.Execution;
 using EBot.Core.GameState;

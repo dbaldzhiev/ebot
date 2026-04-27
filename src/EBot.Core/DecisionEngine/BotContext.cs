@@ -10,6 +10,11 @@ namespace EBot.Core.DecisionEngine;
 public sealed class BotContext
 {
     /// <summary>
+    /// The current bot instance executing the behavior tree.
+    /// </summary>
+    public IBot? Bot { get; internal set; }
+
+    /// <summary>
     /// The current game state snapshot (read-only view of the EVE client).
     /// </summary>
     public GameStateSnapshot GameState { get; set; } = new();

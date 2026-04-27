@@ -124,16 +124,18 @@ public sealed class BotOrchestrator : IDisposable
     public void ToggleBeltExcluded(int idx) => ActiveMiningBot?.ToggleBeltExcluded(idx);
 
     /// <summary>Updates mining parameters on the active bot instance without stopping it.</summary>
-    public void UpdateMiningSettings(int oreHoldPct, int shieldPct, bool randomizeBelts, bool randomCycle)
+    public void UpdateMiningSettings(UpdateMiningSettingsRequest req)
     {
         var bot = ActiveMiningBot;
         if (bot != null)
         {
-            bot.OreHoldFullPercent = oreHoldPct;
-            bot.ShieldEscapePercent = shieldPct;
-            bot.RandomizeBeltOrder = randomizeBelts;
-            bot.RandomBeltEveryCycle = randomCycle;
-            _logSink.Add("Info", "Orchestrator", $"Updated mining settings: OreHold={oreHoldPct}%, ShieldEscape={shieldPct}%, RandomizeOrder={randomizeBelts}, RandomEveryCycle={randomCycle}");
+            bot.OreHoldFullPercent = req.OreHoldFull;
+            bot.ShieldEscapePercent = req.ShieldEscape;
+            bot.RandomizeBeltOrder = req.RandomizeBeltOrder;
+            bot.RandomBeltEveryCycle = req.RandomBeltEveryCycle;
+            bot.OresToMine = req.OresToMine ?? new();
+            bot.OresToPrefer = req.OresToPrefer ?? new();
+            _logSink.Add("Info", "Orchestrator", $"Updated mining settings: OreHold={req.OreHoldFull}%, ShieldEscape={req.ShieldEscape}%, RandomizeOrder={req.RandomizeBeltOrder}, RandomEveryCycle={req.RandomBeltEveryCycle}, OresToMine={bot.OresToMine.Count}, OresToPrefer={bot.OresToPrefer.Count}");
         }
     }
 
@@ -264,6 +266,8 @@ public sealed class BotOrchestrator : IDisposable
                 ShieldEscapePercent = cfg.ShieldEscape,
                 RandomizeBeltOrder  = cfg.RandomizeBeltOrder,
                 RandomBeltEveryCycle = cfg.RandomBeltEveryCycle,
+                OresToMine          = cfg.OresToMine ?? new(),
+                OresToPrefer        = cfg.OresToPrefer ?? new(),
             };
         }
         else

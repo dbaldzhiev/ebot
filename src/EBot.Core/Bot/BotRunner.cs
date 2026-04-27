@@ -130,6 +130,7 @@ public sealed class BotRunner : IDisposable
 
         _cts = new CancellationTokenSource();
         _behaviorTree = _bot.BuildBehaviorTree();
+        _context.Bot = _bot;
         _context.StartTime = DateTimeOffset.UtcNow;
         _context.TickCount = 0;
         _context.Blackboard.Clear();
@@ -208,6 +209,7 @@ public sealed class BotRunner : IDisposable
                 {
                     _bot.OnStop(_context);
                     _bot = swap.Bot;
+                    _context.Bot = _bot;
                     _isMonitorMode = swap.IsMonitorMode;
                     _behaviorTree = _bot.BuildBehaviorTree();
                     _context.Blackboard.Clear();

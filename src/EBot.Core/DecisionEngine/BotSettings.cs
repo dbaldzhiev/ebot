@@ -1,6 +1,6 @@
 using EBot.Core.MemoryReading;
 
-namespace EBot.Core.Bot;
+namespace EBot.Core.DecisionEngine;
 
 /// <summary>
 /// Configuration settings for a bot session.
